@@ -3,6 +3,8 @@ import { INestApplication } from '@nestjs/common';
 import type { Server } from 'http';
 import * as request from 'supertest';
 import { AppModule } from './../src/app.module';
+import { DB_POOL } from './../src/database';
+import { createMockDbPool } from './helpers/mock-db-pool';
 
 describe('AppController (e2e)', () => {
   let app: INestApplication;
@@ -10,7 +12,10 @@ describe('AppController (e2e)', () => {
   beforeEach(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(DB_POOL)
+      .useValue(createMockDbPool())
+      .compile();
 
     app = moduleFixture.createNestApplication();
     await app.init();
