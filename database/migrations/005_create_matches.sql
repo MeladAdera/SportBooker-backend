@@ -1,0 +1,35 @@
+BEGIN;
+
+-- =========================
+-- Migration 005: Create Matches
+-- =========================
+-- Description: Matches at venues with price_per_player
+-- Dependencies: 001, 004
+-- =========================
+
+CREATE TABLE IF NOT EXISTS matches (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  venue_id UUID NOT NULL REFERENCES venues(id) ON DELETE CASCADE,
+  sport_type sport_type NOT NULL,
+  scheduled_at TIMESTAMPTZ NOT NULL,
+  price_per_player NUMERIC(10, 2) NOT NULL,
+  status match_status NOT NULL DEFAULT 'scheduled',
+  max_players INT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_matches_venue_id ON matches(venue_id);
+CREATE INDEX IF NOT EXISTS idx_matches_scheduled_at ON matches(scheduled_at);
+CREATE INDEX IF NOT EXISTS idx_matches_status ON matches(status);
+
+COMMIT;
+
+-- =========================
+-- ROLLBACK SCRIPT (in comments)
+-- =========================
+/*
+BEGIN;
+DROP TABLE IF EXISTS matches;
+COMMIT;
+*/
