@@ -1,8 +1,6 @@
-version: "3.9"
-
 services:
-  postgres:
-    image: postgres:16-alpine
+  db:
+    image: postgres:15-alpine
     container_name: sportbooker-postgres
     environment:
       POSTGRES_DB: sportbooker
@@ -18,16 +16,35 @@ services:
       timeout: 5s
       retries: 5
 
+  app:
+    build: .
+    container_name: sportbooker-app
+    env_file: .env.docker
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: sportbooker
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      PORT: 3000
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./database/migrations:/app/database/migrations:ro
+    depends_on:
+      db:
+        condition: service_healthy
+
   pgadmin:
     image: dpage/pgadmin4:latest
     container_name: sportbooker-pgadmin
     environment:
-      PGADMIN_DEFAULT_EMAIL: admin@example.com 
+      PGADMIN_DEFAULT_EMAIL: admin@example.com
       PGADMIN_DEFAULT_PASSWORD: admin
     ports:
-      - "5050:80"  # افتح على المتصفح http://localhost:5050
+      - "5050:80"
     depends_on:
-      postgres:
+      db:
         condition: service_healthy
 
 volumes:
