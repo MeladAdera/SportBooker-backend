@@ -18,6 +18,22 @@ const MIGRATIONS_TABLE = `CREATE TABLE IF NOT EXISTS _migrations (
   applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
 )`;
 
+function parseOptionalInt(
+  value: string | undefined,
+  name: string,
+  defaultValue: number,
+  min = 0,
+): number {
+  if (value === undefined || value === '') return defaultValue;
+  const num = parseInt(value, 10);
+  if (Number.isNaN(num) || num < min) {
+    throw new Error(
+      `Invalid ${name} in .env. Must be a number >= ${min}. Got: ${value}`,
+    );
+  }
+  return num;
+}
+
 function getPoolConfig(): {
   host: string;
   port: number;
@@ -29,35 +45,39 @@ function getPoolConfig(): {
   connectionTimeoutMillis?: number;
 } {
   const host = process.env.DB_HOST;
-  const port = process.env.DB_PORT;
+  const portStr = process.env.DB_PORT;
   const database = process.env.DB_NAME;
   const user = process.env.DB_USER;
   const password = process.env.DB_PASSWORD;
 
   if (!host || !database || !user || !password) {
     throw new Error(
-      'Missing required env: DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD',
+      'Missing required env: DB_HOST, DB_NAME, DB_USER, DB_PASSWORD',
     );
   }
 
-  const portNum = port ? parseInt(port, 10) : 5432;
-  if (Number.isNaN(portNum)) {
-    throw new Error('Invalid DB_PORT');
+  const port = parseOptionalInt(portStr, 'DB_PORT', 5432, 1);
+  if (port > 65535) {
+    throw new Error('Invalid DB_PORT: must be 1-65535');
   }
 
   return {
     host,
-    port: portNum,
+    port,
     database,
     user,
     password,
-    max: process.env.DB_POOL_MAX ? parseInt(process.env.DB_POOL_MAX, 10) : 10,
-    idleTimeoutMillis: process.env.DB_POOL_IDLE_TIMEOUT_MILLIS
-      ? parseInt(process.env.DB_POOL_IDLE_TIMEOUT_MILLIS, 10)
-      : 10000,
-    connectionTimeoutMillis: process.env.DB_POOL_CONNECTION_TIMEOUT_MILLIS
-      ? parseInt(process.env.DB_POOL_CONNECTION_TIMEOUT_MILLIS, 10)
-      : 5000,
+    max: parseOptionalInt(process.env.DB_POOL_MAX, 'DB_POOL_MAX', 10),
+    idleTimeoutMillis: parseOptionalInt(
+      process.env.DB_POOL_IDLE_TIMEOUT_MILLIS,
+      'DB_POOL_IDLE_TIMEOUT_MILLIS',
+      10000,
+    ),
+    connectionTimeoutMillis: parseOptionalInt(
+      process.env.DB_POOL_CONNECTION_TIMEOUT_MILLIS,
+      'DB_POOL_CONNECTION_TIMEOUT_MILLIS',
+      5000,
+    ),
   };
 }
 

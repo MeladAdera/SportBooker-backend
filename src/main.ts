@@ -8,4 +8,7 @@ async function bootstrap(): Promise<void> {
   const port = config.getOrThrow<number>('PORT');
   await app.listen(port);
 }
-void bootstrap();
+bootstrap().catch((err) => {
+  console.error('Application failed to start:', err);
+  process.exit(1);
+});
