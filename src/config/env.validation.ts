@@ -1,5 +1,6 @@
 export interface ValidatedEnv {
   PORT: number;
+  APP_DOMAIN: string;
   DB_HOST: string;
   DB_PORT: number;
   DB_NAME: string;
@@ -44,6 +45,7 @@ function parseOptionalInt(
 export function validateEnv(config: Record<string, unknown>): ValidatedEnv {
   return {
     PORT: parsePort(config['PORT'], 'PORT'),
+    APP_DOMAIN: parseRequiredString(config['APP_DOMAIN'], 'APP_DOMAIN'),
     DB_HOST: parseRequiredString(config['DB_HOST'], 'DB_HOST'),
     DB_PORT: parsePort(config['DB_PORT'], 'DB_PORT'),
     DB_NAME: parseRequiredString(config['DB_NAME'], 'DB_NAME'),

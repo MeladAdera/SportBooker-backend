@@ -4,6 +4,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { validateEnv } from './config/env.validation';
 import { DatabaseModule } from './database/db.module';
+import { TenantModule } from './tenant/tenant.module';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { DatabaseModule } from './database/db.module';
       validate: validateEnv,
     }),
     DatabaseModule,
+    TenantModule,
   ],
   controllers: [AppController],
   providers: [AppService],
