@@ -4,12 +4,46 @@ import {
   BadRequestException,
   NotFoundException,
   ForbiddenException,
+  Inject,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Request, Response, NextFunction } from 'express';
 import type { Pool } from 'pg';
-import { Inject } from '@nestjs/common';
 import { DB_POOL } from '../database/database.constants';
+
+const TENANT_CACHE_TTL_MS = 60_000;
+
+interface CachedTenant {
+  data: TenantRow;
+  expiresAt: number;
+}
+
+const tenantCache = new Map<string, CachedTenant>();
+
+function getCachedTenant(slug: string): TenantRow | null {
+  const cached = tenantCache.get(slug);
+  if (!cached) return null;
+  if (Date.now() > cached.expiresAt) {
+    tenantCache.delete(slug);
+    return null;
+  }
+  return cached.data;
+}
+
+function setCachedTenant(slug: string, data: TenantRow): void {
+  tenantCache.set(slug, {
+    data,
+    expiresAt: Date.now() + TENANT_CACHE_TTL_MS,
+  });
+}
+
+/**
+ * Call when a tenant is updated to invalidate cached data.
+ * Export for use by tenant service when update/delete flows exist.
+ */
+export function invalidateTenantCache(slug: string): void {
+  tenantCache.delete(slug);
+}
 
 /**
  * Extracts subdomain from Host by stripping APP_DOMAIN suffix.
@@ -49,12 +83,17 @@ export class TenantMiddleware implements NestMiddleware {
       throw new BadRequestException('Missing or invalid subdomain');
     }
 
-    const { rows } = await this.pool.query<TenantRow>(
-      'SELECT id, name, slug, is_active, created_at, updated_at FROM tenants WHERE slug = $1',
-      [subdomain],
-    );
-
-    const row = rows[0];
+    let row = getCachedTenant(subdomain);
+    if (!row) {
+      const { rows } = await this.pool.query<TenantRow>(
+        'SELECT id, name, slug, is_active, created_at, updated_at FROM tenants WHERE slug = $1',
+        [subdomain],
+      );
+      row = rows[0];
+      if (row) {
+        setCachedTenant(subdomain, row);
+      }
+    }
     if (!row) {
       throw new NotFoundException(`Tenant not found: ${subdomain}`);
     }

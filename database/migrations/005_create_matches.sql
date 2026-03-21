@@ -1,5 +1,3 @@
-BEGIN;
-
 -- =========================
 -- Migration 005: Create Matches
 -- =========================
@@ -22,8 +20,6 @@ CREATE TABLE IF NOT EXISTS matches (
 CREATE INDEX IF NOT EXISTS idx_matches_venue_id ON matches(venue_id);
 CREATE INDEX IF NOT EXISTS idx_matches_scheduled_at ON matches(scheduled_at);
 CREATE INDEX IF NOT EXISTS idx_matches_status ON matches(status);
-
-COMMIT;
 
 -- =========================
 -- ROLLBACK SCRIPT (in comments)

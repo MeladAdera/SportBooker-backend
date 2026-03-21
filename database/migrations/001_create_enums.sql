@@ -1,5 +1,3 @@
-BEGIN;
-
 -- =========================
 -- Migration 001: Create Enums
 -- =========================
@@ -83,8 +81,6 @@ EXCEPTION
   WHEN duplicate_object THEN NULL;
 END
 $$;
-
-COMMIT;
 
 -- =========================
 -- ROLLBACK SCRIPT (in comments)

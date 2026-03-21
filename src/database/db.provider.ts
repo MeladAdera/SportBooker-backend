@@ -1,7 +1,8 @@
 import { ConfigService } from '@nestjs/config';
-import type { Pool, PoolConfig } from 'pg';
+import type { Pool } from 'pg';
 import { Pool as PgPool } from 'pg';
 import { DB_POOL } from './database.constants';
+import { createPoolConfig } from './pool-config';
 
 export function createDbPoolFactory(): {
   provide: typeof DB_POOL;
@@ -12,7 +13,7 @@ export function createDbPoolFactory(): {
     provide: DB_POOL,
     inject: [ConfigService],
     useFactory: async (config: ConfigService): Promise<Pool> => {
-      const poolConfig: PoolConfig = {
+      const poolConfig = createPoolConfig({
         host: config.getOrThrow<string>('DB_HOST'),
         port: config.getOrThrow<number>('DB_PORT'),
         database: config.getOrThrow<string>('DB_NAME'),
@@ -25,7 +26,10 @@ export function createDbPoolFactory(): {
         connectionTimeoutMillis: config.getOrThrow<number>(
           'DB_POOL_CONNECTION_TIMEOUT_MILLIS',
         ),
-      };
+        statementTimeoutMillis: config.getOrThrow<number>(
+          'DB_STATEMENT_TIMEOUT_MILLIS',
+        ),
+      });
 
       const pool = new PgPool(poolConfig);
 

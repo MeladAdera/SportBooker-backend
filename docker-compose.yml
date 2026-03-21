@@ -22,11 +22,6 @@ services:
     env_file: .env.docker
     environment:
       DB_HOST: db
-      DB_PORT: 5432
-      DB_NAME: sportbooker
-      DB_USER: postgres
-      DB_PASSWORD: postgres
-      PORT: 3000
     ports:
       - "3000:3000"
     volumes:

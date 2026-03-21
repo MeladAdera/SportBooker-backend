@@ -1,5 +1,3 @@
-BEGIN;
-
 -- =========================
 -- Migration 007: Create Wallet Transactions
 -- =========================
@@ -21,8 +19,6 @@ CREATE INDEX IF NOT EXISTS idx_wallet_transactions_user_id
   ON wallet_transactions(user_id);
 CREATE INDEX IF NOT EXISTS idx_wallet_transactions_created_at
   ON wallet_transactions(created_at);
-
-COMMIT;
 
 -- =========================
 -- ROLLBACK SCRIPT (in comments)

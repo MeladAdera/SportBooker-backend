@@ -1,5 +1,3 @@
-BEGIN;
-
 -- =========================
 -- Migration 002: Create Tenants
 -- =========================
@@ -13,8 +11,6 @@ CREATE TABLE IF NOT EXISTS tenants (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-
-COMMIT;
 
 -- =========================
 -- ROLLBACK SCRIPT (in comments)

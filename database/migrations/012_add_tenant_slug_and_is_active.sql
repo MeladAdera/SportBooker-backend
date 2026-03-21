@@ -1,5 +1,3 @@
-BEGIN;
-
 -- =========================
 -- Migration 012: Add slug and is_active to tenants
 -- =========================
@@ -26,8 +24,6 @@ ALTER TABLE tenants ALTER COLUMN slug SET NOT NULL;
 
 -- Unique index for lookup
 CREATE UNIQUE INDEX IF NOT EXISTS tenants_slug_idx ON tenants (slug);
-
-COMMIT;
 
 -- =========================
 -- ROLLBACK SCRIPT (in comments)

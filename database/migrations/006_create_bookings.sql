@@ -1,5 +1,3 @@
-BEGIN;
-
 -- =========================
 -- Migration 006: Create Bookings
 -- =========================
@@ -19,8 +17,6 @@ CREATE TABLE IF NOT EXISTS bookings (
 
 CREATE INDEX IF NOT EXISTS idx_bookings_match_id ON bookings(match_id);
 CREATE INDEX IF NOT EXISTS idx_bookings_user_id ON bookings(user_id);
-
-COMMIT;
 
 -- =========================
 -- ROLLBACK SCRIPT (in comments)

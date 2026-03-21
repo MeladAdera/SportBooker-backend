@@ -1,5 +1,3 @@
-BEGIN;
-
 -- =========================
 -- Migration 009: Create Notifications
 -- =========================
@@ -20,8 +18,6 @@ CREATE TABLE IF NOT EXISTS notifications (
 
 CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_read_at ON notifications(read_at);
-
-COMMIT;
 
 -- =========================
 -- ROLLBACK SCRIPT (in comments)

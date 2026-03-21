@@ -1,5 +1,3 @@
-BEGIN;
-
 -- =========================
 -- Migration 004: Create Venues
 -- =========================
@@ -17,8 +15,6 @@ CREATE TABLE IF NOT EXISTS venues (
 );
 
 CREATE INDEX IF NOT EXISTS idx_venues_tenant_id ON venues(tenant_id);
-
-COMMIT;
 
 -- =========================
 -- ROLLBACK SCRIPT (in comments)

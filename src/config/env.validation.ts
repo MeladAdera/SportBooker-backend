@@ -9,6 +9,7 @@ export interface ValidatedEnv {
   DB_POOL_MAX: number;
   DB_POOL_IDLE_TIMEOUT_MILLIS: number;
   DB_POOL_CONNECTION_TIMEOUT_MILLIS: number;
+  DB_STATEMENT_TIMEOUT_MILLIS: number;
 }
 
 function parsePort(value: unknown, name: string, min = 1, max = 65535): number {
@@ -51,7 +52,7 @@ export function validateEnv(config: Record<string, unknown>): ValidatedEnv {
     DB_NAME: parseRequiredString(config['DB_NAME'], 'DB_NAME'),
     DB_USER: parseRequiredString(config['DB_USER'], 'DB_USER'),
     DB_PASSWORD: parseRequiredString(config['DB_PASSWORD'], 'DB_PASSWORD'),
-    DB_POOL_MAX: parseOptionalInt(config['DB_POOL_MAX'], 'DB_POOL_MAX', 10),
+    DB_POOL_MAX: parseOptionalInt(config['DB_POOL_MAX'], 'DB_POOL_MAX', 20),
     DB_POOL_IDLE_TIMEOUT_MILLIS: parseOptionalInt(
       config['DB_POOL_IDLE_TIMEOUT_MILLIS'],
       'DB_POOL_IDLE_TIMEOUT_MILLIS',
@@ -61,6 +62,11 @@ export function validateEnv(config: Record<string, unknown>): ValidatedEnv {
       config['DB_POOL_CONNECTION_TIMEOUT_MILLIS'],
       'DB_POOL_CONNECTION_TIMEOUT_MILLIS',
       5000,
+    ),
+    DB_STATEMENT_TIMEOUT_MILLIS: parseOptionalInt(
+      config['DB_STATEMENT_TIMEOUT_MILLIS'],
+      'DB_STATEMENT_TIMEOUT_MILLIS',
+      30000,
     ),
   };
 }

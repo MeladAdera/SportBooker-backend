@@ -1,5 +1,3 @@
-BEGIN;
-
 -- =========================
 -- Migration 008: Create Reviews
 -- =========================
@@ -20,8 +18,6 @@ CREATE TABLE IF NOT EXISTS reviews (
 
 CREATE INDEX IF NOT EXISTS idx_reviews_match_id ON reviews(match_id);
 CREATE INDEX IF NOT EXISTS idx_reviews_user_id ON reviews(user_id);
-
-COMMIT;
 
 -- =========================
 -- ROLLBACK SCRIPT (in comments)
