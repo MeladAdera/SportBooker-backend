@@ -640,7 +640,7 @@ Complete reference for all major dependencies, versions, and best practices for 
 - Configure path aliases in tsconfig.json
 - Use tsconfig-paths for module resolution
 - Enable incremental compilation for faster builds
-- Use concurrently for running multiple apps in parallel (`pnpm dev:all`)
+- Use concurrently for running multiple apps in parallel (`npm run dev:all`)
 - Use madge for detecting circular dependencies
 
 ## Dependency Management
@@ -651,7 +651,7 @@ Complete reference for all major dependencies, versions, and best practices for 
 
 - Use PNPM for faster installs and disk space efficiency
 - Leverage workspace features if needed
-- Use `pnpm-lock.yaml` for reproducible builds
+- Use `package-lock.json` for reproducible builds
 - Configure `.npmrc` for registry settings
 
 ## Version Strategy
@@ -769,7 +769,7 @@ Complete reference for all major dependencies, versions, and best practices for 
 
 ### Dependency Security
 
-1. **Regular Audits:** Run `pnpm audit` weekly
+1. **Regular Audits:** Run `npm audit` weekly
 2. **Automated Updates:** Use Dependabot or Renovate
 3. **Security Patches:** Apply immediately
 4. **Vulnerability Scanning:** Integrate with CI/CD
@@ -840,12 +840,12 @@ Complete reference for all major dependencies, versions, and best practices for 
 
 ### Weekly
 
-- Run `pnpm audit` for security vulnerabilities
+- Run `npm audit` for security vulnerabilities
 - Review Dependabot/Renovate PRs
 
 ### Monthly
 
-- Update patch versions: `pnpm update`
+- Update patch versions: `npm update`
 - Review minor version updates
 - Update documentation if needed
 

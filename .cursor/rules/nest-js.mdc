@@ -674,37 +674,37 @@ Workers import shared libraries (`@lib/database`, `@lib/queue`, `@lib/redis`, `@
 # Daily Development
 
 ```bash
-pnpm dev                # Start API development (auto-starts services + hot-reload)
-pnpm dev:all            # Start all apps (API + worker-ai + worker-ingestion)
-pnpm start:api          # Start API only with watch mode
-pnpm start:worker-ai    # Start AI worker with watch mode
-pnpm start:worker-ingestion  # Start ingestion worker with watch mode
+npm run start:dev       # Start API development (watch mode)
+npm run dev:all        # Start all apps (API + worker-ai + worker-ingestion)
+npm run start:api      # Start API only with watch mode
+npm run start:worker-ai    # Start AI worker with watch mode
+npm run start:worker-ingestion  # Start ingestion worker with watch mode
 ```
 
 # Database Operations
 
 ```bash
-pnpm db:migrate         # Run database migrations
-pnpm db:seed            # Seed database with initial data
-pnpm docker:start       # Start PostgreSQL + Redis + MinIO
-pnpm docker:reset       # Full reset: down -v + start + migrate
+npm run migrate         # Run database migrations
+npm run db:seed         # Seed database with initial data
+npm run docker:start    # Start PostgreSQL + Redis + MinIO
+npm run docker:reset   # Full reset: down -v + start + migrate
 ```
 
 # Docker (Multi-environment)
 
 ```bash
-pnpm docker:dev         # Start with dev overlay (hot-reload in Docker)
-pnpm docker:prod        # Start with production overlay
-pnpm docker:services    # Start infrastructure services only
-pnpm docker:services:tools  # Start with pgAdmin
+npm run docker:dev         # Start with dev overlay (hot-reload in Docker)
+npm run docker:prod        # Start with production overlay
+npm run docker:services    # Start infrastructure services only
+npm run docker:services:tools  # Start with pgAdmin
 ```
 
 # Code Quality
 
 ```bash
-pnpm lint               # ESLint with auto-fix
-pnpm format             # Prettier formatting
-pnpm type-check         # TypeScript validation
+npm run lint               # ESLint with auto-fix
+npm run format             # Prettier formatting
+npm run type-check        # TypeScript validation
 ```
 
 # Testing
@@ -712,10 +712,10 @@ pnpm type-check         # TypeScript validation
 > **📖 Complete Testing Guidelines:** See [testing.mdc](mdc:testing.mdc) for conventions, factories, helpers, and CI requirements
 
 ```bash
-pnpm test               # Run all tests
-pnpm test:unit          # Run unit tests only
-pnpm test:integration   # Run integration tests only
-pnpm test:coverage      # Run tests with coverage
+npm run test               # Run all tests
+npm run test:unit          # Run unit tests only
+npm run test:integration   # Run integration tests only
+npm run test:coverage      # Run tests with coverage
 ```
 
 # ========================================

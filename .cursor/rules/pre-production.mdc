@@ -48,7 +48,7 @@ When making database changes, **UPDATE EXISTING MIGRATION FILES** if:
 
 1. Locate the relevant migration file in `scripts/migrations/`
 2. Edit the SQL directly
-3. Re-run migrations: `pnpm db:migrate` (or drop/recreate database)
+3. Re-run migrations: `npm run migrate` (or drop/recreate database)
 4. Update seed data if needed
 
 #### ⚠️ EXCEPTION: Create New Migration
@@ -140,14 +140,14 @@ async endpoint() { ... }
 2. Drop and recreate database:
    docker-compose down -v
    docker-compose up -d postgres
-   pnpm db:migrate
-   pnpm db:seed
+   npm run migrate
+   npm run db:seed
 
 # Option 2: Create new migration (only if change is large)
 1. Create scripts/migrations/XXX_new_feature.sql
 2. Update scripts/run-migrations.sh (if needed)
 3. Run migrations:
-   pnpm db:migrate
+   npm run migrate
 ```
 
 **When to drop/recreate vs. run migrations:**
