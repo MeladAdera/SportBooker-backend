@@ -1,14 +1,20 @@
+import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Pool } from 'pg';
 import { Pool as PgPool } from 'pg';
 import { DB_POOL } from './database.constants';
 import { createPoolConfig } from './pool-config';
 
-export function createDbPoolFactory(): {
-  provide: typeof DB_POOL;
-  useFactory: (config: ConfigService) => Promise<Pool>;
-  inject: [typeof ConfigService];
-} {
+const logger = new Logger('DatabasePool');
+
+const MAX_RETRIES = 3;
+const INITIAL_RETRY_DELAY_MS = 1_000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export function createDbPoolFactory() {
   return {
     provide: DB_POOL,
     inject: [ConfigService],
@@ -34,17 +40,42 @@ export function createDbPoolFactory(): {
       const pool = new PgPool(poolConfig);
 
       pool.on('error', (err) => {
-        console.error('Unexpected database pool error:', err);
+        logger.error('Unexpected database pool error', err.stack);
       });
 
-      const client = await pool.connect();
-      try {
-        await client.query('SELECT 1');
-      } finally {
-        client.release();
+      let lastError: Error | undefined;
+
+      for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          const client = await pool.connect();
+          try {
+            await client.query('SELECT 1');
+          } finally {
+            client.release();
+          }
+          logger.log('Database pool connected');
+          return pool;
+        } catch (err) {
+          lastError = err as Error;
+          if (attempt < MAX_RETRIES) {
+            const delay = INITIAL_RETRY_DELAY_MS * 2 ** (attempt - 1);
+            logger.warn(
+              `Connection attempt ${attempt}/${MAX_RETRIES} failed, retrying in ${delay}ms: ${lastError.message}`,
+            );
+            await sleep(delay);
+          }
+        }
       }
 
-      return pool;
+      await pool.end();
+
+      const error =
+        lastError ?? new Error('Failed to connect to database (no attempts)');
+      logger.error(
+        `Failed to connect after ${MAX_RETRIES} attempts`,
+        error.stack,
+      );
+      throw error;
     },
   };
 }

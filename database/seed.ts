@@ -11,7 +11,7 @@ import 'dotenv/config';
 import * as fs from 'fs';
 import * as path from 'path';
 import { Pool } from 'pg';
-import { getPoolConfigFromEnv } from '../src/database/pool-config';
+import { getPoolConfigFromEnv } from './pool-config-env';
 
 const SEEDS_DIR = path.join(__dirname, 'seeds');
 
