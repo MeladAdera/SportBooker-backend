@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { validateEnv } from './config/env.validation';
+import { envSchema } from './config/env.schema';
 import { DatabaseModule } from './database/db.module';
 import { TenantModule } from './tenant/tenant.module';
 
@@ -11,7 +11,11 @@ import { TenantModule } from './tenant/tenant.module';
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
-      validate: validateEnv,
+      validationSchema: envSchema,
+      validationOptions: {
+        allowUnknown: true,
+        abortEarly: false,
+      },
     }),
     DatabaseModule,
     TenantModule,
