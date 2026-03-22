@@ -9,6 +9,7 @@ export class TenantModule implements NestModule {
       .apply(TenantMiddleware)
       .exclude(
         { path: '/', method: RequestMethod.GET },
+        { path: 'test-validation', method: RequestMethod.ALL },
         { path: 'admin/tenants', method: RequestMethod.ALL },
         { path: 'admin/tenants/(.*)', method: RequestMethod.ALL },
       )
