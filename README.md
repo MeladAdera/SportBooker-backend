@@ -45,6 +45,34 @@ $ npm run start:dev
 $ npm run start:prod
 ```
 
+## Database
+
+Run migrations first, then seeds. Seeds are idempotent and can be re-run safely.
+
+```bash
+npm run migrate   # Apply schema migrations
+npm run seed      # Load seed data (run after migrate)
+```
+
+### Seed credentials
+
+All seed users share the same password: **Password123!** (bcrypt, 12 rounds).
+
+| Tenant slug | Role         | Email                    |
+|-------------|--------------|--------------------------|
+| acfc        | super_admin  | super-admin@acfc.test    |
+| acfc        | tenant_admin | admin@acfc.test         |
+| acfc        | tenant_staff | staff@acfc.test          |
+| acfc        | player       | player@acfc.test        |
+| downtown    | super_admin  | super-admin@downtown.test|
+| downtown    | tenant_admin | admin@downtown.test     |
+| downtown    | tenant_staff | staff@downtown.test     |
+| downtown    | player       | player@downtown.test    |
+
+Access the app via subdomain: `acfc.localhost:3000` or `downtown.localhost:3000` (with `APP_DOMAIN=localhost:3000`).
+
+**Full study & test guide:** [docs/PROJECT_GUIDE.md](docs/PROJECT_GUIDE.md) — features, testing, architecture.
+
 ## Run tests
 
 ```bash

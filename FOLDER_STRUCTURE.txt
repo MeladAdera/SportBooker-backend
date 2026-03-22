@@ -1,0 +1,119 @@
+============================================================
+📁 SPORTBOOKER STRUCTURE
+============================================================
+Generated: 3/22/2026, 3:10:49 PM
+Location: /home/lenovo/Desktop/sportbooker
+============================================================
+
+📂 ROOT DIRECTORY:
+.
+├── 📁 .husky/
+├── 📁 _/
+│   ├── 📄 .gitignore (1 B)
+│   ├── 📄 applypatch-msg (39 B)
+│   ├── 📄 commit-msg (39 B)
+│   ├── 📄 h (551 B)
+│   ├── 📄 husky.sh (160 B)
+│   ├── 📄 post-applypatch (39 B)
+│   ├── 📄 post-checkout (39 B)
+│   ├── 📄 post-commit (39 B)
+│   ├── 📄 post-merge (39 B)
+│   ├── 📄 post-rewrite (39 B)
+│   ├── 📄 pre-applypatch (39 B)
+│   ├── 📄 pre-auto-gc (39 B)
+│   ├── 📄 pre-commit (39 B)
+│   ├── 📄 pre-merge-commit (39 B)
+│   ├── 📄 pre-push (39 B)
+│   ├── 📄 pre-rebase (39 B)
+│   └── 📄 prepare-commit-msg (39 B)
+├── 📄 commit-msg (38 B)
+└── 📄 pre-commit (35 B)
+├── 📁 database/
+├── 📁 migrations/
+│   ├── 📄 001_create_enums.sql (1.7 KB)
+│   ├── 📄 002_create_tenants.sql (541 B)
+│   ├── 📄 003_create_users.sql (1004 B)
+│   ├── 📄 004_create_venues.sql (692 B)
+│   ├── 📄 005_create_matches.sql (999 B)
+│   ├── 📄 006_create_bookings.sql (909 B)
+│   ├── 📄 007_create_wallet_transactions.sql (901 B)
+│   ├── 📄 008_create_reviews.sql (924 B)
+│   ├── 📄 009_create_notifications.sql (892 B)
+│   ├── 📄 010_create_refresh_tokens.sql (844 B)
+│   ├── 📄 011_create_password_reset_tokens.sql (896 B)
+│   ├── 📄 012_add_tenant_slug_and_is_active.sql (1.08 KB)
+│   ├── 📄 013_add_tenant_timezone_and_user_roles.sql (592 B)
+│   ├── 📄 014_add_unique_venue_name_per_tenant.sql (280 B)
+│   └── 📄 015_add_unique_match_venue_scheduled.sql (231 B)
+├── 📁 seeds/
+│   ├── 📄 001_seed_tenants.sql (565 B)
+│   ├── 📄 002_seed_users.sql (1.49 KB)
+│   ├── 📄 003_seed_venues.sql (822 B)
+│   └── 📄 004_seed_matches.sql (1.49 KB)
+├── 📄 migrate.ts (2.18 KB)
+└── 📄 seed.ts (1.18 KB)
+├── 📁 docs/
+├── 📄 MIGRATIONS.md (18.96 KB)
+├── 📄 PROJECT_GUIDE.md (16.3 KB)
+└── 📄 VALIDATION_AND_RESPONSE_ENVELOPE.md (12.67 KB)
+├── 📁 src/
+├── 📁 common/
+│   ├── 📁 filters/
+│   │   └── 📄 http-exception.filter.ts (1.13 KB)
+│   ├── 📁 interceptors/
+│   │   ├── 📄 logging.interceptor.ts (1.01 KB)
+│   │   └── 📄 transform.interceptor.ts (708 B)
+│   ├── 📁 pipes/
+│   │   └── 📄 validation-exception.factory.ts (873 B)
+│   ├── 📄 index.ts (110 B)
+│   └── 📄 tenant.types.ts (441 B)
+├── 📁 config/
+│   └── 📄 env.schema.ts (1.93 KB)
+├── 📁 database/
+│   ├── 📄 database.constants.ts (419 B)
+│   ├── 📄 db.module.ts (562 B)
+│   ├── 📄 db.provider.ts (1.52 KB)
+│   ├── 📄 index.ts (147 B)
+│   └── 📄 pool-config.ts (2.93 KB)
+├── 📁 tenant/
+│   ├── 📄 tenant.integration.spec.ts (4.14 KB)
+│   ├── 📄 tenant.middleware.spec.ts (1.42 KB)
+│   ├── 📄 tenant.middleware.ts (3.22 KB)
+│   └── 📄 tenant.module.ts (667 B)
+├── 📄 app.controller.spec.ts (617 B)
+├── 📄 app.controller.ts (1.2 KB)
+├── 📄 app.dto.ts (396 B)
+├── 📄 app.module.ts (706 B)
+├── 📄 app.service.ts (142 B)
+└── 📄 main.ts (1.56 KB)
+├── 📁 test/
+├── 📁 helpers/
+│   └── 📄 mock-db-pool.ts (710 B)
+├── 📄 jest-e2e.json (227 B)
+└── 📄 setup-e2e.ts (505 B)
+├── 📄 .dockerignore (62 B)
+├── 📄 .env (374 B)
+├── 📄 .env.docker (207 B)
+├── 📄 .env.example (955 B)
+├── 📄 .gitignore (216 B)
+├── 📄 .prettierrc (51 B)
+├── 📄 commitlint.config.js (469 B)
+├── 📄 docker-compose.yml (1013 B)
+├── 📄 docker-entrypoint.sh (108 B)
+├── 📄 Dockerfile (183 B)
+├── 📄 eslint.config.mjs (985 B)
+├── 📄 g.js (4.33 KB)
+├── 📄 nest-cli.json (229 B)
+├── 📄 package-lock.json (389.37 KB)
+├── 📄 package.json (2.78 KB)
+├── 📄 pnpm-lock.yaml (224.64 KB)
+├── 📄 README.md (6.17 KB)
+├── 📄 tsconfig.build.json (97 B)
+└── 📄 tsconfig.json (715 B)
+
+============================================================
+📊 SUMMARY
+============================================================
+Total Directories: 16
+Total Files: 87
+============================================================
