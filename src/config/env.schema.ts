@@ -31,8 +31,9 @@ export const envSchema = Joi.object({
     .min(0)
     .default(5000),
   DB_STATEMENT_TIMEOUT_MILLIS: Joi.number().integer().min(0).default(30000),
-  JWT_ACCESS_SECRET: Joi.string().min(32).optional().allow('').messages({
-    'string.min': 'JWT_ACCESS_SECRET must be at least 32 characters when set.',
+  JWT_ACCESS_SECRET: Joi.string().min(32).required().messages({
+    'any.required': 'JWT_ACCESS_SECRET is required for JWT authentication.',
+    'string.min': 'JWT_ACCESS_SECRET must be at least 32 characters.',
   }),
   JWT_ACCESS_EXPIRES_IN: Joi.string().default('15m'),
   JWT_REFRESH_SECRET: Joi.string().min(32).optional().allow('').messages({
