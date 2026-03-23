@@ -8,11 +8,17 @@ import {
 } from '@nestjs/common';
 import { ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Tenant } from '../common/tenant.types';
+import { CurrentUser } from './decorators/current-user.decorator';
 import { Public } from './decorators/public.decorator';
 import { Tenant as TenantDecorator } from './decorators/tenant.decorator';
+import type { AuthenticatedUser } from './auth.types';
+import { AuthService } from './auth.service';
+import { LoginDto } from './dto/login.dto';
+import { LoginResponseDto } from './dto/login-response.dto';
+import { RefreshDto } from './dto/refresh.dto';
+import { RefreshResponseDto } from './dto/refresh-response.dto';
 import { RegisterDto } from './dto/register.dto';
 import { RegisterResponseDto } from './dto/register-response.dto';
-import { AuthService } from './auth.service';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -44,5 +50,54 @@ export class AuthController {
       );
     }
     return this.authService.register(dto, tenant.id);
+  }
+
+  @Post('login')
+  @Public()
+  @ApiResponse({
+    status: 200,
+    description: 'Login successful',
+    type: LoginResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Missing or invalid subdomain' })
+  @ApiResponse({ status: 401, description: 'Invalid credentials' })
+  @ApiResponse({ status: 403, description: 'Tenant is inactive' })
+  @ApiResponse({ status: 422, description: 'Validation failed' })
+  async login(
+    @Body() dto: LoginDto,
+    @TenantDecorator() tenant: Tenant,
+  ): Promise<LoginResponseDto> {
+    if (!tenant) {
+      throw new BadRequestException(
+        'Tenant is required. Use Host header with tenant subdomain (e.g. acfc.localhost:3000).',
+      );
+    }
+    return this.authService.login(dto, tenant.id);
+  }
+
+  @Post('refresh')
+  @Public()
+  @ApiResponse({
+    status: 200,
+    description: 'New tokens issued',
+    type: RefreshResponseDto,
+  })
+  @ApiResponse({ status: 401, description: 'Invalid or expired refresh token' })
+  @ApiResponse({ status: 422, description: 'Validation failed' })
+  async refresh(@Body() dto: RefreshDto): Promise<RefreshResponseDto> {
+    return this.authService.refresh(dto.refreshToken);
+  }
+
+  @Post('logout')
+  @ApiResponse({
+    status: 200,
+    description: 'Logged out successfully',
+    schema: { properties: { message: { type: 'string' } } },
+  })
+  @ApiResponse({ status: 401, description: 'Missing or invalid access token' })
+  async logout(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<{ message: string }> {
+    return this.authService.logout(user.sub);
   }
 }
