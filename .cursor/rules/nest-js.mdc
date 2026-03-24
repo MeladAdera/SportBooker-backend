@@ -1,16 +1,15 @@
 ---
 description: >
-  Core NestJS development patterns, conventions, database/repository patterns, RBAC, auth, audit, entitlements, and queue architecture for the Complytude Backend. Use when implementing features, writing controllers/services/repositories, or working with auth, RBAC, entitlements, or background jobs.
+  Core NestJS development patterns, conventions, database/repository patterns, auth, and RBAC for the SportBooker Backend. Use when implementing features, writing controllers/services/repositories, or working with auth or RBAC.
 alwaysApply: false
 ---
 
 # NestJS Development Guidelines
 
-Core patterns, conventions, and best practices for NestJS development in the Complytude project.
+Core patterns, conventions, and best practices for NestJS development in the SportBooker project.
 
 **Related Rules:**
 
-- [project-structure.mdc](mdc:project-structure.mdc) - Complete project navigation guide
 - [testing.mdc](mdc:testing.mdc) - Testing conventions, factories, helpers, CI
 - [technology-stack.mdc](mdc:technology-stack.mdc) - Dependencies, versions, and compatibility
 - [cursor-rules.mdc](mdc:cursor-rules.mdc) - How to maintain these rules
@@ -24,52 +23,40 @@ Core patterns, conventions, and best practices for NestJS development in the Com
 
 architecture:
 
-# Modular Design
+# Application Structure
 
-- Each feature lives under /src/modules/
-- Use dependency injection exclusively - never instantiate services manually
-- Keep module boundaries clear - avoid circular imports
-- Export only needed providers from each module
+- Single NestJS application (not a monorepo — no `apps/` or `libs/`)
+- All source code lives under `src/`
+- Feature modules as top-level directories: `src/auth/`, `src/users/`, `src/tenant/`
+- Shared utilities in `src/common/` (filters, interceptors, pipes, types)
 
 # Layer Separation
 
-- **Controllers**: Handle HTTP request/response only - no business logic
+- **Controllers**: Handle HTTP request/response only — no business logic
 - **Services**: Contain business logic and orchestrate data access
-- **Repositories**: Handle database operations using native 'pg' driver
+- **Repositories**: Handle database operations using native `pg` driver via `DB_POOL` injection
 - **DTOs**: Validate and transform input/output data
 
 # Configuration
 
-- Use `@nestjs/config` with Joi schema validation (src/config/env.schema.ts)
-- All environment variables must be validated on startup
-- Never hardcode secrets - use .env files
+- Use `@nestjs/config` with Joi schema validation (`src/config/env.schema.ts`)
+- All environment variables validated on startup
+- Never hardcode secrets — use `.env` files
 
 # HTTP & API
 
-- Use Fastify as HTTP adapter (not Express)
-- Document all endpoints with Swagger decorators
-- API accessible at /docs endpoint
-- Use @fastify/cookie, @fastify/multipart, @fastify/static plugins
-
-# Authentication & Security
-
-- Use Passport JWT for authentication
-- Dual-token system: identity tokens + tenant tokens
-- All database queries use parameterized SQL (prevent SQL injection)
-- Implement Row-Level Security (RLS) for multi-tenancy
-
-# Internationalization
-
-- Use nestjs-i18n for all user-facing messages
-- Support English (en) and Arabic (ar) locales
-- Translation keys in modules: `modules/{module}/constants/i18n.constants.ts` (errors/messages). Common keys in `common/constants/i18n.constants.ts`
+- Express HTTP adapter (default NestJS, not Fastify)
+- Swagger at `/api/docs` (non-production only) with Bearer auth
+- Global `ValidationPipe` (whitelist + forbidNonWhitelisted + transform)
+- Global `HttpExceptionFilter`, `LoggingInterceptor`, `TransformInterceptor`
+- Global `ThrottlerGuard` (1000 req/min default, per-route overrides via `@Throttle()`)
 
 # Naming Conventions
 
 - Modules: `{feature}.module.ts`
 - Controllers: `{feature}.controller.ts`
 - Services: `{feature}.service.ts`
-- DTOs: `{action}-{feature}.dto.ts`
+- DTOs: `{action}-{feature}.dto.ts` (e.g. `assign-role.dto.ts`)
 - Repositories: `{feature}.repository.ts`
 
 # ========================================
@@ -79,124 +66,64 @@ architecture:
 # ========================================
 
 database:
-driver: "pg (native PostgreSQL driver) + pgvector"
-architecture: "Repository pattern with BaseRepository (in libs/database)"
-multi_tenancy: "Row-Level Security (RLS) via session context"
-status: "PRE-PRODUCTION - see pre-production.mdc for migration guidelines"
+driver: "pg (native PostgreSQL driver)"
+architecture: "Repository pattern with raw pg.Pool via DB_POOL injection"
+multi_tenancy: "Subdomain-based tenant resolution + tenant_id column scoping"
+status: "PRE-PRODUCTION — see pre-production.mdc for migration guidelines"
 
-# DatabaseService (Shared Library - `@lib/database`)
+# Database Module
 
-The DatabaseService lives in `libs/database/src/database.service.ts` and provides all database operations.
-Import from `@lib/database`.
+`DatabaseModule` (`src/database/db.module.ts`) is a `@Global()` module that provides a `pg.Pool` instance via the `DB_POOL` injection token. All modules can inject it without importing `DatabaseModule` explicitly.
 
-**Key Methods:**
+```typescript
+@Inject(DB_POOL) private readonly pool: Pool
+```
 
-- `query(text, params)` - Execute parameterized queries (no RLS context — use for global/non-tenant data)
-- `transaction(callback)` - Run operations in a transaction (no RLS context)
-- `transactionWithTenantContext({ tenantId, isTenantAdmin?, allowCrossTenantRead? }, callback)` - Transaction with tenant RLS context
-- `transactionWithPlatformAdminContext(callback)` - Transaction with platform admin context (bypasses tenant RLS)
-- `getClient()` - Get PoolClient for manual control
-
-**Session Context Variables (set automatically by transaction methods):**
-
-- `app.tenant_id` - Current tenant UUID (set by transactionWithTenantContext)
-- `app.is_tenant_admin` - Whether current user is tenant admin (set by transactionWithTenantContext)
-- `app.allow_cross_tenant_read` - Allow cross-tenant SELECT (set by transactionWithTenantContext)
-- `app.platform_role` - Platform admin flag (set by transactionWithPlatformAdminContext)
-
-**Features:**
-
-- Connection pooling (pg.Pool)
-- Parameterized queries (SQL injection prevention)
-- Transaction support with automatic rollback
-- Tenant context management for RLS (transaction-scoped via SET LOCAL)
-- Platform admin context for system-wide operations
+Configuration is loaded from env vars: `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, plus optional pool tuning (`DB_POOL_MAX`, `DB_POOL_IDLE_TIMEOUT_MILLIS`, etc.).
 
 # Repository Pattern
 
-All repositories extend `BaseRepository<TEntity, TCreate, TUpdate>` from `libs/database/src/base/base.repository.ts`:
-
-**Required Implementations:**
-
-- `mapRow(row)` - Convert database row to typed entity
-- `getSelectColumns()` - Define explicit column selection (no SELECT \*)
-
-**Best Practices:**
-
-- Inject DatabaseService via constructor
-- Use `executeQuery()` for all database operations
-- Use `transactionWithTenantContext` for tenant-scoped data access
-- Use `transactionWithPlatformAdminContext` for system-wide operations
-- Use explicit column selection for performance
-
-**Example Repository:**
+Repositories inject `DB_POOL` and execute parameterized SQL directly. There is no ORM or base repository class.
 
 ```typescript
 @Injectable()
-export class UserRepository extends BaseRepository<
-  User,
-  CreateUserRow,
-  UpdateUserRow
-> {
-  constructor(databaseService: DatabaseService) {
-    super(databaseService, 'users');
-  }
+export class UsersRepository {
+  constructor(@Inject(DB_POOL) private readonly pool: Pool) {}
 
-  protected mapRow(row: Record<string, unknown>): User {
-    return {
-      id: row.id as string,
-      email: row.email as string,
-      firstName: row.first_name as string,
-      lastName: row.last_name as string,
-      isVerified: row.is_verified as boolean,
-      createdAt: row.created_at as Date,
-    };
-  }
-
-  protected getSelectColumns(): string {
-    return 'id, email, first_name, last_name, is_verified, created_at';
-  }
-
-  // Custom query example
-  async findByEmail(email: string): Promise<User | null> {
-    const result = await this.executeQuery(
-      `SELECT ${this.getSelectColumns()} FROM users WHERE email = $1`,
-      [email],
+  async findByIdInTenant(tenantId: string, userId: string): Promise<UserRow | null> {
+    const { rows } = await this.pool.query<UserRow>(
+      `SELECT id, tenant_id, name, email, role, is_active, deleted_at, created_at, updated_at
+       FROM users
+       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
+      [userId, tenantId],
     );
-    return result.rows[0] ? this.mapRow(result.rows[0]) : null;
+    return rows[0] ?? null;
   }
 }
 ```
 
-# JSON/JSONB Columns
+**Best Practices:**
 
-**Handling JSON fields:**
+- Always use parameterized queries (`$1`, `$2`, …) — never string interpolation
+- Use explicit column selection (no `SELECT *`)
+- Use `pool.connect()` + `BEGIN`/`COMMIT`/`ROLLBACK` for multi-step transactions (see `AuthService.refresh()` for example)
+- Repositories handle data access; services handle business logic
 
-1. Services stringify JSON before passing to repositories
-2. Repositories receive JSON as strings in TCreate/TUpdate types
-3. `mapRow()` parses JSON strings back to objects for TEntity
+# Multi-Tenancy
 
-# Multi-Tenancy with RLS
+Tenants are resolved via **subdomain**. `TenantMiddleware` extracts the subdomain from the `Host` header, looks up the tenant row (with in-memory cache, 60s TTL), and attaches it to `req.tenant`.
 
-**Row-Level Security Implementation:**
-
-- Use `transactionWithTenantContext({ tenantId }, callback)` for all tenant-scoped operations
-- Session variable `app.tenant_id` is set automatically (transaction-scoped via SET LOCAL)
-- RLS policies use `current_tenant_id_or_null()` to filter data by tenant
-- Use `transactionWithPlatformAdminContext(callback)` for system admin operations (sets `app.platform_role`)
-- Pass `{ isTenantAdmin: true }` when the user is a tenant admin (for update/delete RLS policies)
-- Pass `{ allowCrossTenantRead: true }` for cross-tenant reads (e.g., slug uniqueness checks)
+Data isolation is done via `tenant_id` columns on tables + queries always scoping by `tenant_id`. There is no RLS (Row-Level Security) at the database level currently — scoping is enforced in application code.
 
 # Database Migrations (Pre-Production)
 
 **IMPORTANT:** Project is in pre-production. See [pre-production.mdc](mdc:.cursor/rules/pre-production.mdc) for migration guidelines.
 
-**Quick Summary:**
-
-- ✅ **PREFERRED:** Update existing migration files in `scripts/migrations/` for most changes
+- Migration files live in `database/` (run via `npm run migrate`)
+- Seed data via `npm run seed`
+- ✅ **PREFERRED:** Update existing migration files for most changes
 - ⚠️ **EXCEPTION:** Only create new migrations for large, independent features
-- ❌ **NO backward compatibility needed** - make breaking changes freely
-- 🔄 **Re-run migrations:** Drop/recreate database after editing migrations
+- 🔄 **Re-run:** `docker compose down -v && npm run db:up` after editing migrations
 
 # ========================================
 
@@ -205,71 +132,96 @@ export class UserRepository extends BaseRepository<
 # ========================================
 
 authentication:
-strategy: "Dual-token JWT authentication"
+strategy: "Single Bearer JWT + opaque DB-backed refresh tokens"
 tokens:
-identity:
-access: "15 minutes (identityAccessToken cookie)"
-refresh: "14 days (identityRefreshToken cookie)"
-usage: "User identity verification, tenant selection, system admin operations"
-tenant:
-access: "30 minutes (tenantAccessToken cookie)"
-refresh: "14 days (tenantRefreshToken cookie)"
-usage: "Tenant-scoped API access"
+  access: "JWT in Authorization: Bearer header (default 15m)"
+  refresh: "Opaque token stored in refresh_tokens table (7 days, bcrypt-hashed, single-use rotation)"
+tenant_resolution: "Subdomain → TenantMiddleware → req.tenant (separate from JWT)"
 
 # Authentication Flow
 
-**Regular User Flow:**
+1. User visits `{tenant-slug}.sportbooker.com` → `TenantMiddleware` resolves tenant from subdomain
+2. `POST /auth/login` with `{ email, password }` → verifies credentials scoped to that tenant
+3. Returns `{ accessToken, refreshToken, expiresIn }`
+4. Client sends `Authorization: Bearer <accessToken>` on subsequent requests
+5. When access token expires, `POST /auth/refresh` with `{ refreshToken }` → rotates both tokens
 
-1. Login → Receive identity tokens (access + refresh)
-2. Select tenant → Receive tenant tokens (access + refresh)
-3. Identity tokens remain valid (not cleared)
-4. Use tenant tokens for tenant-scoped operations
-
-**System Admin Flow:**
-
-1. Login → Receive identity tokens
-2. Access system-wide endpoints immediately
-3. Optionally select tenant for tenant-specific operations
-
-# Endpoint Authentication
-
-Use `@AuthOptions()` decorator to specify required authentication:
+# JWT Payload
 
 ```typescript
-// Public endpoint (no auth)
-@Get('public')
-async publicEndpoint() { }
-
-// Requires identity token only
-@AuthOptions({ identity: true })
-@Get('profile')
-async getProfile(@CurrentUserIdentity() identity: AuthenticatedIdentityUser) { }
-
-// Requires tenant token only
-@AuthOptions({ tenant: true })
-@Get('documents')
-async listDocuments(@CurrentUserTenant() tenant: AuthenticatedTenantUser) { }
-
-// Requires both tokens
-@AuthOptions({ identity: true, tenant: true })
-@Get('admin/tenant-info')
-async getTenantInfo(
-  @CurrentUserIdentity() identity: AuthenticatedIdentityUser,
-  @CurrentUserTenant() tenant: AuthenticatedTenantUser,
-) { }
-
-// Permission-based access (requires tenant token)
-@AuthOptions({ tenant: true })
-@UseGuards(TenantPermissionsGuard)
-@RequireAnyTenantPermission('documents:create')
-@Post('create')
-async create() { }
+interface JwtPayload {
+  sub: string;       // user ID
+  role: string;      // user_role enum value
+  tenantId: string;  // tenant the user logged into
+  iat?: number;
+  exp?: number;
+}
 ```
 
-**For detailed authentication documentation, see:**
+The JWT embeds `tenantId` at login time. A user is scoped to one tenant per session. To use a different tenant, they log in to a different subdomain.
 
-- [docs/API_CONTRACTS.md](mdc:../docs/API_CONTRACTS.md) - Complete authentication strategy
-- [docs/ARCHITECTURE.md](mdc:../docs/ARCHITECTURE.md) - Authentication architecture
+# Refresh Token Design
+
+- **Opaque format:** `{dbRowId}.{randomHex}` — NOT a JWT
+- **Storage:** Only the bcrypt hash of the random part is stored in `refresh_tokens` table
+- **Single-use rotation:** On refresh, the old row is deleted and a new one is inserted (within a transaction with `SELECT ... FOR UPDATE`)
+- **Logout:** Deletes all refresh tokens for the user
+- **Password reset:** Also clears all refresh tokens
+
+# Guards & Decorators
+
+| Decorator / Guard | Location | Purpose |
+| --- | --- | --- |
+| `JwtAuthGuard` | `src/auth/guards/jwt-auth.guard.ts` | **Global** guard (via `APP_GUARD`). Validates Bearer JWT on every request. |
+| `@Public()` | `src/auth/decorators/public.decorator.ts` | Marks a route as public — `JwtAuthGuard` skips auth. |
+| `@CurrentUser()` | `src/auth/decorators/current-user.decorator.ts` | Extracts `req.user` (JWT payload) as `AuthenticatedUser`. |
+| `@Tenant()` | `src/auth/decorators/tenant.decorator.ts` | Extracts `req.tenant` (from `TenantMiddleware`). |
+| `RolesGuard` | `src/auth/guards/roles.guard.ts` | Per-controller/route guard. Checks `req.user.role` against `@Roles()` metadata. |
+| `@Roles(...)` | `src/auth/decorators/roles.decorator.ts` | Sets required roles. Must pair with `@UseGuards(RolesGuard)`. |
+
+# Endpoint Authentication Examples
+
+```typescript
+// Public endpoint — no JWT required
+@Post('login')
+@Public()
+async login(@Body() dto: LoginDto, @Tenant() tenant: Tenant) { }
+
+// Default (protected) — requires valid JWT, any role
+@Get('bookings')
+async listBookings(@CurrentUser() user: AuthenticatedUser) {
+  // user.sub, user.role, user.tenantId available
+}
+
+// Role-restricted — requires JWT + specific roles
+@Controller('users')
+@UseGuards(RolesGuard)
+@Roles('super_admin', 'tenant_admin')
+export class UsersController {
+  @Patch(':userId/role')
+  async assignRole(
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @Body() dto: AssignRoleDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) { }
+}
+```
+
+# Security Measures
+
+- **Anti-enumeration:** Login uses `DUMMY_HASH` when user not found (constant-time). Forgot-password always returns same message.
+- **Rate limiting:** `@Throttle()` on register (10/min), login (5/min), forgot-password (3/min)
+- **Password hashing:** bcrypt with 12 rounds
+- **JWT secret validation:** `JWT_ACCESS_SECRET` must be ≥32 chars (enforced at startup by `JwtStrategy`)
+
+# Key Auth Files
+
+- `src/auth/auth.module.ts` — Module setup (Passport + JWT)
+- `src/auth/auth.service.ts` — Register, login, refresh, logout, forgot-password, reset-password
+- `src/auth/auth.controller.ts` — HTTP endpoints
+- `src/auth/auth.types.ts` — `JwtPayload`, `AuthenticatedUser` types
+- `src/auth/strategies/jwt.strategy.ts` — Passport JWT strategy (Bearer extraction + validation)
+- `src/auth/email.service.ts` — Password reset email via SendGrid
 
 # ========================================
 
@@ -277,343 +229,36 @@ async create() { }
 
 # ========================================
 
-> **📖 Complete RBAC Documentation:** See [docs/RBAC.md](mdc:../docs/RBAC.md) for comprehensive guide
-
 rbac:
-architecture: "Dual-level RBAC system"
-levels:
-tenant: "Tenant-scoped authorization (documents, team, settings)"
-platform: "Platform-wide authorization (tenant management, system admin)"
-strategy: "Permission-based with wildcard support"
-system_roles: "In-memory permission sets for performance"
-custom_roles: "Database-backed (MVP+)"
-sync: "Auto-sync services run on app startup (TenantRbacSyncService, PlatformRbacSyncService)"
+architecture: "Simple role-string RBAC via JWT claim"
+strategy: "Role stored in JWT, checked by RolesGuard against @Roles() metadata"
 
-# Tenant RBAC vs Platform RBAC
+# User Roles
 
-| Aspect             | Tenant RBAC                                         | Platform RBAC                                     |
-| ------------------ | --------------------------------------------------- | ------------------------------------------------- |
-| **Scope**          | Tenant-specific operations                          | Platform-wide operations                          |
-| **Authentication** | Tenant token (`tenantAccessToken`)                  | Identity token (`identityAccessToken`)            |
-| **Use Cases**      | Documents, team, settings                           | Tenant management, global templates, system admin |
-| **Guard**          | `TenantPermissionsGuard`                            | `PlatformPermissionsGuard`                        |
-| **Decorators**     | `@RequireAnyTenantPermission()`                     | `@RequireAnyPlatformPermission()`                 |
-| **Roles**          | `tenant_admin`, `legal_counsel`, `member`, `viewer` | `system_admin`, `support`, `auditor`              |
+Defined in `src/users/user-role.ts` as a TypeScript enum matching the DB `user_role` enum:
 
-# ========================================
+| Role | Key | Rank | Description |
+| --- | --- | --- | --- |
+| Super Admin | `super_admin` | 4 | Platform-level admin, full access |
+| Tenant Admin | `tenant_admin` | 3 | Full access within their tenant |
+| Tenant Staff | `tenant_staff` | 2 | Staff-level access (e.g. manage bookings) |
+| Player | `player` | 1 | Default role on registration, basic booking access |
 
-# Entitlement System
+# How RBAC Works
 
-# ========================================
+1. User logs in → role is embedded in the JWT as a string
+2. `JwtAuthGuard` validates the token and attaches `req.user` (includes `role`)
+3. For role-restricted routes, apply `@UseGuards(RolesGuard)` + `@Roles('super_admin', 'tenant_admin')` on the controller or handler
+4. `RolesGuard` reads `@Roles()` metadata, checks if `req.user.role` is in the list → 403 if not
 
-entitlements:
-strategy: "Plan-based feature access with usage tracking and credit fallback"
-architecture: "Event-sourced with append-only ledgers and derived projections"
-sync: "EntitlementSyncService syncs features/plans from constants to DB on startup"
+**Known limitation:** Role is baked into the JWT at login. If a role changes, the old JWT keeps the stale role until it expires (default 15m).
 
-# Tenant RBAC (Tenant-Scoped Authorization)
+# Role Assignment
 
-**Authentication:** Requires tenant token  
-**Use Cases:** Document operations, team management, tenant settings
-
-## Tenant System Roles
-
-| Role          | Key             | Permissions                                                               | Description                        |
-| ------------- | --------------- | ------------------------------------------------------------------------- | ---------------------------------- |
-| Tenant Admin  | `tenant_admin`  | `*:*`                                                                     | Full access to all tenant features |
-| Legal Counsel | `legal_counsel` | `documents:*`, `contracts:*`, `templates:*`, `regulatory:query`           | AI drafting, analysis, templates   |
-| Member        | `member`        | `documents:create`, `documents:read`, `templates:use`, `regulatory:query` | Basic document creation            |
-| Viewer        | `viewer`        | `documents:read`, `regulatory:query`                                      | Read-only access                   |
-
-## Tenant Permission Examples
-
-```typescript
-import {
-  RequireAllTenantPermissions,
-  RequireAnyTenantPermission,
-} from 'src/common/decorators/tenant-permissions.decorator';
-import { TenantPermissionsGuard } from 'src/common/guards/tenant-permissions.guard';
-
-// Tenant-scoped endpoint
-@AuthOptions({ tenant: true })
-@UseGuards(TenantPermissionsGuard)
-@RequireAnyTenantPermission('documents:create')
-@Post('documents')
-async createDocument(@CurrentUserTenant() user: AuthenticatedTenantUser) {
-  // user.tenantId and user.role available
-}
-
-// Multiple permissions (AND logic)
-@AuthOptions({ tenant: true })
-@UseGuards(TenantPermissionsGuard)
-@RequireAllTenantPermissions('documents:read', 'documents:delete')
-@Delete('documents/:id')
-async deleteDocument(@CurrentUserTenant() user: AuthenticatedTenantUser) { }
-
-// Wildcard permission
-@AuthOptions({ tenant: true })
-@UseGuards(TenantPermissionsGuard)
-@RequireAnyTenantPermission('documents:*')
-@Post('documents/bulk')
-async bulkOperation(@CurrentUserTenant() user: AuthenticatedTenantUser) { }
-```
-
-# Platform RBAC (Platform-Wide Authorization)
-
-**Authentication:** Requires identity token  
-**Use Cases:** Tenant management, global templates, system administration
-
-## Platform System Roles
-
-| Role         | Key            | Permissions               | Description                          |
-| ------------ | -------------- | ------------------------- | ------------------------------------ |
-| System Admin | `system_admin` | `*:*`                     | Full access to all platform features |
-| Support      | `support`      | Read-only permissions     | Customer support access              |
-| Auditor      | `auditor`      | Audit-focused permissions | Audit and compliance access          |
-
-## Platform Permission Examples
-
-```typescript
-import {
-  RequireAllPlatformPermissions,
-  RequireAnyPlatformPermission,
-} from 'src/common/decorators/platform-permissions.decorator';
-import { PlatformPermissionsGuard } from 'src/common/guards/platform-permissions.guard';
-
-// Platform-scoped endpoint
-@AuthOptions({ identity: true })
-@UseGuards(PlatformPermissionsGuard)
-@RequireAnyPlatformPermission('tenants:create')
-@Post('admin/tenants')
-async createTenant(@CurrentUserIdentity() identity: AuthenticatedIdentityUser) {
-  // identity.platformRole available
-}
-
-// Multiple platform permissions (AND logic)
-@AuthOptions({ identity: true })
-@UseGuards(PlatformPermissionsGuard)
-@RequireAllPlatformPermissions('tenants:read', 'users:read')
-@Get('admin/tenants/:id/users')
-async getTenantUsers(@CurrentUserIdentity() identity: AuthenticatedIdentityUser) { }
-
-// Wildcard permission
-@AuthOptions({ identity: true })
-@UseGuards(PlatformPermissionsGuard)
-@RequireAnyPlatformPermission('templates:*')
-@Post('admin/templates')
-async createGlobalTemplate(@CurrentUserIdentity() identity: AuthenticatedIdentityUser) { }
-```
-
-# When to Use Which RBAC System
-
-| Scenario                              | Use           | Authentication | Example                                             |
-| ------------------------------------- | ------------- | -------------- | --------------------------------------------------- |
-| User creates document                 | Tenant RBAC   | Tenant Token   | `@RequireAnyTenantPermission('documents:create')`   |
-| User manages team                     | Tenant RBAC   | Tenant Token   | `@RequireAnyTenantPermission('team:manage')`        |
-| System admin creates tenant           | Platform RBAC | Identity Token | `@RequireAnyPlatformPermission('tenants:create')`   |
-| Support views all tenants             | Platform RBAC | Identity Token | `@RequireAnyPlatformPermission('tenants:read')`     |
-| System admin manages global templates | Platform RBAC | Identity Token | `@RequireAnyPlatformPermission('templates:manage')` |
-
-# Adding New Permissions
-
-**Tenant Permissions:**
-
-1. Add to `TENANT_PERMISSIONS` object in `tenant-permissions.constant.ts` (single source of truth)
-2. The `ALL_TENANT_PERMISSIONS` array is automatically derived from the object
-3. Restart app - `TenantRbacSyncService` handles database update
-
-**Platform Permissions:**
-
-1. Add to `PLATFORM_PERMISSIONS` object in `platform-permissions.constant.ts` (single source of truth)
-2. The `ALL_PLATFORM_PERMISSIONS` array is automatically derived from the object
-3. Restart app - `PlatformRbacSyncService` handles database update
-
-# Key RBAC Files
-
-**Tenant RBAC:**
-
-- `src/common/decorators/tenant-permissions.decorator.ts` - Tenant permission decorators
-- `src/common/guards/tenant-permissions.guard.ts` - Tenant permission guard
-- `src/common/constants/tenant-permissions.constant.ts` - Tenant permissions (source of truth)
-- `src/common/constants/tenant-system-roles.constant.ts` - Tenant system role permissions
-- `src/modules/tenant-rbac/tenant-rbac.service.ts` - Tenant RBAC business logic
-- `src/modules/tenant-rbac/tenant-rbac-sync.service.ts` - Tenant RBAC sync service
-- `src/repositories/tenant-rbac/tenant-roles.repository.ts` - Tenant roles data access
-- `src/repositories/tenant-rbac/tenant-permissions.repository.ts` - Tenant permissions data access
-
-**Platform RBAC:**
-
-- `src/common/decorators/platform-permissions.decorator.ts` - Platform permission decorators
-- `src/common/guards/platform-permissions.guard.ts` - Platform permission guard
-- `src/common/constants/platform-permissions.constant.ts` - Platform permissions (source of truth)
-- `src/common/constants/platform-system-roles.constant.ts` - Platform system role permissions
-- `src/modules/platform-rbac/platform-rbac.service.ts` - Platform RBAC business logic
-- `src/modules/platform-rbac/platform-rbac-sync.service.ts` - Platform RBAC sync service
-
-**Shared:**
-
-- `src/common/utils/permission-matcher.util.ts` - Wildcard matching utilities (shared)
-
-# Global Module Architecture
-
-**Both RBAC modules are Global Modules** - marked with `@Global()` decorator.
-
-- `TenantRbacModule` - Tenant-scoped authorization
-- `PlatformRbacModule` - Platform-wide authorization
-
-**Why Global?**
-
-- RBAC is a cross-cutting concern like authentication
-- Guards are used across many feature modules
-- Eliminates the need to import RBAC modules in every feature module
-- Follows NestJS best practices for authorization systems
-
-**How to Use:**
-
-1. **RBAC modules are imported ONCE** in `AppModule`
-2. **No need to import** in feature modules - automatically available
-3. **Use guards directly** in any controller
-
-```typescript
-// ✅ CORRECT: No RBAC module import needed
-@Module({
-  controllers: [MyController], // Uses guards directly
-})
-export class MyModule {}
-
-// ❌ WRONG: Don't import RBAC modules in feature modules
-@Module({
-  imports: [TenantRbacModule, PlatformRbacModule], // ← Not needed! They're global
-  controllers: [MyController],
-})
-export class MyModule {}
-```
-
-# ========================================
-
-# Audit System
-
-# ========================================
-
-audit:
-architecture: "Two-level decorator + interceptor pattern for automatic audit logging"
-module: "AuditModule (src/modules/audit/) — NOT global, import where needed"
-decorators:
-controller: "@AuditResource('documents') — sets default resource type for all methods"
-method: "@AuditAction('create') or @AuditAction({ action, subResource?, resourceType? })"
-interceptor: "AuditInterceptor (src/common/interceptors/audit.interceptor.ts)"
-
-# How Audit Works
-
-The audit system uses a two-level decorator + interceptor pattern:
-
-1. `@AuditResource('documents')` on the **controller** sets the default resource type for all endpoints
-2. `@AuditAction('create')` on **methods** sets or overrides the action (optional — falls back to HTTP method mapping)
-3. `AuditInterceptor` runs after the handler, reads decorator metadata, and fires `AuditService.log()` asynchronously (fire-and-forget)
-4. `AuditService` persists to `audit_logs` table via `AuditLogsRepository` — errors are caught and logged, never thrown
-
-**Decorator Usage:**
-
-```typescript
-@Controller('documents')
-@AuditResource('documents') // Controller-level: all methods default to 'documents' resource
-export class DocumentsController {
-  @Post()
-  @AuditAction('create') // Simple: logs as 'documents:create'
-  async create() {}
-
-  @Patch('jurisdiction')
-  @AuditAction({ action: 'change', subResource: 'jurisdiction' }) // Structured: logs as 'documents:change_jurisdiction'
-  async changeJurisdiction() {}
-
-  @Post('export')
-  @AuditAction({ action: 'export', resourceType: 'reports' }) // Override resource: logs as 'reports:export'
-  async exportDocument() {}
-
-  @Get()
-  // No @AuditAction — interceptor derives 'documents:read' from GET method
-  async findAll() {}
-}
-```
-
-**What the interceptor captures:**
-
-- `tenantId`, `userId`, `userRole` from the tenant JWT context
-- `action` from `@AuditAction` or HTTP method mapping (GET→read, POST→create, PATCH/PUT→update, DELETE→delete)
-- `resourceType` from `@AuditAction.resourceType` > `@AuditResource` > URL path segment
-- `resourceId` best-effort extracted from response body (`response.id` or `response.data.id`)
-- `ipAddress` from `X-Forwarded-For` header or `request.ip`
-- `userAgent` from request headers
-- Both successes and errors are logged
-
-**Key Files:**
-
-- `src/common/decorators/audit.decorator.ts` - `@AuditResource()` and `@AuditAction()` decorators
-- `src/common/interceptors/audit.interceptor.ts` - Intercepts requests, reads metadata, fires audit log
-- `src/modules/audit/audit.service.ts` - `log()`, `getAuditLogs()`, `getUserAuditLogs()`, `countAuditLogs()`
-- `src/modules/audit/audit.module.ts` - AuditModule (exports AuditService)
-- `src/repositories/audit/audit-logs.repository.ts` - Audit data access
-
-# ========================================
-
-# Background Job Processing
-
-# ========================================
-
-queue:
-library: "BullMQ via @nestjs/bullmq"
-backend: "Redis (ioredis)"
-shared_lib: "libs/queue/ (@lib/queue)"
-producers: "API application dispatches jobs"
-consumers: "Worker applications process jobs"
-
-# Queue Architecture
-
-The system uses a producer-consumer pattern with BullMQ:
-
-**Producer (API):**
-
-- Import `QueueModule` and use `QueueProducerService` to dispatch jobs
-- Job payloads defined in `libs/queue/src/interfaces/`
-- Type-safe dispatch: `queueProducer.addJob('ai-processing', 'analyze-document', payload)`
-
-**Consumer (Workers):**
-
-- Extend `AbstractProcessor` from `@lib/queue`
-- Register processors with `@Processor('queue-name')` decorator
-- Each worker app is a separate NestJS application
-
-**Queues:**
-
-- `ai-processing` - Document analysis jobs (consumed by worker-ai)
-- `data-ingestion` - Ruleset chunking + embedding (consumed by worker-ingestion)
-- `entitlement-processing` - Async entitlement operations (consumed by API)
-
-**Key Files:**
-
-- `libs/queue/src/queue.module.ts` - Queue module registration
-- `libs/queue/src/queue-producer.service.ts` - Type-safe job dispatch
-- `libs/queue/src/queue.constants.ts` - Queue name constants
-- `libs/queue/src/interfaces/` - Job payload interfaces
-- `libs/queue/src/abstract-processor.ts` - Base processor class
-
-# Worker Application Pattern
-
-Workers are separate NestJS applications under `apps/`:
-
-```
-apps/worker-{name}/
-├── src/
-│   ├── main.ts                    # Bootstrap with Fastify
-│   ├── worker-{name}.module.ts    # Root module (imports libs)
-│   ├── config/                    # Worker-specific config
-│   ├── processors/                # BullMQ processors
-│   ├── services/                  # Business logic
-│   └── repositories/              # Worker-specific data access
-└── package.json
-```
-
-Workers import shared libraries (`@lib/database`, `@lib/queue`, `@lib/redis`, `@lib/embedding`) but have their own repositories and services.
+Only `super_admin` and `tenant_admin` can assign roles via `PATCH /users/:userId/role`. Business rules:
+- `tenant_admin` cannot modify `super_admin` users
+- Self-demotion is blocked
+- Role rank comparison via `roleRank()` utility
 
 # ========================================
 
@@ -623,21 +268,18 @@ Workers import shared libraries (`@lib/database`, `@lib/queue`, `@lib/redis`, `@
 
 # HTTP & API
 
-- Use Fastify with cookie and multipart support
 - Use JWT auth strategy with Passport
-- Document all endpoints with Swagger decorators
-- Keep API documentation up-to-date
+- Document all endpoints with Swagger decorators (`@ApiTags`, `@ApiResponse`, `@ApiOperation`, `@ApiBearerAuth`)
+- Use `@Public()` for unauthenticated endpoints
+- Apply `@Throttle()` on sensitive endpoints
 
 # Database
 
-- Import DatabaseService from `@lib/database`
-- Use DatabaseService for all operations (never instantiate pg.Pool directly)
+- Inject `DB_POOL` for all database operations
 - Always use parameterized queries to prevent SQL injection
 - Repositories handle data access; services handle business logic
-- Use `transactionWithTenantContext` for all tenant-scoped data access (sets RLS context)
-- Use `transactionWithPlatformAdminContext` for system-wide operations
-- Use transactions for multi-step operations
-- Use explicit column selection (no SELECT \*)
+- Use transactions for multi-step operations (`pool.connect()` + `BEGIN`/`COMMIT`/`ROLLBACK`)
+- Use explicit column selection (no `SELECT *`)
 
 # Architecture
 
@@ -649,15 +291,9 @@ Workers import shared libraries (`@lib/database`, `@lib/queue`, `@lib/redis`, `@
 # Validation & DTOs
 
 - Use class-validator for all input validation
-- Enable whitelist: true to strip unknown properties
-- Use transform: true for automatic type conversion
-- Document DTOs with @ApiProperty decorators
-
-# Internationalization
-
-- Use nestjs-i18n for all user-facing messages
-- Support both English and Arabic locales
-- Define translation keys in `modules/{module}/constants/i18n.constants.ts` under errors/messages
+- Enable `whitelist: true` + `forbidNonWhitelisted: true` to strip/reject unknown properties
+- Use `transform: true` for automatic type conversion
+- Document DTOs with `@ApiProperty` decorators
 
 # Code Quality
 
@@ -674,48 +310,33 @@ Workers import shared libraries (`@lib/database`, `@lib/queue`, `@lib/redis`, `@
 # Daily Development
 
 ```bash
-npm run start:dev       # Start API development (watch mode)
-npm run dev:all        # Start all apps (API + worker-ai + worker-ingestion)
-npm run start:api      # Start API only with watch mode
-npm run start:worker-ai    # Start AI worker with watch mode
-npm run start:worker-ingestion  # Start ingestion worker with watch mode
+npm run start:dev       # Start API with watch mode
+npm run start:debug     # Start API with debugger + watch mode
 ```
 
 # Database Operations
 
 ```bash
-npm run migrate         # Run database migrations
-npm run db:seed         # Seed database with initial data
-npm run docker:start    # Start PostgreSQL + Redis + MinIO
-npm run docker:reset   # Full reset: down -v + start + migrate
-```
-
-# Docker (Multi-environment)
-
-```bash
-npm run docker:dev         # Start with dev overlay (hot-reload in Docker)
-npm run docker:prod        # Start with production overlay
-npm run docker:services    # Start infrastructure services only
-npm run docker:services:tools  # Start with pgAdmin
+npm run db:up           # Start Postgres + pgAdmin via Docker, then run migrations
+npm run migrate         # Run database migrations only
+npm run seed            # Seed database with initial data
 ```
 
 # Code Quality
 
 ```bash
-npm run lint               # ESLint with auto-fix
-npm run format             # Prettier formatting
-npm run type-check        # TypeScript validation
+npm run lint            # ESLint with auto-fix
+npm run format          # Prettier formatting
+npm run type-check      # TypeScript type validation (tsc --noEmit)
 ```
 
 # Testing
 
-> **📖 Complete Testing Guidelines:** See [testing.mdc](mdc:testing.mdc) for conventions, factories, helpers, and CI requirements
-
 ```bash
-npm run test               # Run all tests
-npm run test:unit          # Run unit tests only
-npm run test:integration   # Run integration tests only
-npm run test:coverage      # Run tests with coverage
+npm run test            # Run all tests (Jest)
+npm run test:watch      # Run tests in watch mode
+npm run test:cov        # Run tests with coverage
+npm run test:e2e        # Run e2e tests
 ```
 
 # ========================================
@@ -727,30 +348,29 @@ npm run test:coverage      # Run tests with coverage
 # Module Creation
 
 ```typescript
-// feature.module.ts
 @Module({
-  imports: [DatabaseModule], // Import required modules
   controllers: [FeatureController],
   providers: [FeatureService, FeatureRepository],
-  exports: [FeatureService], // Export if needed by other modules
+  exports: [FeatureService],
 })
 export class FeatureModule {}
 ```
 
+Note: `DatabaseModule` is `@Global()` — no need to import it in feature modules.
+
 # Controller Pattern
 
 ```typescript
-// feature.controller.ts
 @Controller('features')
-@ApiTags('features')
+@ApiTags('Features')
+@ApiBearerAuth()
 export class FeatureController {
   constructor(private readonly featureService: FeatureService) {}
 
   @Get()
-  @AuthOptions({ tenant: true })
-  @ApiOperation({ summary: 'List all features' })
+  @ApiOperation({ summary: 'List features for current tenant' })
   @ApiResponse({ status: 200, type: [FeatureResponseDto] })
-  async findAll(@CurrentUserTenant() user: AuthenticatedTenantUser) {
+  async findAll(@CurrentUser() user: AuthenticatedUser) {
     return this.featureService.findAll(user.tenantId);
   }
 }
@@ -759,13 +379,12 @@ export class FeatureController {
 # Service Pattern
 
 ```typescript
-// feature.service.ts
 @Injectable()
 export class FeatureService {
   constructor(private readonly featureRepository: FeatureRepository) {}
 
   async findAll(tenantId: string): Promise<Feature[]> {
-    return this.featureRepository.findAll({ tenantId });
+    return this.featureRepository.findAllByTenant(tenantId);
   }
 }
 ```
@@ -773,7 +392,6 @@ export class FeatureService {
 # DTO Pattern
 
 ```typescript
-// create-feature.dto.ts
 export class CreateFeatureDto {
   @ApiProperty({ description: 'Feature name' })
   @IsString()
@@ -794,13 +412,9 @@ export class CreateFeatureDto {
 # ========================================
 
 metadata:
-project: "Complytude Backend"
-version: "3.0"
-updated: "2026-03-04"
+project: "SportBooker"
+version: "1.0"
+updated: "2026-03-24"
 note: >
-Focused on core NestJS patterns and conventions.
-See project-structure.mdc for project layout.
-See technology-stack.mdc for dependencies and versions.
-See docs/API_CONTRACTS.md for detailed authentication flows.
-See docs/ARCHITECTURE.md for RBAC architecture.
-See docs/RBAC.md for comprehensive RBAC guide.
+Reflects the actual codebase as of 2026-03-24.
+Single NestJS app with Express, raw pg, Passport JWT Bearer auth, simple role-string RBAC.

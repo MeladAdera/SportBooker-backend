@@ -108,7 +108,8 @@ Study and understand every file and feature in this project, letter by letter.
 | `APP_DOMAIN` | **Required.** Domain for subdomain extraction (e.g. `localhost:3000`). |
 | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | **Required.** PostgreSQL connection. |
 | `DB_POOL_MAX`, `DB_POOL_IDLE_TIMEOUT_MILLIS`, ... | Optional pool settings (defaults in schema). |
-| `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` | Optional; if set, min 32 chars. |
+| `JWT_ACCESS_SECRET` | **Required.** Min 32 chars. Used to sign/verify access JWTs. |
+| `JWT_ACCESS_EXPIRES_IN` | Access token TTL (default `15m`). |
 | `STRIPE_*`, `SENDGRID_*`, `EMAIL_FROM` | Optional; for future integrations. |
 
 ---

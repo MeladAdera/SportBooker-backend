@@ -36,10 +36,6 @@ export const envSchema = Joi.object({
     'string.min': 'JWT_ACCESS_SECRET must be at least 32 characters.',
   }),
   JWT_ACCESS_EXPIRES_IN: Joi.string().default('15m'),
-  JWT_REFRESH_SECRET: Joi.string().min(32).optional().allow('').messages({
-    'string.min': 'JWT_REFRESH_SECRET must be at least 32 characters when set.',
-  }),
-  JWT_REFRESH_EXPIRES_IN: Joi.string().default('7d'),
   STRIPE_SECRET_KEY: Joi.string().optional().allow(''),
   STRIPE_WEBHOOK_SECRET: Joi.string().optional().allow(''),
   SENDGRID_API_KEY: Joi.string().optional().allow(''),
