@@ -9,6 +9,7 @@ import { AuthModule } from './auth/auth.module';
 import { envSchema } from './config/env.schema';
 import { DatabaseModule } from './database/db.module';
 import { TenantModule } from './tenant/tenant.module';
+import { UsersModule } from './users/users.module';
 
 /** Extract client IP from request; supports X-Forwarded-For when behind a proxy. */
 function getClientIp(req: Record<string, unknown>): string {
@@ -55,6 +56,7 @@ function getClientIp(req: Record<string, unknown>): string {
     DatabaseModule,
     TenantModule,
     AuthModule,
+    UsersModule,
   ],
   controllers: [AppController],
   providers: [

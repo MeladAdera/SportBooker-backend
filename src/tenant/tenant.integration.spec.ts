@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Request, Response, NextFunction } from 'express';
-import { TenantMiddleware } from './tenant.middleware';
+import { invalidateTenantCache, TenantMiddleware } from './tenant.middleware';
 import { DB_POOL } from '../database/database.constants';
 import type { Tenant } from '../common/tenant.types';
 
@@ -48,6 +48,7 @@ describe('TenantMiddleware', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    invalidateTenantCache('acfc');
     mockConfigService.getOrThrow.mockReturnValue('localhost:3000');
     nextFn = mockNext();
 
