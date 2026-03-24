@@ -1,0 +1,38 @@
+import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import sgMail from '@sendgrid/mail';
+
+@Injectable()
+export class EmailService {
+  constructor(private readonly config: ConfigService) {
+    const apiKey = this.config.get<string>('SENDGRID_API_KEY');
+    if (apiKey) {
+      sgMail.setApiKey(apiKey);
+    }
+  }
+
+  async sendPasswordResetEmail(to: string, resetLink: string): Promise<void> {
+    const from = this.config.get<string>(
+      'EMAIL_FROM',
+      'noreply@sportbooker.com',
+    );
+    const apiKey = this.config.get<string>('SENDGRID_API_KEY');
+
+    const msg = {
+      to,
+      from,
+      subject: 'Reset your password - Sportbooker',
+      text: `Click the link below to reset your password (valid for 1 hour):\n\n${resetLink}`,
+      html: `<p>Click the link below to reset your password (valid for 1 hour):</p><p><a href="${resetLink}">${resetLink}</a></p>`,
+    };
+
+    if (apiKey) {
+      await sgMail.send(msg);
+    } else {
+      console.warn(
+        '[EmailService] SENDGRID_API_KEY not set. Reset link (dev):',
+        resetLink,
+      );
+    }
+  }
+}

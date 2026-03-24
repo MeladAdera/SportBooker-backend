@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Inject,
   Injectable,
@@ -10,8 +11,11 @@ import * as bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
 import type { Pool } from 'pg';
 import { DB_POOL } from '../database/database.constants';
+import { EmailService } from './email.service';
 import type { LoginDto } from './dto/login.dto';
 import type { LoginResponseDto } from './dto/login-response.dto';
+import type { ForgotPasswordDto } from './dto/forgot-password.dto';
+import type { ResetPasswordDto } from './dto/reset-password.dto';
 import type { RefreshResponseDto } from './dto/refresh-response.dto';
 import type { RegisterDto } from './dto/register.dto';
 import type { RegisterResponseDto } from './dto/register-response.dto';
@@ -45,6 +49,7 @@ export class AuthService {
     @Inject(DB_POOL) private readonly pool: Pool,
     private readonly jwtService: JwtService,
     private readonly config: ConfigService,
+    private readonly emailService: EmailService,
   ) {}
 
   async register(
@@ -259,5 +264,116 @@ export class AuthService {
       userId,
     ]);
     return { message: 'Logged out successfully' };
+  }
+
+  async forgotPassword(
+    dto: ForgotPasswordDto,
+    tenantId: string,
+    tenantSlug: string,
+  ): Promise<void> {
+    const { rows } = await this.pool.query<{ id: string; email: string }>(
+      `SELECT id, email FROM users
+       WHERE tenant_id = $1 AND email = $2 AND deleted_at IS NULL AND is_active = true`,
+      [tenantId, dto.email],
+    );
+
+    const user = rows[0];
+    if (!user) {
+      return;
+    }
+
+    await this.pool.query(
+      'DELETE FROM password_reset_tokens WHERE user_id = $1',
+      [user.id],
+    );
+
+    const plainToken = randomBytes(32).toString('hex');
+    const tokenHash = await bcrypt.hash(plainToken, BCRYPT_ROUNDS);
+
+    const { rows: rtRows } = await this.pool.query<{ id: string }>(
+      `INSERT INTO password_reset_tokens (user_id, token_hash, expires_at)
+       VALUES ($1, $2, NOW() + INTERVAL '1 HOUR')
+       RETURNING id`,
+      [user.id, tokenHash],
+    );
+
+    const resetId = rtRows[0]?.id;
+    if (!resetId) {
+      throw new Error('Failed to create password reset token');
+    }
+
+    const fullToken = `${resetId}.${plainToken}`;
+
+    const appDomain = this.config.getOrThrow<string>('APP_DOMAIN');
+    const protocol = appDomain.includes('localhost') ? 'http' : 'https';
+    const resetLink = `${protocol}://${tenantSlug}.${appDomain}/reset-password?token=${encodeURIComponent(fullToken)}`;
+
+    await this.emailService.sendPasswordResetEmail(user.email, resetLink);
+  }
+
+  async resetPassword(dto: ResetPasswordDto): Promise<{ message: string }> {
+    const parts = dto.token.split('.');
+    if (parts.length !== 2) {
+      throw new BadRequestException('Invalid or expired reset token');
+    }
+
+    const [id, secret] = parts;
+
+    const client = await this.pool.connect();
+
+    try {
+      await client.query('BEGIN');
+
+      const { rows } = await client.query<{
+        user_id: string;
+        token_hash: string;
+      }>(
+        `SELECT user_id, token_hash
+         FROM password_reset_tokens
+         WHERE id = $1 AND expires_at > NOW() AND used_at IS NULL
+         FOR UPDATE`,
+        [id],
+      );
+
+      const row = rows[0];
+      if (!row) {
+        await client.query('ROLLBACK');
+        throw new BadRequestException('Invalid or expired reset token');
+      }
+
+      const hashValid = await bcrypt.compare(secret, row.token_hash);
+      if (!hashValid) {
+        await client.query('ROLLBACK');
+        throw new BadRequestException('Invalid or expired reset token');
+      }
+
+      const passwordHash = await bcrypt.hash(dto.newPassword, BCRYPT_ROUNDS);
+
+      await client.query(
+        'UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2',
+        [passwordHash, row.user_id],
+      );
+
+      await client.query(
+        'UPDATE password_reset_tokens SET used_at = NOW(), updated_at = NOW() WHERE id = $1',
+        [id],
+      );
+
+      await client.query('DELETE FROM refresh_tokens WHERE user_id = $1', [
+        row.user_id,
+      ]);
+
+      await client.query('COMMIT');
+
+      return { message: 'Password reset successfully' };
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {});
+      if (err instanceof BadRequestException) {
+        throw err;
+      }
+      throw err;
+    } finally {
+      client.release();
+    }
   }
 }

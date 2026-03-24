@@ -15,7 +15,9 @@ import type { AuthenticatedUser } from './auth.types';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { LoginResponseDto } from './dto/login-response.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { RefreshDto } from './dto/refresh.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { RefreshResponseDto } from './dto/refresh-response.dto';
 import { RegisterDto } from './dto/register.dto';
 import { RegisterResponseDto } from './dto/register-response.dto';
@@ -73,6 +75,47 @@ export class AuthController {
       );
     }
     return this.authService.login(dto, tenant.id);
+  }
+
+  @Post('forgot-password')
+  @Public()
+  @ApiResponse({
+    status: 200,
+    description:
+      'If email exists, reset link sent. Always 200 (anti-enumeration).',
+  })
+  @ApiResponse({ status: 400, description: 'Missing or invalid subdomain' })
+  @ApiResponse({ status: 403, description: 'Tenant is inactive' })
+  @ApiResponse({ status: 422, description: 'Validation failed' })
+  async forgotPassword(
+    @Body() dto: ForgotPasswordDto,
+    @TenantDecorator() tenant: Tenant,
+  ): Promise<{ message: string }> {
+    if (!tenant) {
+      throw new BadRequestException(
+        'Tenant is required. Use Host header with tenant subdomain (e.g. acfc.localhost:3000).',
+      );
+    }
+    await this.authService.forgotPassword(dto, tenant.id, tenant.slug);
+    return {
+      message:
+        'If an account exists with that email, a reset link has been sent.',
+    };
+  }
+
+  @Post('reset-password')
+  @Public()
+  @ApiResponse({
+    status: 200,
+    description: 'Password reset successfully',
+    schema: { properties: { message: { type: 'string' } } },
+  })
+  @ApiResponse({ status: 400, description: 'Invalid or expired token' })
+  @ApiResponse({ status: 422, description: 'Validation failed' })
+  async resetPassword(
+    @Body() dto: ResetPasswordDto,
+  ): Promise<{ message: string }> {
+    return this.authService.resetPassword(dto);
   }
 
   @Post('refresh')

@@ -11,6 +11,7 @@ export class TenantModule implements NestModule {
         { path: '/', method: RequestMethod.GET },
         { path: 'test-validation', method: RequestMethod.ALL },
         { path: 'auth/refresh', method: RequestMethod.POST },
+        { path: 'auth/reset-password', method: RequestMethod.POST },
         { path: 'admin/tenants', method: RequestMethod.ALL },
         { path: 'admin/tenants/(.*)', method: RequestMethod.ALL },
       )
