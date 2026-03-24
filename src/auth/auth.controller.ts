@@ -6,6 +6,7 @@ import {
   HttpStatus,
   Post,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Tenant } from '../common/tenant.types';
 import { CurrentUser } from './decorators/current-user.decorator';
@@ -29,6 +30,7 @@ export class AuthController {
 
   @Post('register')
   @Public()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @HttpCode(HttpStatus.CREATED)
   @ApiResponse({
     status: 201,
@@ -42,6 +44,10 @@ export class AuthController {
     description: 'Email already registered for this tenant',
   })
   @ApiResponse({ status: 422, description: 'Validation failed' })
+  @ApiResponse({
+    status: 429,
+    description: 'Too Many Requests - rate limit exceeded',
+  })
   async register(
     @Body() dto: RegisterDto,
     @TenantDecorator() tenant: Tenant,
@@ -56,6 +62,7 @@ export class AuthController {
 
   @Post('login')
   @Public()
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @ApiResponse({
     status: 200,
     description: 'Login successful',
@@ -65,6 +72,10 @@ export class AuthController {
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
   @ApiResponse({ status: 403, description: 'Tenant is inactive' })
   @ApiResponse({ status: 422, description: 'Validation failed' })
+  @ApiResponse({
+    status: 429,
+    description: 'Too Many Requests - rate limit exceeded',
+  })
   async login(
     @Body() dto: LoginDto,
     @TenantDecorator() tenant: Tenant,
@@ -79,6 +90,7 @@ export class AuthController {
 
   @Post('forgot-password')
   @Public()
+  @Throttle({ default: { limit: 3, ttl: 60_000 } })
   @ApiResponse({
     status: 200,
     description:
@@ -87,6 +99,10 @@ export class AuthController {
   @ApiResponse({ status: 400, description: 'Missing or invalid subdomain' })
   @ApiResponse({ status: 403, description: 'Tenant is inactive' })
   @ApiResponse({ status: 422, description: 'Validation failed' })
+  @ApiResponse({
+    status: 429,
+    description: 'Too Many Requests - rate limit exceeded',
+  })
   async forgotPassword(
     @Body() dto: ForgotPasswordDto,
     @TenantDecorator() tenant: Tenant,

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
@@ -8,6 +9,28 @@ import { AuthModule } from './auth/auth.module';
 import { envSchema } from './config/env.schema';
 import { DatabaseModule } from './database/db.module';
 import { TenantModule } from './tenant/tenant.module';
+
+/** Extract client IP from request; supports X-Forwarded-For when behind a proxy. */
+function getClientIp(req: Record<string, unknown>): string {
+  const headers = req.headers as
+    | Record<string, string | string[] | undefined>
+    | undefined;
+  const forwarded = headers?.['x-forwarded-for'];
+  const forwardedStr =
+    typeof forwarded === 'string'
+      ? forwarded
+      : Array.isArray(forwarded)
+        ? forwarded[0]
+        : undefined;
+  if (forwardedStr) {
+    const client = forwardedStr.split(',')[0]?.trim();
+    if (client) return client;
+  }
+  const ip =
+    req.ip ??
+    (req as { socket?: { remoteAddress?: string } }).socket?.remoteAddress;
+  return typeof ip === 'string' ? ip : 'unknown';
+}
 
 @Module({
   imports: [
@@ -20,11 +43,24 @@ import { TenantModule } from './tenant/tenant.module';
         abortEarly: false,
       },
     }),
+    ThrottlerModule.forRoot([
+      {
+        name: 'default',
+        limit: 1000,
+        ttl: 60_000,
+        getTracker: (req) =>
+          Promise.resolve(getClientIp(req as Record<string, unknown>)),
+      },
+    ]),
     DatabaseModule,
     TenantModule,
     AuthModule,
   ],
   controllers: [AppController],
-  providers: [AppService, { provide: APP_GUARD, useClass: JwtAuthGuard }],
+  providers: [
+    AppService,
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_GUARD, useClass: JwtAuthGuard },
+  ],
 })
 export class AppModule {}

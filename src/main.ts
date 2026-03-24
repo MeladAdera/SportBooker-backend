@@ -11,6 +11,13 @@ import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
 
+  // Trust X-Forwarded-For when behind a reverse proxy (nginx, etc.)
+  const httpAdapter = app.getHttpAdapter();
+  const expressApp = httpAdapter.getInstance?.() as {
+    set?: (key: string, val: unknown) => void;
+  };
+  if (expressApp?.set) expressApp.set('trust proxy', 1);
+
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
