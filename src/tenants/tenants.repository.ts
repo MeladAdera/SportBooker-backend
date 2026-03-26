@@ -33,6 +33,18 @@ export class TenantsRepository extends BaseRepository {
     super(pool);
   }
 
+  /** Full tenant row by primary key; used for admin detail and create response. */
+  async findTenantById(id: string): Promise<TenantRow | null> {
+    const { rows } = await this.query<TenantRow>(
+      this.pool,
+      `SELECT id, name, slug, logo_url, timezone, cancel_cutoff_hours, is_active, created_at, updated_at
+       FROM tenants
+       WHERE id = $1`,
+      [id],
+    );
+    return rows[0] ?? null;
+  }
+
   async insertTenant(params: {
     name: string;
     slug: string;

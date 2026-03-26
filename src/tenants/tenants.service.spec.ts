@@ -1,4 +1,8 @@
-import { BadRequestException, ConflictException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { TenantsRepository } from './tenants.repository';
 import { TenantsService } from './tenants.service';
 
@@ -7,7 +11,10 @@ describe('TenantsService', () => {
   let repository: jest.Mocked<
     Pick<
       TenantsRepository,
-      'insertTenant' | 'findTenantsForAdmin' | 'countTenantsForAdmin'
+      | 'insertTenant'
+      | 'findTenantById'
+      | 'findTenantsForAdmin'
+      | 'countTenantsForAdmin'
     >
   >;
 
@@ -37,6 +44,7 @@ describe('TenantsService', () => {
   beforeEach(() => {
     repository = {
       insertTenant: jest.fn(),
+      findTenantById: jest.fn(),
       findTenantsForAdmin: jest.fn(),
       countTenantsForAdmin: jest.fn(),
     };
@@ -70,6 +78,37 @@ describe('TenantsService', () => {
         },
       ],
     });
+  });
+
+  it('returns full tenant by id for admin', async () => {
+    const tenantId = '550e8400-e29b-41d4-a716-446655440000';
+    repository.findTenantById.mockResolvedValue({
+      ...row,
+      logo_url: 'https://cdn.example.com/logo.png',
+    });
+
+    const result = await service.getTenantByIdForAdmin(tenantId);
+
+    expect(repository.findTenantById).toHaveBeenCalledWith(tenantId);
+    expect(result).toMatchObject({
+      id: 't1',
+      name: 'New Co',
+      slug: 'new-co',
+      logoUrl: 'https://cdn.example.com/logo.png',
+      timezone: 'Asia/Dubai',
+      cancelCutoffHours: 24,
+      isActive: true,
+    });
+  });
+
+  it('throws NotFound when tenant id does not exist', async () => {
+    const tenantId = '650e8400-e29b-41d4-a716-446655440000';
+    repository.findTenantById.mockResolvedValue(null);
+
+    await expect(service.getTenantByIdForAdmin(tenantId)).rejects.toThrow(
+      NotFoundException,
+    );
+    expect(repository.findTenantById).toHaveBeenCalledWith(tenantId);
   });
 
   it('applies isActive filter and pagination', async () => {

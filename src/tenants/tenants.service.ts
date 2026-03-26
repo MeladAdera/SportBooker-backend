@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  NotFoundException,
 } from '@nestjs/common';
 import type { AdminTenantListItemDto } from './dto/admin-tenant-list-item.dto';
 import type { CreateTenantDto } from './dto/create-tenant.dto';
@@ -13,7 +14,7 @@ import {
   DEFAULT_TENANT_TIMEZONE,
   RESERVED_SLUGS,
 } from './tenants.constants';
-import type { TenantAdminListRow } from './tenants.repository';
+import type { TenantAdminListRow, TenantRow } from './tenants.repository';
 import { TenantsRepository } from './tenants.repository';
 
 const PG_UNIQUE_VIOLATION = '23505';
@@ -21,6 +22,14 @@ const PG_UNIQUE_VIOLATION = '23505';
 @Injectable()
 export class TenantsService {
   constructor(private readonly tenantsRepository: TenantsRepository) {}
+
+  async getTenantByIdForAdmin(tenantId: string): Promise<TenantResponseDto> {
+    const row = await this.tenantsRepository.findTenantById(tenantId);
+    if (!row) {
+      throw new NotFoundException(`Tenant "${tenantId}" not found`);
+    }
+    return this.toResponseDto(row);
+  }
 
   async listTenantsForAdmin(
     query: ListTenantsQueryDto,
@@ -90,17 +99,7 @@ export class TenantsService {
     };
   }
 
-  private toResponseDto(row: {
-    id: string;
-    name: string;
-    slug: string;
-    logo_url: string | null;
-    timezone: string;
-    cancel_cutoff_hours: number;
-    is_active: boolean;
-    created_at: Date;
-    updated_at: Date;
-  }): TenantResponseDto {
+  private toResponseDto(row: TenantRow): TenantResponseDto {
     return {
       id: row.id,
       name: row.name,

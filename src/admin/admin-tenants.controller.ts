@@ -1,8 +1,18 @@
-import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiConflictResponse,
   ApiCreatedResponse,
+  ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
@@ -34,6 +44,20 @@ export class AdminTenantsController {
     @Query() query: ListTenantsQueryDto,
   ): Promise<PaginatedTenantsListDto> {
     return this.tenantsService.listTenantsForAdmin(query);
+  }
+
+  @Get(':id')
+  @ApiOperation({
+    summary: 'Get tenant by id',
+    description:
+      'Platform super admin only. Returns full tenant configuration including logo and cutoff settings.',
+  })
+  @ApiOkResponse({ type: TenantResponseDto })
+  @ApiNotFoundResponse({ description: 'Tenant not found' })
+  async getById(
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<TenantResponseDto> {
+    return this.tenantsService.getTenantByIdForAdmin(id);
   }
 
   @Post()
