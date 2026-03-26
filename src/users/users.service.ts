@@ -8,7 +8,9 @@ import {
 import type { AssignableRole } from './user-role';
 import { roleRank } from './user-role';
 import type { MyProfileResponseDto } from './dto/my-profile-response.dto';
+import type { UpdateMyProfileDto } from './dto/update-my-profile.dto';
 import type { UserResponseDto } from './dto/user-response.dto';
+import type { UserSelfProfileRow } from './users.repository';
 import { UsersRepository } from './users.repository';
 
 @Injectable()
@@ -77,6 +79,36 @@ export class UsersService {
       throw new UnauthorizedException('Invalid or expired session');
     }
 
+    return this.toMyProfileDto(row);
+  }
+
+  /**
+   * Updates optional profile fields; same response shape as GET /users/me.
+   */
+  async updateMyProfile(params: {
+    tenantId: string;
+    userId: string;
+    dto: UpdateMyProfileDto;
+  }): Promise<MyProfileResponseDto> {
+    const { dto, tenantId, userId } = params;
+    const patch: { name?: string; phone?: string; photo_url?: string } = {};
+    if (dto.name !== undefined) patch.name = dto.name;
+    if (dto.phone !== undefined) patch.phone = dto.phone;
+    if (dto.photoUrl !== undefined) patch.photo_url = dto.photoUrl;
+
+    const row = await this.usersRepository.patchSelfProfile(
+      tenantId,
+      userId,
+      patch,
+    );
+    if (!row || row.deleted_at != null) {
+      throw new UnauthorizedException('Invalid or expired session');
+    }
+
+    return this.toMyProfileDto(row);
+  }
+
+  private toMyProfileDto(row: UserSelfProfileRow): MyProfileResponseDto {
     return {
       id: row.id,
       name: row.name,

@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiBody,
   ApiOperation,
   ApiResponse,
   ApiTags,
@@ -19,6 +20,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import type { AuthenticatedUser } from '../auth/auth.types';
 import { AssignRoleDto } from './dto/assign-role.dto';
 import { MyProfileResponseDto } from './dto/my-profile-response.dto';
+import { UpdateMyProfileDto } from './dto/update-my-profile.dto';
 import { UserResponseDto } from './dto/user-response.dto';
 import { UserRole } from './user-role';
 import { UsersService } from './users.service';
@@ -58,6 +60,40 @@ export class UsersController {
     return this.usersService.getMyProfile({
       tenantId: user.tenantId,
       userId: user.sub,
+    });
+  }
+
+  @Patch('me')
+  @Roles(
+    UserRole.SuperAdmin,
+    UserRole.TenantAdmin,
+    UserRole.TenantStaff,
+    UserRole.Player,
+  )
+  @ApiOperation({
+    summary: 'Update current user profile',
+    description:
+      'Optional name, phone, and photoUrl. Other fields are ignored (whitelist). Returns the updated profile.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Updated profile',
+    type: MyProfileResponseDto,
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized or soft-deleted user',
+  })
+  @ApiResponse({ status: 422, description: 'Validation failed' })
+  @ApiBody({ type: UpdateMyProfileDto })
+  async updateMyProfile(
+    @Body() dto: UpdateMyProfileDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<MyProfileResponseDto> {
+    return this.usersService.updateMyProfile({
+      tenantId: user.tenantId,
+      userId: user.sub,
+      dto,
     });
   }
 

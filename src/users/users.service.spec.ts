@@ -4,6 +4,7 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
+import { UpdateMyProfileDto } from './dto/update-my-profile.dto';
 import { UserRole } from './user-role';
 import { UsersRepository } from './users.repository';
 import { UsersService } from './users.service';
@@ -13,7 +14,10 @@ describe('UsersService', () => {
   let repository: jest.Mocked<
     Pick<
       UsersRepository,
-      'findByIdInTenant' | 'findByIdForSelfProfile' | 'updateRole'
+      | 'findByIdInTenant'
+      | 'findByIdForSelfProfile'
+      | 'patchSelfProfile'
+      | 'updateRole'
     >
   >;
 
@@ -37,6 +41,7 @@ describe('UsersService', () => {
     repository = {
       findByIdInTenant: jest.fn(),
       findByIdForSelfProfile: jest.fn(),
+      patchSelfProfile: jest.fn(),
       updateRole: jest.fn(),
     };
     service = new UsersService(repository as unknown as UsersRepository);
@@ -196,6 +201,97 @@ describe('UsersService', () => {
 
       await expect(
         service.getMyProfile({ tenantId, userId: actorId }),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
+  const profileRow = {
+    id: actorId,
+    name: 'Player One',
+    email: 'p@test.com',
+    phone: '+15550001',
+    photo_url: 'https://cdn.example/a.png',
+    role: UserRole.Player,
+    wallet_balance: '42.50',
+    created_at: new Date('2024-01-01'),
+    deleted_at: null as Date | null,
+  };
+
+  describe('updateMyProfile', () => {
+    it('maps dto fields to repository patch and returns profile', async () => {
+      repository.patchSelfProfile.mockResolvedValue({
+        ...profileRow,
+        name: 'New Name',
+        phone: '+1999',
+        photo_url: 'https://cdn.example/b.png',
+      });
+
+      const dto: UpdateMyProfileDto = {
+        name: 'New Name',
+        phone: '+1999',
+        photoUrl: 'https://cdn.example/b.png',
+      };
+
+      const result = await service.updateMyProfile({
+        tenantId,
+        userId: actorId,
+        dto,
+      });
+
+      expect(repository.patchSelfProfile).toHaveBeenCalledWith(
+        tenantId,
+        actorId,
+        {
+          name: 'New Name',
+          phone: '+1999',
+          photo_url: 'https://cdn.example/b.png',
+        },
+      );
+      expect(result.name).toBe('New Name');
+      expect(result.phone).toBe('+1999');
+      expect(result.photoUrl).toBe('https://cdn.example/b.png');
+    });
+
+    it('passes empty patch when dto has no keys set', async () => {
+      repository.patchSelfProfile.mockResolvedValue(profileRow);
+
+      await service.updateMyProfile({
+        tenantId,
+        userId: actorId,
+        dto: {},
+      });
+
+      expect(repository.patchSelfProfile).toHaveBeenCalledWith(
+        tenantId,
+        actorId,
+        {},
+      );
+    });
+
+    it('throws Unauthorized when patch returns null', async () => {
+      repository.patchSelfProfile.mockResolvedValue(null);
+
+      await expect(
+        service.updateMyProfile({
+          tenantId,
+          userId: actorId,
+          dto: { name: 'X' },
+        }),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('throws Unauthorized when row is soft-deleted', async () => {
+      repository.patchSelfProfile.mockResolvedValue({
+        ...profileRow,
+        deleted_at: new Date('2024-06-01'),
+      });
+
+      await expect(
+        service.updateMyProfile({
+          tenantId,
+          userId: actorId,
+          dto: { name: 'X' },
+        }),
       ).rejects.toThrow(UnauthorizedException);
     });
   });

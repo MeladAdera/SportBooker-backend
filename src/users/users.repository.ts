@@ -89,6 +89,52 @@ export class UsersRepository extends BaseRepository {
     return rows[0] ?? null;
   }
 
+  /**
+   * Partial update for current user profile. Omits columns not in `fields`.
+   * When `fields` is empty, reloads profile without updating `updated_at`.
+   */
+  async patchSelfProfile(
+    tenantId: string,
+    userId: string,
+    fields: { name?: string; phone?: string; photo_url?: string },
+  ): Promise<UserSelfProfileRow | null> {
+    const fragments: string[] = [];
+    const values: unknown[] = [];
+    let i = 1;
+
+    if (fields.name !== undefined) {
+      fragments.push(`name = $${i++}`);
+      values.push(fields.name);
+    }
+    if (fields.phone !== undefined) {
+      fragments.push(`phone = $${i++}`);
+      values.push(fields.phone);
+    }
+    if (fields.photo_url !== undefined) {
+      fragments.push(`photo_url = $${i++}`);
+      values.push(fields.photo_url);
+    }
+
+    if (fragments.length === 0) {
+      return this.findByIdForSelfProfile(tenantId, userId);
+    }
+
+    fragments.push(`updated_at = NOW()`);
+    const idParam = i++;
+    const tenantParam = i;
+    values.push(userId, tenantId);
+
+    const { rows } = await this.query<UserSelfProfileRow>(
+      this.pool,
+      `UPDATE users
+       SET ${fragments.join(', ')}
+       WHERE id = $${idParam} AND tenant_id = $${tenantParam} AND deleted_at IS NULL
+       RETURNING id, name, email, phone, photo_url, role, wallet_balance, created_at, deleted_at`,
+      values,
+    );
+    return rows[0] ?? null;
+  }
+
   async updateRole(
     tenantId: string,
     userId: string,
