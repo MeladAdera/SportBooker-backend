@@ -3,6 +3,7 @@ import {
   ConflictException,
   NotFoundException,
 } from '@nestjs/common';
+import { RESERVED_SLUGS } from '../common/constants/reserved-slugs';
 import { TenantsRepository } from './tenants.repository';
 import { TenantsService } from './tenants.service';
 
@@ -229,15 +230,18 @@ describe('TenantsService', () => {
     });
   });
 
-  it('throws BadRequest when slug is reserved', async () => {
-    await expect(
-      service.createTenant({
-        name: 'X',
-        slug: 'admin',
-      }),
-    ).rejects.toThrow(BadRequestException);
-    expect(repository.insertTenant).not.toHaveBeenCalled();
-  });
+  it.each([...RESERVED_SLUGS])(
+    'throws BadRequest when slug is reserved (%s)',
+    async (slug) => {
+      await expect(
+        service.createTenant({
+          name: 'X',
+          slug,
+        }),
+      ).rejects.toThrow(BadRequestException);
+      expect(repository.insertTenant).not.toHaveBeenCalled();
+    },
+  );
 
   it('throws Conflict when slug unique constraint fails', async () => {
     repository.insertTenant.mockRejectedValue({ code: '23505' });

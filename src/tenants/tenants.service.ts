@@ -10,10 +10,10 @@ import type { ListTenantsQueryDto } from './dto/list-tenants-query.dto';
 import type { PaginatedTenantsListDto } from './dto/paginated-tenants-list.dto';
 import type { TenantResponseDto } from './dto/tenant-response.dto';
 import type { UpdateTenantDto } from './dto/update-tenant.dto';
+import { RESERVED_SLUGS } from '../common/constants/reserved-slugs';
 import {
   DEFAULT_CANCEL_CUTOFF_HOURS,
   DEFAULT_TENANT_TIMEZONE,
-  RESERVED_SLUGS,
 } from './tenants.constants';
 import { invalidateTenantCache } from '../tenant/tenant.middleware';
 import type { TenantAdminListRow, TenantRow } from './tenants.repository';
