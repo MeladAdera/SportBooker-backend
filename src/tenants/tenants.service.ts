@@ -3,13 +3,17 @@ import {
   ConflictException,
   Injectable,
 } from '@nestjs/common';
+import type { AdminTenantListItemDto } from './dto/admin-tenant-list-item.dto';
 import type { CreateTenantDto } from './dto/create-tenant.dto';
+import type { ListTenantsQueryDto } from './dto/list-tenants-query.dto';
+import type { PaginatedTenantsListDto } from './dto/paginated-tenants-list.dto';
 import type { TenantResponseDto } from './dto/tenant-response.dto';
 import {
   DEFAULT_CANCEL_CUTOFF_HOURS,
   DEFAULT_TENANT_TIMEZONE,
   RESERVED_SLUGS,
 } from './tenants.constants';
+import type { TenantAdminListRow } from './tenants.repository';
 import { TenantsRepository } from './tenants.repository';
 
 const PG_UNIQUE_VIOLATION = '23505';
@@ -17,6 +21,31 @@ const PG_UNIQUE_VIOLATION = '23505';
 @Injectable()
 export class TenantsService {
   constructor(private readonly tenantsRepository: TenantsRepository) {}
+
+  async listTenantsForAdmin(
+    query: ListTenantsQueryDto,
+  ): Promise<PaginatedTenantsListDto> {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+    const offset = (page - 1) * limit;
+    const isActiveFilter = query.isActive === undefined ? null : query.isActive;
+
+    const [total, rows] = await Promise.all([
+      this.tenantsRepository.countTenantsForAdmin(isActiveFilter),
+      this.tenantsRepository.findTenantsForAdmin({
+        limit,
+        offset,
+        isActiveFilter,
+      }),
+    ]);
+
+    return {
+      page,
+      limit,
+      total,
+      items: rows.map((row) => this.toAdminListItem(row)),
+    };
+  }
 
   async createTenant(dto: CreateTenantDto): Promise<TenantResponseDto> {
     const slug = dto.slug;
@@ -46,6 +75,19 @@ export class TenantsService {
       }
       throw err;
     }
+  }
+
+  private toAdminListItem(row: TenantAdminListRow): AdminTenantListItemDto {
+    return {
+      id: row.id,
+      name: row.name,
+      slug: row.slug,
+      isActive: row.is_active,
+      timezone: row.timezone,
+      cancelCutoffHours: row.cancel_cutoff_hours,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
   }
 
   private toResponseDto(row: {

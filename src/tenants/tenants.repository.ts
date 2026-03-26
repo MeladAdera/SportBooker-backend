@@ -15,6 +15,18 @@ export type TenantRow = {
   updated_at: Date;
 };
 
+/** Admin tenant list row (no logo). */
+export type TenantAdminListRow = {
+  id: string;
+  name: string;
+  slug: string;
+  timezone: string;
+  cancel_cutoff_hours: number;
+  is_active: boolean;
+  created_at: Date;
+  updated_at: Date;
+};
+
 @Injectable()
 export class TenantsRepository extends BaseRepository {
   constructor(@Inject(DB_POOL) pool: Pool) {
@@ -48,5 +60,41 @@ export class TenantsRepository extends BaseRepository {
       throw new Error('Insert tenant returned no row');
     }
     return row;
+  }
+
+  /**
+   * Super-admin tenant directory: newest first, optional is_active filter.
+   * Uses LIMIT $1 OFFSET $2; filter is $3 (null = no filter).
+   */
+  async findTenantsForAdmin(params: {
+    limit: number;
+    offset: number;
+    isActiveFilter: boolean | null;
+  }): Promise<TenantAdminListRow[]> {
+    const { rows } = await this.query<TenantAdminListRow>(
+      this.pool,
+      `SELECT id, name, slug, timezone, cancel_cutoff_hours, is_active, created_at, updated_at
+       FROM tenants
+       WHERE ($3::boolean IS NULL OR is_active = $3)
+       ORDER BY created_at DESC
+       LIMIT $1 OFFSET $2`,
+      [params.limit, params.offset, params.isActiveFilter],
+    );
+    return rows;
+  }
+
+  async countTenantsForAdmin(isActiveFilter: boolean | null): Promise<number> {
+    const { rows } = await this.query<{ count: string }>(
+      this.pool,
+      `SELECT COUNT(*)::int AS count
+       FROM tenants
+       WHERE ($1::boolean IS NULL OR is_active = $1)`,
+      [isActiveFilter],
+    );
+    const raw = rows[0]?.count;
+    if (raw === undefined) {
+      return 0;
+    }
+    return typeof raw === 'number' ? raw : Number.parseInt(String(raw), 10);
   }
 }

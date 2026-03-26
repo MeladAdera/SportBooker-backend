@@ -4,7 +4,12 @@ import { TenantsService } from './tenants.service';
 
 describe('TenantsService', () => {
   let service: TenantsService;
-  let repository: jest.Mocked<Pick<TenantsRepository, 'insertTenant'>>;
+  let repository: jest.Mocked<
+    Pick<
+      TenantsRepository,
+      'insertTenant' | 'findTenantsForAdmin' | 'countTenantsForAdmin'
+    >
+  >;
 
   const row = {
     id: 't1',
@@ -18,11 +23,71 @@ describe('TenantsService', () => {
     updated_at: new Date('2025-01-02'),
   };
 
+  const listRow = {
+    id: 't1',
+    name: 'New Co',
+    slug: 'new-co',
+    timezone: 'Asia/Dubai',
+    cancel_cutoff_hours: 24,
+    is_active: true,
+    created_at: new Date('2025-01-01'),
+    updated_at: new Date('2025-01-02'),
+  };
+
   beforeEach(() => {
     repository = {
       insertTenant: jest.fn(),
+      findTenantsForAdmin: jest.fn(),
+      countTenantsForAdmin: jest.fn(),
     };
     service = new TenantsService(repository as unknown as TenantsRepository);
+  });
+
+  it('lists tenants with default page and limit', async () => {
+    repository.countTenantsForAdmin.mockResolvedValue(1);
+    repository.findTenantsForAdmin.mockResolvedValue([listRow]);
+
+    const result = await service.listTenantsForAdmin({});
+
+    expect(repository.countTenantsForAdmin).toHaveBeenCalledWith(null);
+    expect(repository.findTenantsForAdmin).toHaveBeenCalledWith({
+      limit: 20,
+      offset: 0,
+      isActiveFilter: null,
+    });
+    expect(result).toMatchObject({
+      page: 1,
+      limit: 20,
+      total: 1,
+      items: [
+        {
+          id: 't1',
+          name: 'New Co',
+          slug: 'new-co',
+          isActive: true,
+          timezone: 'Asia/Dubai',
+          cancelCutoffHours: 24,
+        },
+      ],
+    });
+  });
+
+  it('applies isActive filter and pagination', async () => {
+    repository.countTenantsForAdmin.mockResolvedValue(0);
+    repository.findTenantsForAdmin.mockResolvedValue([]);
+
+    await service.listTenantsForAdmin({
+      page: 2,
+      limit: 10,
+      isActive: false,
+    });
+
+    expect(repository.countTenantsForAdmin).toHaveBeenCalledWith(false);
+    expect(repository.findTenantsForAdmin).toHaveBeenCalledWith({
+      limit: 10,
+      offset: 10,
+      isActiveFilter: false,
+    });
   });
 
   it('throws BadRequest when slug is reserved', async () => {
