@@ -13,6 +13,7 @@ describe('TenantsService', () => {
       TenantsRepository,
       | 'insertTenant'
       | 'findTenantById'
+      | 'updateTenantById'
       | 'findTenantsForAdmin'
       | 'countTenantsForAdmin'
     >
@@ -45,6 +46,7 @@ describe('TenantsService', () => {
     repository = {
       insertTenant: jest.fn(),
       findTenantById: jest.fn(),
+      updateTenantById: jest.fn(),
       findTenantsForAdmin: jest.fn(),
       countTenantsForAdmin: jest.fn(),
     };
@@ -109,6 +111,58 @@ describe('TenantsService', () => {
       NotFoundException,
     );
     expect(repository.findTenantById).toHaveBeenCalledWith(tenantId);
+  });
+
+  const tenantId = '550e8400-e29b-41d4-a716-446655440000';
+
+  it('throws BadRequest when update includes slug', async () => {
+    await expect(
+      service.updateTenantForAdmin(tenantId, { slug: 'nope' }),
+    ).rejects.toThrow(BadRequestException);
+    expect(repository.findTenantById).not.toHaveBeenCalled();
+    expect(repository.updateTenantById).not.toHaveBeenCalled();
+  });
+
+  it('throws NotFound when updating missing tenant', async () => {
+    repository.findTenantById.mockResolvedValue(null);
+
+    await expect(
+      service.updateTenantForAdmin(tenantId, { name: 'X' }),
+    ).rejects.toThrow(NotFoundException);
+    expect(repository.updateTenantById).not.toHaveBeenCalled();
+  });
+
+  it('returns unchanged tenant when patch body is empty', async () => {
+    repository.findTenantById.mockResolvedValue(row);
+
+    const result = await service.updateTenantForAdmin(tenantId, {});
+
+    expect(repository.findTenantById).toHaveBeenCalledTimes(1);
+    expect(repository.updateTenantById).not.toHaveBeenCalled();
+    expect(result.slug).toBe('new-co');
+  });
+
+  it('applies partial update and returns updated tenant', async () => {
+    repository.findTenantById.mockResolvedValue(row);
+    const updated = {
+      ...row,
+      name: 'Renamed',
+      cancel_cutoff_hours: 0,
+      updated_at: new Date('2025-06-01'),
+    };
+    repository.updateTenantById.mockResolvedValue(updated);
+
+    const result = await service.updateTenantForAdmin(tenantId, {
+      name: 'Renamed',
+      cancelCutoffHours: 0,
+    });
+
+    expect(repository.updateTenantById).toHaveBeenCalledWith(tenantId, {
+      name: 'Renamed',
+      cancelCutoffHours: 0,
+    });
+    expect(result.name).toBe('Renamed');
+    expect(result.cancelCutoffHours).toBe(0);
   });
 
   it('applies isActive filter and pagination', async () => {

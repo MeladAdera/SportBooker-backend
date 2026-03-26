@@ -45,6 +45,54 @@ export class TenantsRepository extends BaseRepository {
     return rows[0] ?? null;
   }
 
+  /**
+   * Partial update; only keys present in `patch` are applied. `logoUrl: null` clears logo.
+   * Refreshes `updated_at` when any column changes. No-op when patch is empty (returns current row).
+   */
+  async updateTenantById(
+    id: string,
+    patch: {
+      name?: string;
+      logoUrl?: string | null;
+      timezone?: string;
+      cancelCutoffHours?: number;
+    },
+  ): Promise<TenantRow | null> {
+    const columns: { col: string; val: unknown }[] = [];
+    if (patch.name !== undefined) {
+      columns.push({ col: 'name', val: patch.name });
+    }
+    if (patch.logoUrl !== undefined) {
+      columns.push({ col: 'logo_url', val: patch.logoUrl });
+    }
+    if (patch.timezone !== undefined) {
+      columns.push({ col: 'timezone', val: patch.timezone });
+    }
+    if (patch.cancelCutoffHours !== undefined) {
+      columns.push({
+        col: 'cancel_cutoff_hours',
+        val: patch.cancelCutoffHours,
+      });
+    }
+
+    if (columns.length === 0) {
+      return this.findTenantById(id);
+    }
+
+    const setFragments = columns.map((c, idx) => `${c.col} = $${idx + 1}`);
+    const values = columns.map((c) => c.val);
+    const idParam = values.length + 1;
+    const { rows } = await this.query<TenantRow>(
+      this.pool,
+      `UPDATE tenants
+       SET ${setFragments.join(', ')}, updated_at = NOW()
+       WHERE id = $${idParam}
+       RETURNING id, name, slug, logo_url, timezone, cancel_cutoff_hours, is_active, created_at, updated_at`,
+      [...values, id],
+    );
+    return rows[0] ?? null;
+  }
+
   async insertTenant(params: {
     name: string;
     slug: string;

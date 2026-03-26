@@ -9,6 +9,7 @@ import type { CreateTenantDto } from './dto/create-tenant.dto';
 import type { ListTenantsQueryDto } from './dto/list-tenants-query.dto';
 import type { PaginatedTenantsListDto } from './dto/paginated-tenants-list.dto';
 import type { TenantResponseDto } from './dto/tenant-response.dto';
+import type { UpdateTenantDto } from './dto/update-tenant.dto';
 import {
   DEFAULT_CANCEL_CUTOFF_HOURS,
   DEFAULT_TENANT_TIMEZONE,
@@ -25,6 +26,50 @@ export class TenantsService {
 
   async getTenantByIdForAdmin(tenantId: string): Promise<TenantResponseDto> {
     const row = await this.tenantsRepository.findTenantById(tenantId);
+    if (!row) {
+      throw new NotFoundException(`Tenant "${tenantId}" not found`);
+    }
+    return this.toResponseDto(row);
+  }
+
+  async updateTenantForAdmin(
+    tenantId: string,
+    dto: UpdateTenantDto,
+  ): Promise<TenantResponseDto> {
+    if (dto.slug !== undefined) {
+      throw new BadRequestException('Tenant slug cannot be changed');
+    }
+
+    const existing = await this.tenantsRepository.findTenantById(tenantId);
+    if (!existing) {
+      throw new NotFoundException(`Tenant "${tenantId}" not found`);
+    }
+
+    const patch: {
+      name?: string;
+      logoUrl?: string | null;
+      timezone?: string;
+      cancelCutoffHours?: number;
+    } = {};
+
+    if (dto.name !== undefined) {
+      patch.name = dto.name;
+    }
+    if (dto.logoUrl !== undefined) {
+      patch.logoUrl = dto.logoUrl;
+    }
+    if (dto.timezone !== undefined) {
+      patch.timezone = dto.timezone;
+    }
+    if (dto.cancelCutoffHours !== undefined) {
+      patch.cancelCutoffHours = dto.cancelCutoffHours;
+    }
+
+    if (Object.keys(patch).length === 0) {
+      return this.toResponseDto(existing);
+    }
+
+    const row = await this.tenantsRepository.updateTenantById(tenantId, patch);
     if (!row) {
       throw new NotFoundException(`Tenant "${tenantId}" not found`);
     }

@@ -4,12 +4,14 @@ import {
   Get,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
   UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiBadRequestResponse,
   ApiConflictResponse,
   ApiCreatedResponse,
   ApiNotFoundResponse,
@@ -23,6 +25,7 @@ import { CreateTenantDto } from '../tenants/dto/create-tenant.dto';
 import { ListTenantsQueryDto } from '../tenants/dto/list-tenants-query.dto';
 import { PaginatedTenantsListDto } from '../tenants/dto/paginated-tenants-list.dto';
 import { TenantResponseDto } from '../tenants/dto/tenant-response.dto';
+import { UpdateTenantDto } from '../tenants/dto/update-tenant.dto';
 import { TenantsService } from '../tenants/tenants.service';
 
 @ApiTags('Admin — Tenants')
@@ -58,6 +61,24 @@ export class AdminTenantsController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<TenantResponseDto> {
     return this.tenantsService.getTenantByIdForAdmin(id);
+  }
+
+  @Patch(':id')
+  @ApiOperation({
+    summary: 'Update tenant settings',
+    description:
+      'Platform super admin only. Partial update; omitted fields unchanged. Slug cannot be changed.',
+  })
+  @ApiOkResponse({ type: TenantResponseDto })
+  @ApiBadRequestResponse({
+    description: 'Invalid body or attempt to change slug',
+  })
+  @ApiNotFoundResponse({ description: 'Tenant not found' })
+  async update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateTenantDto,
+  ): Promise<TenantResponseDto> {
+    return this.tenantsService.updateTenantForAdmin(id, dto);
   }
 
   @Post()
