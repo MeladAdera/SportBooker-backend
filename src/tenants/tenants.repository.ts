@@ -157,4 +157,20 @@ export class TenantsRepository extends BaseRepository {
     }
     return typeof raw === 'number' ? raw : Number.parseInt(String(raw), 10);
   }
+
+  /**
+   * Sets is_active = false. Returns null if no row matched (e.g. wrong id).
+   * Caller should only invoke when tenant is known active to avoid no-op semantics.
+   */
+  async deactivateTenantById(id: string): Promise<TenantRow | null> {
+    const { rows } = await this.query<TenantRow>(
+      this.pool,
+      `UPDATE tenants
+       SET is_active = false, updated_at = NOW()
+       WHERE id = $1 AND is_active = true
+       RETURNING id, name, slug, logo_url, timezone, cancel_cutoff_hours, is_active, created_at, updated_at`,
+      [id],
+    );
+    return rows[0] ?? null;
+  }
 }

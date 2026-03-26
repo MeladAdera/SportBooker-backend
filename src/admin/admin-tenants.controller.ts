@@ -24,6 +24,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { CreateTenantDto } from '../tenants/dto/create-tenant.dto';
 import { ListTenantsQueryDto } from '../tenants/dto/list-tenants-query.dto';
 import { PaginatedTenantsListDto } from '../tenants/dto/paginated-tenants-list.dto';
+import { TenantDeactivatedResponseDto } from '../tenants/dto/tenant-deactivated-response.dto';
 import { TenantResponseDto } from '../tenants/dto/tenant-response.dto';
 import { UpdateTenantDto } from '../tenants/dto/update-tenant.dto';
 import { TenantsService } from '../tenants/tenants.service';
@@ -61,6 +62,23 @@ export class AdminTenantsController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<TenantResponseDto> {
     return this.tenantsService.getTenantByIdForAdmin(id);
+  }
+
+  @Post(':id/deactivate')
+  @ApiOperation({
+    summary: 'Deactivate tenant',
+    description:
+      'Platform super admin only. Soft-deactivates tenant (is_active = false); subdomain requests receive 403. Idempotent. Cannot deactivate the last active tenant.',
+  })
+  @ApiOkResponse({ type: TenantDeactivatedResponseDto })
+  @ApiBadRequestResponse({
+    description: 'Would deactivate the only active tenant',
+  })
+  @ApiNotFoundResponse({ description: 'Tenant not found' })
+  async deactivate(
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<TenantDeactivatedResponseDto> {
+    return this.tenantsService.deactivateTenantForAdmin(id);
   }
 
   @Patch(':id')

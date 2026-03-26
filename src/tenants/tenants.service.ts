@@ -15,6 +15,7 @@ import {
   DEFAULT_TENANT_TIMEZONE,
   RESERVED_SLUGS,
 } from './tenants.constants';
+import { invalidateTenantCache } from '../tenant/tenant.middleware';
 import type { TenantAdminListRow, TenantRow } from './tenants.repository';
 import { TenantsRepository } from './tenants.repository';
 
@@ -30,6 +31,32 @@ export class TenantsService {
       throw new NotFoundException(`Tenant "${tenantId}" not found`);
     }
     return this.toResponseDto(row);
+  }
+
+  async deactivateTenantForAdmin(
+    tenantId: string,
+  ): Promise<{ message: string }> {
+    const tenant = await this.tenantsRepository.findTenantById(tenantId);
+    if (!tenant) {
+      throw new NotFoundException(`Tenant "${tenantId}" not found`);
+    }
+
+    if (!tenant.is_active) {
+      invalidateTenantCache(tenant.slug);
+      return { message: 'Tenant deactivated' };
+    }
+
+    const activeCount = await this.tenantsRepository.countTenantsForAdmin(true);
+    if (activeCount <= 1) {
+      throw new BadRequestException('Cannot deactivate the last active tenant');
+    }
+
+    const updated = await this.tenantsRepository.deactivateTenantById(tenantId);
+    if (!updated) {
+      throw new NotFoundException(`Tenant "${tenantId}" not found`);
+    }
+    invalidateTenantCache(updated.slug);
+    return { message: 'Tenant deactivated' };
   }
 
   async updateTenantForAdmin(

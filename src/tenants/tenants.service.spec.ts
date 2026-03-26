@@ -14,6 +14,7 @@ describe('TenantsService', () => {
       | 'insertTenant'
       | 'findTenantById'
       | 'updateTenantById'
+      | 'deactivateTenantById'
       | 'findTenantsForAdmin'
       | 'countTenantsForAdmin'
     >
@@ -47,6 +48,7 @@ describe('TenantsService', () => {
       insertTenant: jest.fn(),
       findTenantById: jest.fn(),
       updateTenantById: jest.fn(),
+      deactivateTenantById: jest.fn(),
       findTenantsForAdmin: jest.fn(),
       countTenantsForAdmin: jest.fn(),
     };
@@ -163,6 +165,50 @@ describe('TenantsService', () => {
     });
     expect(result.name).toBe('Renamed');
     expect(result.cancelCutoffHours).toBe(0);
+  });
+
+  it('deactivates tenant when more than one active', async () => {
+    repository.findTenantById.mockResolvedValue({ ...row, is_active: true });
+    repository.countTenantsForAdmin.mockResolvedValue(2);
+    repository.deactivateTenantById.mockResolvedValue({
+      ...row,
+      is_active: false,
+    });
+
+    const result = await service.deactivateTenantForAdmin(tenantId);
+
+    expect(result).toEqual({ message: 'Tenant deactivated' });
+    expect(repository.countTenantsForAdmin).toHaveBeenCalledWith(true);
+    expect(repository.deactivateTenantById).toHaveBeenCalledWith(tenantId);
+  });
+
+  it('is idempotent when tenant already inactive', async () => {
+    repository.findTenantById.mockResolvedValue({ ...row, is_active: false });
+
+    const result = await service.deactivateTenantForAdmin(tenantId);
+
+    expect(result).toEqual({ message: 'Tenant deactivated' });
+    expect(repository.countTenantsForAdmin).not.toHaveBeenCalled();
+    expect(repository.deactivateTenantById).not.toHaveBeenCalled();
+  });
+
+  it('throws BadRequest when deactivating the last active tenant', async () => {
+    repository.findTenantById.mockResolvedValue({ ...row, is_active: true });
+    repository.countTenantsForAdmin.mockResolvedValue(1);
+
+    await expect(service.deactivateTenantForAdmin(tenantId)).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(repository.deactivateTenantById).not.toHaveBeenCalled();
+  });
+
+  it('throws NotFound when deactivating missing tenant', async () => {
+    repository.findTenantById.mockResolvedValue(null);
+
+    await expect(service.deactivateTenantForAdmin(tenantId)).rejects.toThrow(
+      NotFoundException,
+    );
+    expect(repository.deactivateTenantById).not.toHaveBeenCalled();
   });
 
   it('applies isActive filter and pagination', async () => {
