@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { UserRole } from './user-role';
 import { UsersRepository } from './users.repository';
@@ -10,7 +11,10 @@ import { UsersService } from './users.service';
 describe('UsersService', () => {
   let service: UsersService;
   let repository: jest.Mocked<
-    Pick<UsersRepository, 'findByIdInTenant' | 'updateRole'>
+    Pick<
+      UsersRepository,
+      'findByIdInTenant' | 'findByIdForSelfProfile' | 'updateRole'
+    >
   >;
 
   const tenantId = 'tenant-uuid';
@@ -32,6 +36,7 @@ describe('UsersService', () => {
   beforeEach(() => {
     repository = {
       findByIdInTenant: jest.fn(),
+      findByIdForSelfProfile: jest.fn(),
       updateRole: jest.fn(),
     };
     service = new UsersService(repository as unknown as UsersRepository);
@@ -135,5 +140,63 @@ describe('UsersService', () => {
         newRole: UserRole.TenantAdmin,
       }),
     ).rejects.toThrow(BadRequestException);
+  });
+
+  describe('getMyProfile', () => {
+    it('returns profile without internal fields', async () => {
+      repository.findByIdForSelfProfile.mockResolvedValue({
+        id: actorId,
+        name: 'Player One',
+        email: 'p@test.com',
+        phone: '+15550001',
+        photo_url: 'https://cdn.example/a.png',
+        role: UserRole.Player,
+        wallet_balance: '42.50',
+        created_at: new Date('2024-01-01'),
+        deleted_at: null,
+      });
+
+      const result = await service.getMyProfile({
+        tenantId,
+        userId: actorId,
+      });
+
+      expect(result).toEqual({
+        id: actorId,
+        name: 'Player One',
+        email: 'p@test.com',
+        phone: '+15550001',
+        photoUrl: 'https://cdn.example/a.png',
+        role: UserRole.Player,
+        walletBalance: 42.5,
+        createdAt: new Date('2024-01-01'),
+      });
+    });
+
+    it('throws Unauthorized when user not in tenant', async () => {
+      repository.findByIdForSelfProfile.mockResolvedValue(null);
+
+      await expect(
+        service.getMyProfile({ tenantId, userId: actorId }),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('throws Unauthorized when user is soft-deleted', async () => {
+      repository.findByIdForSelfProfile.mockResolvedValue({
+        id: actorId,
+        name: 'Gone',
+        email: 'g@test.com',
+        phone: null,
+        photo_url: null,
+        role: UserRole.Player,
+        wallet_balance: '0.00',
+        created_at: new Date('2024-01-01'),
+        deleted_at: new Date('2024-06-01'),
+      });
+
+      await expect(
+        service.getMyProfile({ tenantId, userId: actorId }),
+      ).rejects.toThrow(UnauthorizedException);
+    });
   });
 });

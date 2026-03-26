@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Get,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -17,7 +18,9 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import type { AuthenticatedUser } from '../auth/auth.types';
 import { AssignRoleDto } from './dto/assign-role.dto';
+import { MyProfileResponseDto } from './dto/my-profile-response.dto';
 import { UserResponseDto } from './dto/user-response.dto';
+import { UserRole } from './user-role';
 import { UsersService } from './users.service';
 
 @ApiTags('Users')
@@ -27,6 +30,36 @@ import { UsersService } from './users.service';
 @Roles('super_admin', 'tenant_admin')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
+
+  @Get('me')
+  @Roles(
+    UserRole.SuperAdmin,
+    UserRole.TenantAdmin,
+    UserRole.TenantStaff,
+    UserRole.Player,
+  )
+  @ApiOperation({
+    summary: 'Get current user profile',
+    description:
+      'Returns the authenticated user’s profile for this tenant (from JWT). Soft-deleted users receive 401.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Profile',
+    type: MyProfileResponseDto,
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized or soft-deleted user',
+  })
+  async getMyProfile(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<MyProfileResponseDto> {
+    return this.usersService.getMyProfile({
+      tenantId: user.tenantId,
+      userId: user.sub,
+    });
+  }
 
   @Patch(':userId/role')
   @ApiOperation({

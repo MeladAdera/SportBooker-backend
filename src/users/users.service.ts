@@ -3,9 +3,11 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import type { AssignableRole } from './user-role';
 import { roleRank } from './user-role';
+import type { MyProfileResponseDto } from './dto/my-profile-response.dto';
 import type { UserResponseDto } from './dto/user-response.dto';
 import { UsersRepository } from './users.repository';
 
@@ -58,6 +60,33 @@ export class UsersService {
     }
 
     return this.toResponseDto(updated);
+  }
+
+  /**
+   * Current user's profile in the tenant from JWT. Soft-deleted or unknown user → 401.
+   */
+  async getMyProfile(params: {
+    tenantId: string;
+    userId: string;
+  }): Promise<MyProfileResponseDto> {
+    const row = await this.usersRepository.findByIdForSelfProfile(
+      params.tenantId,
+      params.userId,
+    );
+    if (!row || row.deleted_at != null) {
+      throw new UnauthorizedException('Invalid or expired session');
+    }
+
+    return {
+      id: row.id,
+      name: row.name,
+      email: row.email,
+      phone: row.phone,
+      photoUrl: row.photo_url,
+      role: row.role,
+      walletBalance: Number(row.wallet_balance),
+      createdAt: row.created_at,
+    };
   }
 
   private toResponseDto(row: {

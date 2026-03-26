@@ -37,6 +37,20 @@ export type ForgotPasswordUserRow = {
   email: string;
 };
 
+/** Row for GET /users/me; includes deleted_at to distinguish soft-deleted users. */
+export type UserSelfProfileRow = {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  photo_url: string | null;
+  role: string;
+  /** pg `numeric` — use Number() when mapping to API */
+  wallet_balance: string;
+  created_at: Date;
+  deleted_at: Date | null;
+};
+
 @Injectable()
 export class UsersRepository extends BaseRepository {
   constructor(@Inject(DB_POOL) pool: Pool) {
@@ -52,6 +66,24 @@ export class UsersRepository extends BaseRepository {
       `SELECT id, tenant_id, name, email, role, is_active, deleted_at, created_at, updated_at
        FROM users
        WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
+      [userId, tenantId],
+    );
+    return rows[0] ?? null;
+  }
+
+  /**
+   * Loads user by JWT subject + tenant (no deleted filter).
+   * Caller must treat deleted_at or missing row as unauthorized for /users/me.
+   */
+  async findByIdForSelfProfile(
+    tenantId: string,
+    userId: string,
+  ): Promise<UserSelfProfileRow | null> {
+    const { rows } = await this.query<UserSelfProfileRow>(
+      this.pool,
+      `SELECT id, name, email, phone, photo_url, role, wallet_balance, created_at, deleted_at
+       FROM users
+       WHERE id = $1 AND tenant_id = $2`,
       [userId, tenantId],
     );
     return rows[0] ?? null;
