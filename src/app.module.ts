@@ -8,6 +8,7 @@ import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { AuthModule } from './auth/auth.module';
 import { envSchema } from './config/env.schema';
 import { DatabaseModule } from './database/db.module';
+import { AdminModule } from './admin/admin.module';
 import { TenantModule } from './tenant/tenant.module';
 import { UsersModule } from './users/users.module';
 
@@ -57,6 +58,7 @@ function getClientIp(req: Record<string, unknown>): string {
     TenantModule,
     AuthModule,
     UsersModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [

@@ -1,7 +1,7 @@
 ============================================================
 📁 SPORTBOOKER STRUCTURE
 ============================================================
-Generated: 3/22/2026, 3:10:49 PM
+Generated: 3/26/2026, 12:02:22 PM
 Location: /home/lenovo/Desktop/sportbooker
 ============================================================
 
@@ -44,19 +44,54 @@ Location: /home/lenovo/Desktop/sportbooker
 │   ├── 📄 012_add_tenant_slug_and_is_active.sql (1.08 KB)
 │   ├── 📄 013_add_tenant_timezone_and_user_roles.sql (592 B)
 │   ├── 📄 014_add_unique_venue_name_per_tenant.sql (280 B)
-│   └── 📄 015_add_unique_match_venue_scheduled.sql (231 B)
+│   ├── 📄 015_add_unique_match_venue_scheduled.sql (231 B)
+│   ├── 📄 016_add_user_name_phone.sql (538 B)
+│   ├── 📄 017_add_user_is_active.sql (299 B)
+│   ├── 📄 018_add_password_reset_used_at.sql (309 B)
+│   └── 📄 019_add_tenant_logo_cancel_cutoff_slug_length.sql (584 B)
 ├── 📁 seeds/
 │   ├── 📄 001_seed_tenants.sql (565 B)
-│   ├── 📄 002_seed_users.sql (1.49 KB)
+│   ├── 📄 002_seed_users.sql (1.6 KB)
 │   ├── 📄 003_seed_venues.sql (822 B)
 │   └── 📄 004_seed_matches.sql (1.49 KB)
-├── 📄 migrate.ts (2.18 KB)
-└── 📄 seed.ts (1.18 KB)
+├── 📄 migrate.ts (2.17 KB)
+├── 📄 pool-config-env.ts (1.65 KB)
+└── 📄 seed.ts (1.17 KB)
 ├── 📁 docs/
 ├── 📄 MIGRATIONS.md (18.96 KB)
-├── 📄 PROJECT_GUIDE.md (16.3 KB)
+├── 📄 PROJECT_GUIDE.md (16.37 KB)
 └── 📄 VALIDATION_AND_RESPONSE_ENVELOPE.md (12.67 KB)
+├── 📁 scripts/
 ├── 📁 src/
+├── 📁 admin/
+│   ├── 📄 admin-tenants.controller.ts (1.21 KB)
+│   └── 📄 admin.module.ts (364 B)
+├── 📁 auth/
+│   ├── 📁 decorators/
+│   │   ├── 📄 current-user.decorator.ts (587 B)
+│   │   ├── 📄 public.decorator.ts (332 B)
+│   │   ├── 📄 roles.decorator.ts (394 B)
+│   │   └── 📄 tenant.decorator.ts (562 B)
+│   ├── 📁 dto/
+│   │   ├── 📄 forgot-password.dto.ts (235 B)
+│   │   ├── 📄 login-response.dto.ts (392 B)
+│   │   ├── 📄 login.dto.ts (389 B)
+│   │   ├── 📄 refresh-response.dto.ts (371 B)
+│   │   ├── 📄 refresh.dto.ts (256 B)
+│   │   ├── 📄 register-response.dto.ts (371 B)
+│   │   ├── 📄 register.dto.ts (723 B)
+│   │   └── 📄 reset-password.dto.ts (411 B)
+│   ├── 📁 guards/
+│   │   ├── 📄 jwt-auth.guard.ts (1.09 KB)
+│   │   └── 📄 roles.guard.ts (1.38 KB)
+│   ├── 📁 strategies/
+│   │   └── 📄 jwt.strategy.ts (1.38 KB)
+│   ├── 📄 auth.controller.ts (5.21 KB)
+│   ├── 📄 auth.module.ts (1.07 KB)
+│   ├── 📄 auth.repository.ts (4.2 KB)
+│   ├── 📄 auth.service.ts (7.48 KB)
+│   ├── 📄 auth.types.ts (730 B)
+│   └── 📄 email.service.ts (1.09 KB)
 ├── 📁 common/
 │   ├── 📁 filters/
 │   │   └── 📄 http-exception.filter.ts (1.13 KB)
@@ -68,45 +103,70 @@ Location: /home/lenovo/Desktop/sportbooker
 │   ├── 📄 index.ts (110 B)
 │   └── 📄 tenant.types.ts (441 B)
 ├── 📁 config/
-│   └── 📄 env.schema.ts (1.93 KB)
+│   └── 📄 env.schema.ts (1.77 KB)
 ├── 📁 database/
+│   ├── 📄 base.repository.ts (1.4 KB)
 │   ├── 📄 database.constants.ts (419 B)
 │   ├── 📄 db.module.ts (562 B)
-│   ├── 📄 db.provider.ts (1.52 KB)
-│   ├── 📄 index.ts (147 B)
-│   └── 📄 pool-config.ts (2.93 KB)
+│   ├── 📄 db.provider.ts (2.47 KB)
+│   ├── 📄 index.ts (94 B)
+│   └── 📄 pool-config.ts (1.13 KB)
 ├── 📁 tenant/
-│   ├── 📄 tenant.integration.spec.ts (4.14 KB)
+│   ├── 📄 tenant.integration.spec.ts (4.2 KB)
 │   ├── 📄 tenant.middleware.spec.ts (1.42 KB)
 │   ├── 📄 tenant.middleware.ts (3.22 KB)
-│   └── 📄 tenant.module.ts (667 B)
+│   └── 📄 tenant.module.ts (798 B)
+├── 📁 tenants/
+│   ├── 📁 decorators/
+│   │   └── 📄 is-iana-timezone.decorator.ts (1014 B)
+│   ├── 📁 dto/
+│   │   ├── 📄 create-tenant.dto.ts (1.21 KB)
+│   │   └── 📄 tenant-response.dto.ts (480 B)
+│   ├── 📄 iana-timezones.ts (447 B)
+│   ├── 📄 tenants.constants.ts (308 B)
+│   ├── 📄 tenants.module.ts (274 B)
+│   ├── 📄 tenants.repository.ts (1.34 KB)
+│   ├── 📄 tenants.service.spec.ts (2.51 KB)
+│   └── 📄 tenants.service.ts (1.97 KB)
+├── 📁 users/
+│   ├── 📁 dto/
+│   │   ├── 📄 assign-role.dto.ts (482 B)
+│   │   └── 📄 user-response.dto.ts (409 B)
+│   ├── 📄 user-role.ts (809 B)
+│   ├── 📄 users.controller.ts (1.78 KB)
+│   ├── 📄 users.module.ts (432 B)
+│   ├── 📄 users.repository.ts (3.45 KB)
+│   ├── 📄 users.service.spec.ts (3.55 KB)
+│   └── 📄 users.service.ts (2.2 KB)
 ├── 📄 app.controller.spec.ts (617 B)
-├── 📄 app.controller.ts (1.2 KB)
+├── 📄 app.controller.ts (1.74 KB)
 ├── 📄 app.dto.ts (396 B)
-├── 📄 app.module.ts (706 B)
+├── 📄 app.module.ts (2.09 KB)
 ├── 📄 app.service.ts (142 B)
-└── 📄 main.ts (1.56 KB)
+└── 📄 main.ts (1.83 KB)
 ├── 📁 test/
 ├── 📁 helpers/
 │   └── 📄 mock-db-pool.ts (710 B)
 ├── 📄 jest-e2e.json (227 B)
 └── 📄 setup-e2e.ts (505 B)
 ├── 📄 .dockerignore (62 B)
-├── 📄 .env (374 B)
+├── 📄 .env (540 B)
 ├── 📄 .env.docker (207 B)
-├── 📄 .env.example (955 B)
+├── 📄 .env.example (808 B)
 ├── 📄 .gitignore (216 B)
+├── 📄 .npmrc (116 B)
 ├── 📄 .prettierrc (51 B)
-├── 📄 commitlint.config.js (469 B)
+├── 📄 commitlint.config.js (471 B)
 ├── 📄 docker-compose.yml (1013 B)
 ├── 📄 docker-entrypoint.sh (108 B)
 ├── 📄 Dockerfile (183 B)
 ├── 📄 eslint.config.mjs (985 B)
+├── 📄 FOLDER_STRUCTURE.txt (4.75 KB)
 ├── 📄 g.js (4.33 KB)
 ├── 📄 nest-cli.json (229 B)
-├── 📄 package-lock.json (389.37 KB)
-├── 📄 package.json (2.78 KB)
-├── 📄 pnpm-lock.yaml (224.64 KB)
+├── 📄 package-lock.json (405.68 KB)
+├── 📄 package.json (3.03 KB)
+├── 📄 pnpm-lock.yaml (235.39 KB)
 ├── 📄 README.md (6.17 KB)
 ├── 📄 tsconfig.build.json (97 B)
 └── 📄 tsconfig.json (715 B)
@@ -114,6 +174,6 @@ Location: /home/lenovo/Desktop/sportbooker
 ============================================================
 📊 SUMMARY
 ============================================================
-Total Directories: 16
-Total Files: 87
+Total Directories: 28
+Total Files: 135
 ============================================================
