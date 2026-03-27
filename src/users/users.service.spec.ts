@@ -1,9 +1,12 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
+import type { PoolClient } from 'pg';
+import { AuthRepository } from '../auth/auth.repository';
 import { UpdateMyProfileDto } from './dto/update-my-profile.dto';
 import { UserRole } from './user-role';
 import { UsersRepository } from './users.repository';
@@ -11,12 +14,17 @@ import { UsersService } from './users.service';
 
 describe('UsersService', () => {
   let service: UsersService;
+  let authRepository: jest.Mocked<
+    Pick<AuthRepository, 'runInTransaction' | 'deleteRefreshTokensByUserId'>
+  >;
   let repository: jest.Mocked<
     Pick<
       UsersRepository,
       | 'findByIdInTenant'
       | 'findByIdForSelfProfile'
+      | 'hasUpcomingConfirmedBookings'
       | 'patchSelfProfile'
+      | 'softDeleteAccount'
       | 'updateRole'
     >
   >;
@@ -38,13 +46,25 @@ describe('UsersService', () => {
   };
 
   beforeEach(() => {
+    authRepository = {
+      runInTransaction: jest.fn(
+        async <T>(fn: (client: PoolClient) => Promise<T>): Promise<T> =>
+          fn({} as PoolClient),
+      ) as jest.Mocked<AuthRepository>['runInTransaction'],
+      deleteRefreshTokensByUserId: jest.fn(),
+    };
     repository = {
       findByIdInTenant: jest.fn(),
       findByIdForSelfProfile: jest.fn(),
+      hasUpcomingConfirmedBookings: jest.fn(),
       patchSelfProfile: jest.fn(),
+      softDeleteAccount: jest.fn(),
       updateRole: jest.fn(),
     };
-    service = new UsersService(repository as unknown as UsersRepository);
+    service = new UsersService(
+      repository as unknown as UsersRepository,
+      authRepository as unknown as AuthRepository,
+    );
   });
 
   it('throws NotFound when user not in tenant', async () => {
@@ -293,6 +313,46 @@ describe('UsersService', () => {
           dto: { name: 'X' },
         }),
       ).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
+  describe('deleteMyAccount', () => {
+    it('returns message and runs soft delete + refresh token removal in transaction', async () => {
+      repository.hasUpcomingConfirmedBookings.mockResolvedValue(false);
+      repository.softDeleteAccount.mockResolvedValue(true);
+
+      const result = await service.deleteMyAccount({
+        tenantId,
+        userId: actorId,
+      });
+
+      expect(result).toEqual({ message: 'Account deleted' });
+      expect(authRepository.runInTransaction).toHaveBeenCalled();
+      expect(repository.hasUpcomingConfirmedBookings).toHaveBeenCalled();
+      expect(repository.softDeleteAccount).toHaveBeenCalled();
+      expect(authRepository.deleteRefreshTokensByUserId).toHaveBeenCalled();
+    });
+
+    it('throws Conflict when upcoming confirmed bookings exist', async () => {
+      repository.hasUpcomingConfirmedBookings.mockResolvedValue(true);
+
+      await expect(
+        service.deleteMyAccount({ tenantId, userId: actorId }),
+      ).rejects.toThrow(ConflictException);
+
+      expect(repository.softDeleteAccount).not.toHaveBeenCalled();
+      expect(authRepository.deleteRefreshTokensByUserId).not.toHaveBeenCalled();
+    });
+
+    it('throws Unauthorized when soft delete matches no row', async () => {
+      repository.hasUpcomingConfirmedBookings.mockResolvedValue(false);
+      repository.softDeleteAccount.mockResolvedValue(false);
+
+      await expect(
+        service.deleteMyAccount({ tenantId, userId: actorId }),
+      ).rejects.toThrow(UnauthorizedException);
+
+      expect(authRepository.deleteRefreshTokensByUserId).not.toHaveBeenCalled();
     });
   });
 });

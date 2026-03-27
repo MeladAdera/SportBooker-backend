@@ -90,6 +90,47 @@ export class UsersRepository extends BaseRepository {
   }
 
   /**
+   * Confirmed bookings for matches that are still in the future (blocks self-delete).
+   */
+  async hasUpcomingConfirmedBookings(
+    executor: DbExecutor,
+    userId: string,
+  ): Promise<boolean> {
+    const { rows } = await this.query<{ exists: boolean }>(
+      executor,
+      `SELECT EXISTS (
+        SELECT 1
+        FROM bookings b
+        INNER JOIN matches m ON m.id = b.match_id
+        WHERE b.user_id = $1
+          AND b.status = 'confirmed'
+          AND m.scheduled_at > NOW()
+      ) AS exists`,
+      [userId],
+    );
+    return rows[0]?.exists ?? false;
+  }
+
+  /**
+   * Soft-delete active user in tenant. Returns false if no matching active row.
+   */
+  async softDeleteAccount(
+    executor: DbExecutor,
+    tenantId: string,
+    userId: string,
+  ): Promise<boolean> {
+    const { rows } = await this.query<{ id: string }>(
+      executor,
+      `UPDATE users
+       SET deleted_at = NOW(), is_active = false, updated_at = NOW()
+       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
+       RETURNING id`,
+      [userId, tenantId],
+    );
+    return rows.length > 0;
+  }
+
+  /**
    * Partial update for current user profile. Omits columns not in `fields`.
    * When `fields` is empty, reloads profile without updating `updated_at`.
    */

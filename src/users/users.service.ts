@@ -1,21 +1,30 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
+import { AuthRepository } from '../auth/auth.repository';
 import type { AssignableRole } from './user-role';
 import { roleRank } from './user-role';
+import type { AccountDeletedResponseDto } from './dto/account-deleted-response.dto';
 import type { MyProfileResponseDto } from './dto/my-profile-response.dto';
 import type { UpdateMyProfileDto } from './dto/update-my-profile.dto';
 import type { UserResponseDto } from './dto/user-response.dto';
 import type { UserSelfProfileRow } from './users.repository';
 import { UsersRepository } from './users.repository';
 
+export const UPCOMING_BOOKINGS_BLOCK_DELETE_MESSAGE =
+  'You have confirmed upcoming bookings. Cancel them before deleting your account.';
+
 @Injectable()
 export class UsersService {
-  constructor(private readonly usersRepository: UsersRepository) {}
+  constructor(
+    private readonly usersRepository: UsersRepository,
+    private readonly authRepository: AuthRepository,
+  ) {}
 
   /**
    * Assigns a role to a user in the same tenant as the actor.
@@ -106,6 +115,38 @@ export class UsersService {
     }
 
     return this.toMyProfileDto(row);
+  }
+
+  /**
+   * Soft-deletes the account and clears refresh tokens in one transaction.
+   * Player-only at controller; 409 if confirmed future bookings exist.
+   */
+  async deleteMyAccount(params: {
+    tenantId: string;
+    userId: string;
+  }): Promise<AccountDeletedResponseDto> {
+    const { tenantId, userId } = params;
+
+    return this.authRepository.runInTransaction(async (client) => {
+      const hasUpcoming =
+        await this.usersRepository.hasUpcomingConfirmedBookings(client, userId);
+      if (hasUpcoming) {
+        throw new ConflictException(UPCOMING_BOOKINGS_BLOCK_DELETE_MESSAGE);
+      }
+
+      const updated = await this.usersRepository.softDeleteAccount(
+        client,
+        tenantId,
+        userId,
+      );
+      if (!updated) {
+        throw new UnauthorizedException('Invalid or expired session');
+      }
+
+      await this.authRepository.deleteRefreshTokensByUserId(client, userId);
+
+      return { message: 'Account deleted' };
+    });
   }
 
   private toMyProfileDto(row: UserSelfProfileRow): MyProfileResponseDto {

@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseUUIDPipe,
@@ -18,6 +19,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import type { AuthenticatedUser } from '../auth/auth.types';
+import { AccountDeletedResponseDto } from './dto/account-deleted-response.dto';
 import { AssignRoleDto } from './dto/assign-role.dto';
 import { MyProfileResponseDto } from './dto/my-profile-response.dto';
 import { UpdateMyProfileDto } from './dto/update-my-profile.dto';
@@ -94,6 +96,39 @@ export class UsersController {
       tenantId: user.tenantId,
       userId: user.sub,
       dto,
+    });
+  }
+
+  @Delete('me')
+  @Roles(UserRole.Player)
+  @ApiOperation({
+    summary: 'Delete my account (soft delete)',
+    description:
+      'Sets deleted_at and is_active=false, removes refresh tokens. Blocked if you have confirmed bookings for future matches.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Account soft-deleted',
+    type: AccountDeletedResponseDto,
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized or account already inactive/deleted',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Only players may call this endpoint',
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'Has confirmed upcoming bookings — cancel them first',
+  })
+  async deleteMyAccount(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<AccountDeletedResponseDto> {
+    return this.usersService.deleteMyAccount({
+      tenantId: user.tenantId,
+      userId: user.sub,
     });
   }
 
