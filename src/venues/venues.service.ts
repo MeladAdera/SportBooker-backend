@@ -4,6 +4,8 @@ import {
   Injectable,
 } from '@nestjs/common';
 import type { CreateVenueDto } from './dto/create-venue.dto';
+import type { ListVenuesQueryDto } from './dto/list-venues-query.dto';
+import type { VenueBrowseItemDto } from './dto/venue-browse-item.dto';
 import type { VenueResponseDto } from './dto/venue-response.dto';
 import { VenuesRepository, type VenueRow } from './venues.repository';
 import { VenuePictureStorage } from './venue-picture.storage';
@@ -16,6 +18,24 @@ export class VenuesService {
     private readonly venuesRepository: VenuesRepository,
     private readonly venuePictureStorage: VenuePictureStorage,
   ) {}
+
+  async listForBrowse(
+    tenantId: string,
+    query: ListVenuesQueryDto,
+  ): Promise<VenueBrowseItemDto[]> {
+    const rows = await this.venuesRepository.findActiveVenuesForBrowse(
+      tenantId,
+      query.sportType,
+    );
+    return rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      address: row.address,
+      mapsUrl: row.maps_url,
+      sportTypes: row.sport_types as VenueBrowseItemDto['sportTypes'],
+      isActive: row.is_active,
+    }));
+  }
 
   async create(
     tenantId: string,

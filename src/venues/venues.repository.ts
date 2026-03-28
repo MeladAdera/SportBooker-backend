@@ -17,6 +17,16 @@ export type VenueRow = {
   updated_at: Date;
 };
 
+/** Row for GET /venues browse (active venues only, limited columns). */
+export type VenueBrowseRow = {
+  id: string;
+  name: string;
+  address: string;
+  maps_url: string;
+  sport_types: string[];
+  is_active: boolean;
+};
+
 @Injectable()
 export class VenuesRepository extends BaseRepository {
   constructor(@Inject(DB_POOL) pool: Pool) {
@@ -70,5 +80,31 @@ export class VenuesRepository extends BaseRepository {
       throw new Error('insertVenue: expected one row');
     }
     return row;
+  }
+
+  /**
+   * Active venues for the tenant; optional sportType filters with sport_types @> ARRAY[$sport].
+   */
+  async findActiveVenuesForBrowse(
+    tenantId: string,
+    sportType: VenueSportType | undefined,
+  ): Promise<VenueBrowseRow[]> {
+    const { rows } = await this.query<VenueBrowseRow>(
+      this.pool,
+      `SELECT
+        id,
+        name,
+        address,
+        maps_url,
+        sport_types,
+        is_active
+      FROM venues
+      WHERE tenant_id = $1
+        AND is_active = true
+        AND ($2::text IS NULL OR sport_types @> ARRAY[$2]::text[])
+      ORDER BY name ASC`,
+      [tenantId, sportType ?? null],
+    );
+    return rows;
   }
 }

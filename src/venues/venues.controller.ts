@@ -2,9 +2,11 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Get,
   HttpCode,
   HttpStatus,
   Post,
+  Query,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -18,6 +20,7 @@ import {
   ApiConsumes,
   ApiCreatedResponse,
   ApiForbiddenResponse,
+  ApiOkResponse,
   ApiOperation,
   ApiTags,
   ApiUnauthorizedResponse,
@@ -29,6 +32,8 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { UserRole } from '../users/user-role';
 import { CreateVenueMultipartDto } from './dto/create-venue-multipart.dto';
 import { CreateVenueDto } from './dto/create-venue.dto';
+import { ListVenuesQueryDto } from './dto/list-venues-query.dto';
+import { VenueBrowseItemDto } from './dto/venue-browse-item.dto';
 import { VenueResponseDto } from './dto/venue-response.dto';
 import { parseSportTypesJson } from './parse-sport-types-json';
 import { VenuesService } from './venues.service';
@@ -52,12 +57,32 @@ const venuePictureMulterOptions = {
 @ApiBearerAuth()
 @Controller('venues')
 @UseGuards(RolesGuard)
-@Roles(UserRole.TenantAdmin, UserRole.TenantStaff)
 export class VenuesController {
   constructor(private readonly venuesService: VenuesService) {}
 
+  @Get()
+  @ApiOperation({
+    summary: 'List active venues',
+    description:
+      'Any authenticated user in the tenant. Returns active venues only; optional sportType filters venues that offer that sport.',
+  })
+  @ApiOkResponse({ type: VenueBrowseItemDto, isArray: true })
+  @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
+  async list(
+    @TenantDecorator() tenant: Tenant | undefined,
+    @Query() query: ListVenuesQueryDto,
+  ): Promise<VenueBrowseItemDto[]> {
+    if (!tenant) {
+      throw new BadRequestException(
+        'Tenant is required. Use Host header with tenant subdomain (e.g. acfc.localhost:3000).',
+      );
+    }
+    return this.venuesService.listForBrowse(tenant.id, query);
+  }
+
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @Roles(UserRole.TenantAdmin, UserRole.TenantStaff)
   @ApiOperation({
     summary: 'Create a venue (JSON)',
     description:
@@ -80,6 +105,7 @@ export class VenuesController {
 
   @Post('upload')
   @HttpCode(HttpStatus.CREATED)
+  @Roles(UserRole.TenantAdmin, UserRole.TenantStaff)
   @UseInterceptors(FileInterceptor('picture', venuePictureMulterOptions))
   @ApiConsumes('multipart/form-data')
   @ApiBody({

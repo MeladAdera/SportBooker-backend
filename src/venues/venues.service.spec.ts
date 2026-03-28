@@ -7,7 +7,9 @@ import { VenuesService } from './venues.service';
 
 describe('VenuesService', () => {
   let service: VenuesService;
-  let repository: jest.Mocked<Pick<VenuesRepository, 'insertVenue'>>;
+  let repository: jest.Mocked<
+    Pick<VenuesRepository, 'insertVenue' | 'findActiveVenuesForBrowse'>
+  >;
   let storage: jest.Mocked<Pick<VenuePictureStorage, 'saveVenuePicture'>>;
 
   const tenantId = '550e8400-e29b-41d4-a716-446655440000';
@@ -25,9 +27,19 @@ describe('VenuesService', () => {
     updated_at: new Date('2025-01-02T00:00:00.000Z'),
   };
 
+  const browseRow = {
+    id: '770e8400-e29b-41d4-a716-446655440002',
+    name: 'Browse Court',
+    address: '3 Lane',
+    maps_url: 'https://maps.example.com/browse',
+    sport_types: ['football'],
+    is_active: true,
+  };
+
   beforeEach(() => {
     repository = {
       insertVenue: jest.fn(),
+      findActiveVenuesForBrowse: jest.fn(),
     };
     storage = {
       saveVenuePicture: jest.fn(),
@@ -173,5 +185,41 @@ describe('VenuesService', () => {
         pictureUrl: 'http://localhost:3000/uploads/venues/t/u.jpg',
       }),
     );
+  });
+
+  describe('listForBrowse', () => {
+    it('returns mapped browse items without sportType filter', async () => {
+      repository.findActiveVenuesForBrowse.mockResolvedValue([browseRow]);
+
+      const result = await service.listForBrowse(tenantId, {});
+
+      expect(repository.findActiveVenuesForBrowse).toHaveBeenCalledWith(
+        tenantId,
+        undefined,
+      );
+      expect(result).toEqual([
+        {
+          id: browseRow.id,
+          name: browseRow.name,
+          address: browseRow.address,
+          mapsUrl: browseRow.maps_url,
+          sportTypes: ['football'],
+          isActive: true,
+        },
+      ]);
+    });
+
+    it('passes sportType to repository', async () => {
+      repository.findActiveVenuesForBrowse.mockResolvedValue([]);
+
+      await service.listForBrowse(tenantId, {
+        sportType: VenueSportType.Padel,
+      });
+
+      expect(repository.findActiveVenuesForBrowse).toHaveBeenCalledWith(
+        tenantId,
+        VenueSportType.Padel,
+      );
+    });
   });
 });
