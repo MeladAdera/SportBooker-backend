@@ -27,3 +27,6 @@ Thumbs.db
 # Test
 coverage/
 .nyc_output/
+
+# Local venue image uploads (multipart POST /venues/upload)
+uploads/

@@ -1,7 +1,9 @@
-import { NestFactory } from '@nestjs/core';
-import { ConfigService } from '@nestjs/config';
 import { ValidationPipe } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { join } from 'path';
 import { AppModule } from './app.module';
 import { createValidationExceptionFactory } from './common/pipes/validation-exception.factory';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
@@ -9,7 +11,8 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  app.useStaticAssets(join(process.cwd(), 'uploads'), { prefix: '/uploads/' });
 
   // Trust X-Forwarded-For when behind a reverse proxy (nginx, etc.)
   const httpAdapter = app.getHttpAdapter();

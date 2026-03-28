@@ -36,6 +36,8 @@ export const envSchema = Joi.object({
     'string.min': 'JWT_ACCESS_SECRET must be at least 32 characters.',
   }),
   JWT_ACCESS_EXPIRES_IN: Joi.string().default('15m'),
+  /** Base URL for absolute links to locally stored uploads (e.g. https://api.example.com). Defaults to http://localhost:{PORT}. */
+  PUBLIC_BASE_URL: Joi.string().optional().allow(''),
   STRIPE_SECRET_KEY: Joi.string().optional().allow(''),
   STRIPE_WEBHOOK_SECRET: Joi.string().optional().allow(''),
   SENDGRID_API_KEY: Joi.string().optional().allow(''),

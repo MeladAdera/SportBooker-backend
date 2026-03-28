@@ -5,14 +5,68 @@
 -- Run after 001_seed_tenants. Idempotent: ON CONFLICT DO NOTHING.
 -- =========================
 
-INSERT INTO venues (tenant_id, name, address, created_at, updated_at)
-SELECT t.id, v.name, v.address, now(), now()
+INSERT INTO venues (
+  tenant_id,
+  name,
+  address,
+  maps_url,
+  picture_url,
+  sport_types,
+  is_active,
+  created_at,
+  updated_at
+)
+SELECT
+  t.id,
+  v.name,
+  v.address,
+  v.maps_url,
+  v.picture_url,
+  v.sport_types,
+  true,
+  now(),
+  now()
 FROM (VALUES
-  ('acfc', 'ACFC Main Pitch', '1 Stadium Road, London'),
-  ('acfc', 'ACFC Tennis Courts', '2 Stadium Road, London'),
-  ('acfc', 'ACFC Basketball Hall', '3 Stadium Road, London'),
-  ('downtown', 'Downtown Football Arena', '100 Main St, New York'),
-  ('downtown', 'Downtown Volleyball Beach', '101 Main St, New York')
-) AS v(tenant_slug, name, address)
+  (
+    'acfc',
+    'ACFC Main Pitch',
+    '1 Stadium Road, London',
+    'https://maps.example.com/acfc-main',
+    'https://cdn.example.com/venues/acfc-main.jpg',
+    ARRAY['football', 'cricket']::TEXT[]
+  ),
+  (
+    'acfc',
+    'ACFC Tennis Courts',
+    '2 Stadium Road, London',
+    'https://maps.example.com/acfc-tennis',
+    NULL,
+    ARRAY['padel', 'generic']::TEXT[]
+  ),
+  (
+    'acfc',
+    'ACFC Basketball Hall',
+    '3 Stadium Road, London',
+    'https://maps.example.com/acfc-hall',
+    NULL,
+    ARRAY['generic']::TEXT[]
+  ),
+  (
+    'downtown',
+    'Downtown Football Arena',
+    '100 Main St, New York',
+    'https://maps.example.com/downtown-football',
+    NULL,
+    ARRAY['football']::TEXT[]
+  ),
+  (
+    'downtown',
+    'Downtown Volleyball Beach',
+    '101 Main St, New York',
+    'https://maps.example.com/downtown-beach',
+    NULL,
+    ARRAY['football', 'generic']::TEXT[]
+  )
+) AS v(tenant_slug, name, address, maps_url, picture_url, sport_types)
 JOIN tenants t ON t.slug = v.tenant_slug
 ON CONFLICT (tenant_id, name) DO NOTHING;
