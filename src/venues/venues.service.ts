@@ -6,9 +6,11 @@ import {
 } from '@nestjs/common';
 import type { CreateVenueDto } from './dto/create-venue.dto';
 import type { ListVenuesQueryDto } from './dto/list-venues-query.dto';
+import type { UpdateVenueDto } from './dto/update-venue.dto';
 import type { VenueBrowseItemDto } from './dto/venue-browse-item.dto';
 import type { VenueDetailDto } from './dto/venue-detail.dto';
 import type { VenueResponseDto } from './dto/venue-response.dto';
+import type { VenueSportType } from './venue-sport-type';
 import { VenuesRepository, type VenueRow } from './venues.repository';
 import { VenuePictureStorage } from './venue-picture.storage';
 
@@ -59,6 +61,89 @@ export class VenuesService {
       isActive: row.is_active,
       pictureUrl: row.picture_url,
     };
+  }
+
+  async updateForTenant(
+    tenantId: string,
+    venueId: string,
+    dto: UpdateVenueDto,
+  ): Promise<VenueResponseDto> {
+    if (!this.hasPatchFields(dto)) {
+      throw new BadRequestException('At least one field must be provided');
+    }
+    const patch = this.buildVenuePatch(dto);
+    try {
+      const row = await this.venuesRepository.patchVenueForTenant(
+        tenantId,
+        venueId,
+        patch,
+      );
+      if (!row) {
+        throw new NotFoundException('Venue not found');
+      }
+      return this.toResponseDto(row);
+    } catch (err: unknown) {
+      const pgErr = err as { code?: string };
+      if (pgErr?.code === PG_UNIQUE_VIOLATION) {
+        throw new ConflictException(
+          'A venue with this name already exists for this tenant',
+        );
+      }
+      throw err;
+    }
+  }
+
+  private hasPatchFields(dto: UpdateVenueDto): boolean {
+    return (
+      dto.name !== undefined ||
+      dto.address !== undefined ||
+      dto.mapsUrl !== undefined ||
+      dto.pictureUrl !== undefined ||
+      dto.sportTypes !== undefined ||
+      dto.isActive !== undefined
+    );
+  }
+
+  private buildVenuePatch(dto: UpdateVenueDto): {
+    name?: string;
+    address?: string;
+    mapsUrl?: string;
+    pictureUrl?: string | null;
+    sportTypes?: VenueSportType[];
+    isActive?: boolean;
+  } {
+    const patch: {
+      name?: string;
+      address?: string;
+      mapsUrl?: string;
+      pictureUrl?: string | null;
+      sportTypes?: VenueSportType[];
+      isActive?: boolean;
+    } = {};
+    if (dto.name !== undefined) {
+      patch.name = dto.name.trim();
+    }
+    if (dto.address !== undefined) {
+      patch.address = dto.address.trim();
+    }
+    if (dto.mapsUrl !== undefined) {
+      patch.mapsUrl = dto.mapsUrl;
+    }
+    if (dto.pictureUrl !== undefined) {
+      if (dto.pictureUrl === null) {
+        patch.pictureUrl = null;
+      } else {
+        const t = dto.pictureUrl.trim();
+        patch.pictureUrl = t.length > 0 ? t : null;
+      }
+    }
+    if (dto.sportTypes !== undefined) {
+      patch.sportTypes = dto.sportTypes;
+    }
+    if (dto.isActive !== undefined) {
+      patch.isActive = dto.isActive;
+    }
+    return patch;
   }
 
   async create(

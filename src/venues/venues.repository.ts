@@ -144,4 +144,71 @@ export class VenuesRepository extends BaseRepository {
     );
     return rows[0] ?? null;
   }
+
+  /**
+   * Partial update; only provided keys are set. Returns null if no row matched (wrong tenant or id).
+   */
+  async patchVenueForTenant(
+    tenantId: string,
+    venueId: string,
+    patch: {
+      name?: string;
+      address?: string;
+      mapsUrl?: string;
+      pictureUrl?: string | null;
+      sportTypes?: VenueSportType[];
+      isActive?: boolean;
+    },
+  ): Promise<VenueRow | null> {
+    const sets: string[] = [];
+    const values: unknown[] = [venueId, tenantId];
+    let idx = 3;
+
+    if (patch.name !== undefined) {
+      sets.push(`name = $${idx++}`);
+      values.push(patch.name);
+    }
+    if (patch.address !== undefined) {
+      sets.push(`address = $${idx++}`);
+      values.push(patch.address);
+    }
+    if (patch.mapsUrl !== undefined) {
+      sets.push(`maps_url = $${idx++}`);
+      values.push(patch.mapsUrl);
+    }
+    if (patch.pictureUrl !== undefined) {
+      sets.push(`picture_url = $${idx++}`);
+      values.push(patch.pictureUrl);
+    }
+    if (patch.sportTypes !== undefined) {
+      sets.push(`sport_types = $${idx++}::text[]`);
+      values.push(patch.sportTypes);
+    }
+    if (patch.isActive !== undefined) {
+      sets.push(`is_active = $${idx++}`);
+      values.push(patch.isActive);
+    }
+
+    sets.push(`updated_at = now()`);
+
+    const { rows } = await this.query<VenueRow>(
+      this.pool,
+      `UPDATE venues
+      SET ${sets.join(', ')}
+      WHERE id = $1 AND tenant_id = $2
+      RETURNING
+        id,
+        tenant_id,
+        name,
+        address,
+        maps_url,
+        picture_url,
+        sport_types,
+        is_active,
+        created_at,
+        updated_at`,
+      values,
+    );
+    return rows[0] ?? null;
+  }
 }

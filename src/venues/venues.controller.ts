@@ -7,6 +7,7 @@ import {
   HttpStatus,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
   UploadedFile,
@@ -36,6 +37,7 @@ import { UserRole } from '../users/user-role';
 import { CreateVenueMultipartDto } from './dto/create-venue-multipart.dto';
 import { CreateVenueDto } from './dto/create-venue.dto';
 import { ListVenuesQueryDto } from './dto/list-venues-query.dto';
+import { UpdateVenueDto } from './dto/update-venue.dto';
 import { VenueBrowseItemDto } from './dto/venue-browse-item.dto';
 import { VenueDetailDto } from './dto/venue-detail.dto';
 import { VenueResponseDto } from './dto/venue-response.dto';
@@ -103,6 +105,30 @@ export class VenuesController {
       );
     }
     return this.venuesService.getByIdForTenant(tenant.id, id);
+  }
+
+  @Patch(':id')
+  @Roles(UserRole.TenantAdmin, UserRole.TenantStaff)
+  @ApiOperation({
+    summary: 'Update a venue (partial)',
+    description:
+      'Tenant staff only. Send only fields to change; `is_active` can be toggled. Venue must belong to this tenant.',
+  })
+  @ApiOkResponse({ type: VenueResponseDto })
+  @ApiNotFoundResponse({ description: 'Venue not found for this tenant' })
+  @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
+  @ApiForbiddenResponse({ description: 'Insufficient role' })
+  async update(
+    @TenantDecorator() tenant: Tenant | undefined,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateVenueDto,
+  ): Promise<VenueResponseDto> {
+    if (!tenant) {
+      throw new BadRequestException(
+        'Tenant is required. Use Host header with tenant subdomain (e.g. acfc.localhost:3000).',
+      );
+    }
+    return this.venuesService.updateForTenant(tenant.id, id, dto);
   }
 
   @Post()

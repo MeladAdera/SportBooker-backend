@@ -17,6 +17,7 @@ describe('VenuesService', () => {
       | 'insertVenue'
       | 'findActiveVenuesForBrowse'
       | 'findActiveVenueByIdForTenant'
+      | 'patchVenueForTenant'
     >
   >;
   let storage: jest.Mocked<Pick<VenuePictureStorage, 'saveVenuePicture'>>;
@@ -50,6 +51,7 @@ describe('VenuesService', () => {
       insertVenue: jest.fn(),
       findActiveVenuesForBrowse: jest.fn(),
       findActiveVenueByIdForTenant: jest.fn(),
+      patchVenueForTenant: jest.fn(),
     };
     storage = {
       saveVenuePicture: jest.fn(),
@@ -237,6 +239,54 @@ describe('VenuesService', () => {
           '990e8400-e29b-41d4-a716-446655440004',
         ),
       ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('updateForTenant', () => {
+    const venueId = row.id;
+
+    it('throws BadRequest when body is empty', async () => {
+      await expect(
+        service.updateForTenant(tenantId, venueId, {}),
+      ).rejects.toThrow(BadRequestException);
+      expect(repository.patchVenueForTenant).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFound when venue not in tenant', async () => {
+      repository.patchVenueForTenant.mockResolvedValue(null);
+
+      await expect(
+        service.updateForTenant(tenantId, venueId, { name: 'New' }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('returns updated venue and maps conflict on unique name', async () => {
+      const updated = {
+        ...row,
+        name: 'Renamed',
+        updated_at: new Date('2025-01-03T00:00:00.000Z'),
+      };
+      repository.patchVenueForTenant.mockResolvedValue(updated);
+
+      const result = await service.updateForTenant(tenantId, venueId, {
+        name: 'Renamed',
+      });
+
+      expect(repository.patchVenueForTenant).toHaveBeenCalledWith(
+        tenantId,
+        venueId,
+        { name: 'Renamed' },
+      );
+      expect(result.name).toBe('Renamed');
+      expect(result.tenantId).toBe(tenantId);
+    });
+
+    it('throws ConflictException on unique violation', async () => {
+      repository.patchVenueForTenant.mockRejectedValue({ code: '23505' });
+
+      await expect(
+        service.updateForTenant(tenantId, venueId, { name: 'Dup' }),
+      ).rejects.toThrow(ConflictException);
     });
   });
 
