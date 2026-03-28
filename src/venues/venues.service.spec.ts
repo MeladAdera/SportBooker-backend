@@ -1,4 +1,8 @@
-import { BadRequestException, ConflictException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import type { Express } from 'express';
 import { VenueSportType } from './venue-sport-type';
 import { VenuePictureStorage } from './venue-picture.storage';
@@ -8,7 +12,12 @@ import { VenuesService } from './venues.service';
 describe('VenuesService', () => {
   let service: VenuesService;
   let repository: jest.Mocked<
-    Pick<VenuesRepository, 'insertVenue' | 'findActiveVenuesForBrowse'>
+    Pick<
+      VenuesRepository,
+      | 'insertVenue'
+      | 'findActiveVenuesForBrowse'
+      | 'findActiveVenueByIdForTenant'
+    >
   >;
   let storage: jest.Mocked<Pick<VenuePictureStorage, 'saveVenuePicture'>>;
 
@@ -40,6 +49,7 @@ describe('VenuesService', () => {
     repository = {
       insertVenue: jest.fn(),
       findActiveVenuesForBrowse: jest.fn(),
+      findActiveVenueByIdForTenant: jest.fn(),
     };
     storage = {
       saveVenuePicture: jest.fn(),
@@ -185,6 +195,49 @@ describe('VenuesService', () => {
         pictureUrl: 'http://localhost:3000/uploads/venues/t/u.jpg',
       }),
     );
+  });
+
+  describe('getByIdForTenant', () => {
+    const detailRow = {
+      id: '880e8400-e29b-41d4-a716-446655440003',
+      name: 'Detail Court',
+      address: '99 St',
+      maps_url: 'https://maps.example.com/detail',
+      sport_types: ['cricket'],
+      is_active: true,
+      picture_url: 'https://cdn.example.com/p.jpg',
+    };
+
+    it('returns venue detail when found in tenant', async () => {
+      repository.findActiveVenueByIdForTenant.mockResolvedValue(detailRow);
+
+      const result = await service.getByIdForTenant(tenantId, detailRow.id);
+
+      expect(repository.findActiveVenueByIdForTenant).toHaveBeenCalledWith(
+        detailRow.id,
+        tenantId,
+      );
+      expect(result).toEqual({
+        id: detailRow.id,
+        name: detailRow.name,
+        address: detailRow.address,
+        mapsUrl: detailRow.maps_url,
+        sportTypes: ['cricket'],
+        isActive: true,
+        pictureUrl: 'https://cdn.example.com/p.jpg',
+      });
+    });
+
+    it('throws NotFound when venue missing or other tenant', async () => {
+      repository.findActiveVenueByIdForTenant.mockResolvedValue(null);
+
+      await expect(
+        service.getByIdForTenant(
+          tenantId,
+          '990e8400-e29b-41d4-a716-446655440004',
+        ),
+      ).rejects.toThrow(NotFoundException);
+    });
   });
 
   describe('listForBrowse', () => {

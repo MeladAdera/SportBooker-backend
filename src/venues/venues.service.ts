@@ -2,10 +2,12 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  NotFoundException,
 } from '@nestjs/common';
 import type { CreateVenueDto } from './dto/create-venue.dto';
 import type { ListVenuesQueryDto } from './dto/list-venues-query.dto';
 import type { VenueBrowseItemDto } from './dto/venue-browse-item.dto';
+import type { VenueDetailDto } from './dto/venue-detail.dto';
 import type { VenueResponseDto } from './dto/venue-response.dto';
 import { VenuesRepository, type VenueRow } from './venues.repository';
 import { VenuePictureStorage } from './venue-picture.storage';
@@ -35,6 +37,28 @@ export class VenuesService {
       sportTypes: row.sport_types as VenueBrowseItemDto['sportTypes'],
       isActive: row.is_active,
     }));
+  }
+
+  async getByIdForTenant(
+    tenantId: string,
+    venueId: string,
+  ): Promise<VenueDetailDto> {
+    const row = await this.venuesRepository.findActiveVenueByIdForTenant(
+      venueId,
+      tenantId,
+    );
+    if (!row) {
+      throw new NotFoundException('Venue not found');
+    }
+    return {
+      id: row.id,
+      name: row.name,
+      address: row.address,
+      mapsUrl: row.maps_url,
+      sportTypes: row.sport_types as VenueDetailDto['sportTypes'],
+      isActive: row.is_active,
+      pictureUrl: row.picture_url,
+    };
   }
 
   async create(

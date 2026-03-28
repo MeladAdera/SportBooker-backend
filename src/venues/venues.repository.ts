@@ -27,6 +27,17 @@ export type VenueBrowseRow = {
   is_active: boolean;
 };
 
+/** Row for GET /venues/:id (active venue in tenant, includes picture). */
+export type VenueDetailRow = {
+  id: string;
+  name: string;
+  address: string;
+  maps_url: string;
+  sport_types: string[];
+  is_active: boolean;
+  picture_url: string | null;
+};
+
 @Injectable()
 export class VenuesRepository extends BaseRepository {
   constructor(@Inject(DB_POOL) pool: Pool) {
@@ -106,5 +117,31 @@ export class VenuesRepository extends BaseRepository {
       [tenantId, sportType ?? null],
     );
     return rows;
+  }
+
+  /**
+   * One active venue by id scoped to tenant (no cross-tenant access).
+   */
+  async findActiveVenueByIdForTenant(
+    venueId: string,
+    tenantId: string,
+  ): Promise<VenueDetailRow | null> {
+    const { rows } = await this.query<VenueDetailRow>(
+      this.pool,
+      `SELECT
+        id,
+        name,
+        address,
+        maps_url,
+        sport_types,
+        is_active,
+        picture_url
+      FROM venues
+      WHERE id = $1
+        AND tenant_id = $2
+        AND is_active = true`,
+      [venueId, tenantId],
+    );
+    return rows[0] ?? null;
   }
 }

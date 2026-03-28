@@ -5,6 +5,8 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Param,
+  ParseUUIDPipe,
   Post,
   Query,
   UploadedFile,
@@ -20,6 +22,7 @@ import {
   ApiConsumes,
   ApiCreatedResponse,
   ApiForbiddenResponse,
+  ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
@@ -34,6 +37,7 @@ import { CreateVenueMultipartDto } from './dto/create-venue-multipart.dto';
 import { CreateVenueDto } from './dto/create-venue.dto';
 import { ListVenuesQueryDto } from './dto/list-venues-query.dto';
 import { VenueBrowseItemDto } from './dto/venue-browse-item.dto';
+import { VenueDetailDto } from './dto/venue-detail.dto';
 import { VenueResponseDto } from './dto/venue-response.dto';
 import { parseSportTypesJson } from './parse-sport-types-json';
 import { VenuesService } from './venues.service';
@@ -78,6 +82,27 @@ export class VenuesController {
       );
     }
     return this.venuesService.listForBrowse(tenant.id, query);
+  }
+
+  @Get(':id')
+  @ApiOperation({
+    summary: 'Get venue details',
+    description:
+      'Any authenticated user. Returns one active venue for this tenant; 404 if missing, inactive, or not in this tenant.',
+  })
+  @ApiOkResponse({ type: VenueDetailDto })
+  @ApiNotFoundResponse({ description: 'Venue not found for this tenant' })
+  @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
+  async getById(
+    @TenantDecorator() tenant: Tenant | undefined,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<VenueDetailDto> {
+    if (!tenant) {
+      throw new BadRequestException(
+        'Tenant is required. Use Host header with tenant subdomain (e.g. acfc.localhost:3000).',
+      );
+    }
+    return this.venuesService.getByIdForTenant(tenant.id, id);
   }
 
   @Post()
