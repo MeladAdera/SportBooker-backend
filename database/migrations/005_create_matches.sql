@@ -8,13 +8,16 @@
 CREATE TABLE IF NOT EXISTS matches (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   venue_id UUID NOT NULL REFERENCES venues(id) ON DELETE CASCADE,
+  title VARCHAR(500) NOT NULL DEFAULT 'Match',
   sport_type sport_type NOT NULL,
   scheduled_at TIMESTAMPTZ NOT NULL,
+  duration_mins INT NOT NULL DEFAULT 60,
   price_per_player NUMERIC(10, 2) NOT NULL,
-  status match_status NOT NULL DEFAULT 'scheduled',
+  status match_status NOT NULL DEFAULT 'upcoming',
   max_players INT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT matches_duration_mins_positive CHECK (duration_mins >= 1)
 );
 
 CREATE INDEX IF NOT EXISTS idx_matches_venue_id ON matches(venue_id);

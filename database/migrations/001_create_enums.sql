@@ -21,6 +21,9 @@ BEGIN
     'basketball',
     'tennis',
     'volleyball',
+    'padel',
+    'cricket',
+    'generic',
     'other'
   );
 EXCEPTION
@@ -32,6 +35,7 @@ DO $$
 BEGIN
   CREATE TYPE match_status AS ENUM (
     'scheduled',
+    'upcoming',
     'in_progress',
     'completed',
     'cancelled'

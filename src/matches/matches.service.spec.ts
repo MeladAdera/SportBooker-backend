@@ -1,0 +1,174 @@
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
+import { VenueSportType } from '../venues/venue-sport-type';
+import { MatchesRepository } from './matches.repository';
+import { MatchesService } from './matches.service';
+import { VenuesRepository } from '../venues/venues.repository';
+
+describe('MatchesService', () => {
+  let service: MatchesService;
+  let matchesRepo: jest.Mocked<
+    Pick<MatchesRepository, 'hasOverlappingMatchAtVenue' | 'insertMatch'>
+  >;
+  let venuesRepo: jest.Mocked<
+    Pick<VenuesRepository, 'findVenueRowByIdForTenant'>
+  >;
+
+  const tenantId = '550e8400-e29b-41d4-a716-446655440000';
+  const venueId = '660e8400-e29b-41d4-a716-446655440001';
+
+  const matchRow = {
+    id: '770e8400-e29b-41d4-a716-446655440002',
+    venue_id: venueId,
+    title: 'Sunday league',
+    sport_type: 'football',
+    scheduled_at: new Date('2026-06-01T18:00:00.000Z'),
+    duration_mins: 90,
+    price_per_player: '15.50',
+    status: 'upcoming',
+    max_players: 22,
+    created_at: new Date('2026-01-01T12:00:00.000Z'),
+    updated_at: new Date('2026-01-01T12:00:00.000Z'),
+  };
+
+  beforeEach(() => {
+    matchesRepo = {
+      hasOverlappingMatchAtVenue: jest.fn().mockResolvedValue(false),
+      insertMatch: jest.fn(),
+    };
+    venuesRepo = {
+      findVenueRowByIdForTenant: jest.fn(),
+    };
+    service = new MatchesService(
+      matchesRepo as unknown as MatchesRepository,
+      venuesRepo as unknown as VenuesRepository,
+    );
+  });
+
+  const baseDto = {
+    title: 'Sunday league',
+    sportType: VenueSportType.Football,
+    venueId,
+    scheduledAt: '2026-06-01T18:00:00.000Z',
+    durationMins: 90,
+    maxCapacity: 22,
+    pricePerPlayer: 15.5,
+  };
+
+  it('creates a match when venue is active', async () => {
+    venuesRepo.findVenueRowByIdForTenant.mockResolvedValue({
+      id: venueId,
+      tenant_id: tenantId,
+      name: 'Pitch',
+      address: '1 Rd',
+      maps_url: 'https://m.test/x',
+      picture_url: null,
+      sport_types: ['football'],
+      is_active: true,
+      created_at: new Date(),
+      updated_at: new Date(),
+    });
+    matchesRepo.insertMatch.mockResolvedValue(matchRow);
+
+    const result = await service.createForTenant(tenantId, baseDto);
+
+    expect(matchesRepo.hasOverlappingMatchAtVenue).toHaveBeenCalledWith(
+      venueId,
+      new Date('2026-06-01T18:00:00.000Z'),
+      90,
+    );
+    expect(matchesRepo.insertMatch).toHaveBeenCalledWith({
+      venueId,
+      title: 'Sunday league',
+      sportType: VenueSportType.Football,
+      scheduledAt: new Date('2026-06-01T18:00:00.000Z'),
+      durationMins: 90,
+      maxPlayers: 22,
+      pricePerPlayer: 15.5,
+    });
+    expect(result).toMatchObject({
+      id: matchRow.id,
+      title: 'Sunday league',
+      sportType: VenueSportType.Football,
+      venueId,
+      durationMins: 90,
+      maxCapacity: 22,
+      pricePerPlayer: 15.5,
+      status: 'upcoming',
+    });
+    expect(result.scheduledAt).toBe('2026-06-01T18:00:00.000Z');
+  });
+
+  it('throws NotFoundException when venue is missing or not in tenant', async () => {
+    venuesRepo.findVenueRowByIdForTenant.mockResolvedValue(null);
+
+    await expect(service.createForTenant(tenantId, baseDto)).rejects.toThrow(
+      NotFoundException,
+    );
+    expect(matchesRepo.insertMatch).not.toHaveBeenCalled();
+  });
+
+  it('throws BadRequestException when venue is inactive', async () => {
+    venuesRepo.findVenueRowByIdForTenant.mockResolvedValue({
+      id: venueId,
+      tenant_id: tenantId,
+      name: 'Pitch',
+      address: '1 Rd',
+      maps_url: 'https://m.test/x',
+      picture_url: null,
+      sport_types: ['football'],
+      is_active: false,
+      created_at: new Date(),
+      updated_at: new Date(),
+    });
+
+    await expect(service.createForTenant(tenantId, baseDto)).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(matchesRepo.insertMatch).not.toHaveBeenCalled();
+  });
+
+  it('throws ConflictException when another match overlaps this time slot', async () => {
+    matchesRepo.hasOverlappingMatchAtVenue.mockResolvedValue(true);
+    venuesRepo.findVenueRowByIdForTenant.mockResolvedValue({
+      id: venueId,
+      tenant_id: tenantId,
+      name: 'Pitch',
+      address: '1 Rd',
+      maps_url: 'https://m.test/x',
+      picture_url: null,
+      sport_types: ['football'],
+      is_active: true,
+      created_at: new Date(),
+      updated_at: new Date(),
+    });
+
+    await expect(service.createForTenant(tenantId, baseDto)).rejects.toThrow(
+      ConflictException,
+    );
+    expect(matchesRepo.insertMatch).not.toHaveBeenCalled();
+  });
+
+  it('throws ConflictException on unique venue + scheduled time', async () => {
+    venuesRepo.findVenueRowByIdForTenant.mockResolvedValue({
+      id: venueId,
+      tenant_id: tenantId,
+      name: 'Pitch',
+      address: '1 Rd',
+      maps_url: 'https://m.test/x',
+      picture_url: null,
+      sport_types: ['football'],
+      is_active: true,
+      created_at: new Date(),
+      updated_at: new Date(),
+    });
+    matchesRepo.insertMatch.mockRejectedValue({ code: '23505' });
+
+    await expect(service.createForTenant(tenantId, baseDto)).rejects.toThrow(
+      ConflictException,
+    );
+  });
+});

@@ -181,7 +181,10 @@ export class VenuesRepository extends BaseRepository {
       WHERE venue_id = $1
         AND (
           status = 'in_progress'
-          OR (status = 'scheduled' AND scheduled_at >= now())
+          OR (
+            status IN ('scheduled', 'upcoming')
+            AND scheduled_at >= now()
+          )
         )`,
       [venueId],
     );
