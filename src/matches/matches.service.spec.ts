@@ -13,11 +13,14 @@ describe('MatchesService', () => {
   let matchesRepo: jest.Mocked<
     Pick<
       MatchesRepository,
+      | 'countConfirmedBookingsForMatch'
       | 'countUpcomingMatchesForBrowse'
       | 'findMatchDetailForTenant'
+      | 'findMatchRowForTenant'
       | 'findUpcomingMatchesForBrowse'
       | 'hasOverlappingMatchAtVenue'
       | 'insertMatch'
+      | 'patchMatchForTenant'
     >
   >;
   let venuesRepo: jest.Mocked<
@@ -43,11 +46,14 @@ describe('MatchesService', () => {
 
   beforeEach(() => {
     matchesRepo = {
+      countConfirmedBookingsForMatch: jest.fn(),
       countUpcomingMatchesForBrowse: jest.fn(),
       findMatchDetailForTenant: jest.fn(),
+      findMatchRowForTenant: jest.fn(),
       findUpcomingMatchesForBrowse: jest.fn(),
       hasOverlappingMatchAtVenue: jest.fn().mockResolvedValue(false),
       insertMatch: jest.fn(),
+      patchMatchForTenant: jest.fn(),
     };
     venuesRepo = {
       findVenueRowByIdForTenant: jest.fn(),
@@ -280,5 +286,64 @@ describe('MatchesService', () => {
     await expect(service.createForTenant(tenantId, baseDto)).rejects.toThrow(
       ConflictException,
     );
+  });
+
+  describe('updateForTenant', () => {
+    const matchId = matchRow.id;
+
+    it('patches title and returns updated match', async () => {
+      matchesRepo.findMatchRowForTenant.mockResolvedValue(matchRow);
+      matchesRepo.countConfirmedBookingsForMatch.mockResolvedValue(0);
+      matchesRepo.patchMatchForTenant.mockResolvedValue({
+        ...matchRow,
+        title: 'Renamed',
+      });
+
+      const result = await service.updateForTenant(tenantId, matchId, {
+        title: 'Renamed',
+      });
+
+      expect(matchesRepo.patchMatchForTenant).toHaveBeenCalledWith(
+        tenantId,
+        matchId,
+        { title: 'Renamed' },
+      );
+      expect(result.title).toBe('Renamed');
+    });
+
+    it('throws BadRequestException when no fields provided', async () => {
+      await expect(
+        service.updateForTenant(tenantId, matchId, {}),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('throws NotFoundException when match missing', async () => {
+      matchesRepo.findMatchRowForTenant.mockResolvedValue(null);
+
+      await expect(
+        service.updateForTenant(tenantId, matchId, { title: 'x' }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('throws BadRequestException when match is cancelled', async () => {
+      matchesRepo.findMatchRowForTenant.mockResolvedValue({
+        ...matchRow,
+        status: 'cancelled',
+      });
+
+      await expect(
+        service.updateForTenant(tenantId, matchId, { title: 'x' }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('throws ConflictException when maxCapacity below confirmed count', async () => {
+      matchesRepo.findMatchRowForTenant.mockResolvedValue(matchRow);
+      matchesRepo.countConfirmedBookingsForMatch.mockResolvedValue(5);
+
+      await expect(
+        service.updateForTenant(tenantId, matchId, { maxCapacity: 3 }),
+      ).rejects.toThrow(ConflictException);
+      expect(matchesRepo.patchMatchForTenant).not.toHaveBeenCalled();
+    });
   });
 });

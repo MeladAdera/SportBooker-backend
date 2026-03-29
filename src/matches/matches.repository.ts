@@ -202,10 +202,14 @@ export class MatchesRepository extends BaseRepository {
     return rows;
   }
 
+  /**
+   * @param excludeMatchId When set, that match is ignored (for updates).
+   */
   async hasOverlappingMatchAtVenue(
     venueId: string,
     scheduledAt: Date,
     durationMins: number,
+    excludeMatchId: string | null = null,
   ): Promise<boolean> {
     const { rows } = await this.query<{ exists: boolean }>(
       this.pool,
@@ -214,12 +218,125 @@ export class MatchesRepository extends BaseRepository {
         FROM matches m
         WHERE m.venue_id = $1
           AND m.status <> 'cancelled'
+          AND ($4::uuid IS NULL OR m.id <> $4)
           AND m.scheduled_at < ($2::timestamptz + ($3::int * interval '1 minute'))
           AND (m.scheduled_at + (m.duration_mins * interval '1 minute')) > $2::timestamptz
       ) AS exists`,
-      [venueId, scheduledAt, durationMins],
+      [venueId, scheduledAt, durationMins, excludeMatchId],
     );
     return rows[0]?.exists ?? false;
+  }
+
+  async findMatchRowForTenant(
+    matchId: string,
+    tenantId: string,
+  ): Promise<MatchRow | null> {
+    const { rows } = await this.query<MatchRow>(
+      this.pool,
+      `SELECT
+        m.id,
+        m.venue_id,
+        m.title,
+        m.sport_type,
+        m.scheduled_at,
+        m.duration_mins,
+        m.price_per_player,
+        m.status,
+        m.max_players,
+        m.created_at,
+        m.updated_at
+      FROM matches m
+      INNER JOIN venues v ON v.id = m.venue_id
+      WHERE m.id = $1 AND v.tenant_id = $2`,
+      [matchId, tenantId],
+    );
+    return rows[0] ?? null;
+  }
+
+  async countConfirmedBookingsForMatch(matchId: string): Promise<number> {
+    const { rows } = await this.query<{ count: string }>(
+      this.pool,
+      `SELECT COUNT(*)::text AS count
+      FROM bookings
+      WHERE match_id = $1 AND status = 'confirmed'`,
+      [matchId],
+    );
+    return parseInt(rows[0]?.count ?? '0', 10);
+  }
+
+  async patchMatchForTenant(
+    tenantId: string,
+    matchId: string,
+    patch: {
+      title?: string;
+      sportType?: string;
+      venueId?: string;
+      scheduledAt?: Date;
+      durationMins?: number;
+      maxPlayers?: number;
+      pricePerPlayer?: number;
+    },
+  ): Promise<MatchRow | null> {
+    const sets: string[] = [];
+    const values: unknown[] = [matchId, tenantId];
+    let idx = 3;
+
+    if (patch.title !== undefined) {
+      sets.push(`title = $${idx++}`);
+      values.push(patch.title);
+    }
+    if (patch.sportType !== undefined) {
+      sets.push(`sport_type = $${idx++}::sport_type`);
+      values.push(patch.sportType);
+    }
+    if (patch.venueId !== undefined) {
+      sets.push(`venue_id = $${idx++}`);
+      values.push(patch.venueId);
+    }
+    if (patch.scheduledAt !== undefined) {
+      sets.push(`scheduled_at = $${idx++}`);
+      values.push(patch.scheduledAt);
+    }
+    if (patch.durationMins !== undefined) {
+      sets.push(`duration_mins = $${idx++}`);
+      values.push(patch.durationMins);
+    }
+    if (patch.maxPlayers !== undefined) {
+      sets.push(`max_players = $${idx++}`);
+      values.push(patch.maxPlayers);
+    }
+    if (patch.pricePerPlayer !== undefined) {
+      sets.push(`price_per_player = $${idx++}`);
+      values.push(patch.pricePerPlayer);
+    }
+
+    if (sets.length === 0) {
+      return this.findMatchRowForTenant(matchId, tenantId);
+    }
+
+    sets.push(`updated_at = now()`);
+
+    const { rows } = await this.query<MatchRow>(
+      this.pool,
+      `UPDATE matches m
+      SET ${sets.join(', ')}
+      FROM venues v
+      WHERE m.id = $1 AND m.venue_id = v.id AND v.tenant_id = $2
+      RETURNING
+        m.id,
+        m.venue_id,
+        m.title,
+        m.sport_type,
+        m.scheduled_at,
+        m.duration_mins,
+        m.price_per_player,
+        m.status,
+        m.max_players,
+        m.created_at,
+        m.updated_at`,
+      values,
+    );
+    return rows[0] ?? null;
   }
 
   async insertMatch(input: {

@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import type { CreateMatchDto } from './dto/create-match.dto';
+import type { UpdateMatchDto } from './dto/update-match.dto';
 import type { MatchBrowseItemDto } from './dto/match-browse-item.dto';
 import type { MatchDetailResponseDto } from './dto/match-detail-response.dto';
 import type { MatchRosterPlayerDto } from './dto/match-roster-player.dto';
@@ -74,6 +75,129 @@ export class MatchesService {
       total,
       items: rows.map((row) => this.toBrowseItemDto(row)),
     };
+  }
+
+  async updateForTenant(
+    tenantId: string,
+    matchId: string,
+    dto: UpdateMatchDto,
+  ): Promise<MatchResponseDto> {
+    if (!this.hasMatchPatchFields(dto)) {
+      throw new BadRequestException('At least one field must be provided');
+    }
+
+    const existing = await this.matchesRepository.findMatchRowForTenant(
+      matchId,
+      tenantId,
+    );
+    if (!existing) {
+      throw new NotFoundException('Match not found');
+    }
+    if (existing.status === 'cancelled') {
+      throw new BadRequestException('Cannot update a cancelled match');
+    }
+
+    const confirmed =
+      await this.matchesRepository.countConfirmedBookingsForMatch(matchId);
+    if (dto.maxCapacity !== undefined && dto.maxCapacity < confirmed) {
+      throw new ConflictException(
+        `Capacity cannot be lower than the number of confirmed bookings (${confirmed})`,
+      );
+    }
+
+    let effectiveVenueId = existing.venue_id;
+    if (dto.venueId !== undefined) {
+      effectiveVenueId = dto.venueId;
+      const venue = await this.venuesRepository.findVenueRowByIdForTenant(
+        dto.venueId,
+        tenantId,
+      );
+      if (!venue) {
+        throw new NotFoundException('Venue not found');
+      }
+      if (!venue.is_active) {
+        throw new BadRequestException('Venue is inactive');
+      }
+    }
+
+    const effectiveScheduledAt =
+      dto.scheduledAt !== undefined
+        ? new Date(dto.scheduledAt)
+        : existing.scheduled_at;
+    const effectiveDurationMins =
+      dto.durationMins !== undefined
+        ? dto.durationMins
+        : existing.duration_mins;
+
+    const scheduleOrVenueChanged =
+      dto.scheduledAt !== undefined ||
+      dto.durationMins !== undefined ||
+      dto.venueId !== undefined;
+
+    if (scheduleOrVenueChanged) {
+      const overlaps = await this.matchesRepository.hasOverlappingMatchAtVenue(
+        effectiveVenueId,
+        effectiveScheduledAt,
+        effectiveDurationMins,
+        matchId,
+      );
+      if (overlaps) {
+        throw new ConflictException(
+          'This venue already has a match that overlaps the requested time slot',
+        );
+      }
+    }
+
+    const patch: {
+      title?: string;
+      sportType?: string;
+      venueId?: string;
+      scheduledAt?: Date;
+      durationMins?: number;
+      maxPlayers?: number;
+      pricePerPlayer?: number;
+    } = {};
+    if (dto.title !== undefined) {
+      patch.title = dto.title.trim();
+    }
+    if (dto.sportType !== undefined) {
+      patch.sportType = dto.sportType;
+    }
+    if (dto.venueId !== undefined) {
+      patch.venueId = dto.venueId;
+    }
+    if (dto.scheduledAt !== undefined) {
+      patch.scheduledAt = new Date(dto.scheduledAt);
+    }
+    if (dto.durationMins !== undefined) {
+      patch.durationMins = dto.durationMins;
+    }
+    if (dto.maxCapacity !== undefined) {
+      patch.maxPlayers = dto.maxCapacity;
+    }
+    if (dto.pricePerPlayer !== undefined) {
+      patch.pricePerPlayer = dto.pricePerPlayer;
+    }
+
+    try {
+      const row = await this.matchesRepository.patchMatchForTenant(
+        tenantId,
+        matchId,
+        patch,
+      );
+      if (!row) {
+        throw new NotFoundException('Match not found');
+      }
+      return this.toResponseDto(row);
+    } catch (err: unknown) {
+      const pgErr = err as { code?: string };
+      if (pgErr?.code === PG_UNIQUE_VIOLATION) {
+        throw new ConflictException(
+          'A match already exists for this venue at the scheduled time',
+        );
+      }
+      throw err;
+    }
   }
 
   async createForTenant(
@@ -174,6 +298,18 @@ export class MatchesService {
       status: row.status,
       venueName: row.venue_name,
     };
+  }
+
+  private hasMatchPatchFields(dto: UpdateMatchDto): boolean {
+    return (
+      dto.title !== undefined ||
+      dto.sportType !== undefined ||
+      dto.venueId !== undefined ||
+      dto.scheduledAt !== undefined ||
+      dto.durationMins !== undefined ||
+      dto.maxCapacity !== undefined ||
+      dto.pricePerPlayer !== undefined
+    );
   }
 
   private toResponseDto(row: MatchRow): MatchResponseDto {
