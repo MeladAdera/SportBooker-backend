@@ -18,6 +18,9 @@ describe('VenuesService', () => {
       | 'findActiveVenuesForBrowse'
       | 'findActiveVenueByIdForTenant'
       | 'patchVenueForTenant'
+      | 'findVenueRowByIdForTenant'
+      | 'countBlockingMatchesForVenue'
+      | 'deactivateVenueForTenant'
     >
   >;
   let storage: jest.Mocked<Pick<VenuePictureStorage, 'saveVenuePicture'>>;
@@ -52,6 +55,9 @@ describe('VenuesService', () => {
       findActiveVenuesForBrowse: jest.fn(),
       findActiveVenueByIdForTenant: jest.fn(),
       patchVenueForTenant: jest.fn(),
+      findVenueRowByIdForTenant: jest.fn(),
+      countBlockingMatchesForVenue: jest.fn(),
+      deactivateVenueForTenant: jest.fn(),
     };
     storage = {
       saveVenuePicture: jest.fn(),
@@ -239,6 +245,66 @@ describe('VenuesService', () => {
           '990e8400-e29b-41d4-a716-446655440004',
         ),
       ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('deactivateForTenant', () => {
+    const venueId = row.id;
+
+    it('throws NotFound when venue not in tenant', async () => {
+      repository.findVenueRowByIdForTenant.mockResolvedValue(null);
+
+      await expect(
+        service.deactivateForTenant(tenantId, venueId),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('returns already inactive without counting matches', async () => {
+      repository.findVenueRowByIdForTenant.mockResolvedValue({
+        ...row,
+        is_active: false,
+      });
+
+      const result = await service.deactivateForTenant(tenantId, venueId);
+
+      expect(result).toMatchObject({
+        message: 'Venue was already inactive',
+        venueId,
+        alreadyInactive: true,
+      });
+      expect(repository.countBlockingMatchesForVenue).not.toHaveBeenCalled();
+      expect(repository.deactivateVenueForTenant).not.toHaveBeenCalled();
+    });
+
+    it('throws Conflict when blocking matches exist', async () => {
+      repository.findVenueRowByIdForTenant.mockResolvedValue(row);
+      repository.countBlockingMatchesForVenue.mockResolvedValue(3);
+
+      await expect(
+        service.deactivateForTenant(tenantId, venueId),
+      ).rejects.toThrow(ConflictException);
+
+      expect(repository.deactivateVenueForTenant).not.toHaveBeenCalled();
+    });
+
+    it('deactivates when no blocking matches', async () => {
+      repository.findVenueRowByIdForTenant.mockResolvedValue(row);
+      repository.countBlockingMatchesForVenue.mockResolvedValue(0);
+      repository.deactivateVenueForTenant.mockResolvedValue({
+        ...row,
+        is_active: false,
+      });
+
+      const result = await service.deactivateForTenant(tenantId, venueId);
+
+      expect(result).toEqual({
+        message: 'Venue deactivated',
+        venueId: row.id,
+      });
+      expect(repository.deactivateVenueForTenant).toHaveBeenCalledWith(
+        tenantId,
+        venueId,
+      );
     });
   });
 

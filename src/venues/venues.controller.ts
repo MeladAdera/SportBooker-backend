@@ -20,6 +20,7 @@ import { memoryStorage } from 'multer';
 import {
   ApiBearerAuth,
   ApiBody,
+  ApiConflictResponse,
   ApiConsumes,
   ApiCreatedResponse,
   ApiForbiddenResponse,
@@ -39,6 +40,7 @@ import { CreateVenueDto } from './dto/create-venue.dto';
 import { ListVenuesQueryDto } from './dto/list-venues-query.dto';
 import { UpdateVenueDto } from './dto/update-venue.dto';
 import { VenueBrowseItemDto } from './dto/venue-browse-item.dto';
+import { VenueDeactivatedResponseDto } from './dto/venue-deactivated-response.dto';
 import { VenueDetailDto } from './dto/venue-detail.dto';
 import { VenueResponseDto } from './dto/venue-response.dto';
 import { parseSportTypesJson } from './parse-sport-types-json';
@@ -129,6 +131,36 @@ export class VenuesController {
       );
     }
     return this.venuesService.updateForTenant(tenant.id, id, dto);
+  }
+
+  @Post(':id/deactivate')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.TenantAdmin)
+  @ApiOperation({
+    summary: 'Deactivate a venue',
+    description:
+      'Tenant admin only. Sets is_active to false (no hard delete). Blocked with 409 if the venue has scheduled (upcoming) or in-progress matches.',
+  })
+  @ApiOkResponse({ type: VenueDeactivatedResponseDto })
+  @ApiNotFoundResponse({ description: 'Venue not found for this tenant' })
+  @ApiConflictResponse({
+    description:
+      'Venue has upcoming or ongoing matches; response body includes affectedMatches count',
+  })
+  @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
+  @ApiForbiddenResponse({
+    description: 'Insufficient role (tenant admin only)',
+  })
+  async deactivate(
+    @TenantDecorator() tenant: Tenant | undefined,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<VenueDeactivatedResponseDto> {
+    if (!tenant) {
+      throw new BadRequestException(
+        'Tenant is required. Use Host header with tenant subdomain (e.g. acfc.localhost:3000).',
+      );
+    }
+    return this.venuesService.deactivateForTenant(tenant.id, id);
   }
 
   @Post()

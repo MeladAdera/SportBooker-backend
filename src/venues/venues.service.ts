@@ -9,6 +9,7 @@ import type { ListVenuesQueryDto } from './dto/list-venues-query.dto';
 import type { UpdateVenueDto } from './dto/update-venue.dto';
 import type { VenueBrowseItemDto } from './dto/venue-browse-item.dto';
 import type { VenueDetailDto } from './dto/venue-detail.dto';
+import type { VenueDeactivatedResponseDto } from './dto/venue-deactivated-response.dto';
 import type { VenueResponseDto } from './dto/venue-response.dto';
 import type { VenueSportType } from './venue-sport-type';
 import { VenuesRepository, type VenueRow } from './venues.repository';
@@ -91,6 +92,45 @@ export class VenuesService {
       }
       throw err;
     }
+  }
+
+  async deactivateForTenant(
+    tenantId: string,
+    venueId: string,
+  ): Promise<VenueDeactivatedResponseDto> {
+    const existing = await this.venuesRepository.findVenueRowByIdForTenant(
+      venueId,
+      tenantId,
+    );
+    if (!existing) {
+      throw new NotFoundException('Venue not found');
+    }
+    if (!existing.is_active) {
+      return {
+        message: 'Venue was already inactive',
+        venueId: existing.id,
+        alreadyInactive: true,
+      };
+    }
+    const blocking =
+      await this.venuesRepository.countBlockingMatchesForVenue(venueId);
+    if (blocking > 0) {
+      throw new ConflictException({
+        message: `Cannot deactivate venue with ${blocking} upcoming or ongoing match(es)`,
+        affectedMatches: blocking,
+      });
+    }
+    const row = await this.venuesRepository.deactivateVenueForTenant(
+      tenantId,
+      venueId,
+    );
+    if (!row) {
+      throw new NotFoundException('Venue not found');
+    }
+    return {
+      message: 'Venue deactivated',
+      venueId: row.id,
+    };
   }
 
   private hasPatchFields(dto: UpdateVenueDto): boolean {

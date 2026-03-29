@@ -145,6 +145,77 @@ export class VenuesRepository extends BaseRepository {
     return rows[0] ?? null;
   }
 
+  /** Any venue row in the tenant (active or not), for admin flows. */
+  async findVenueRowByIdForTenant(
+    venueId: string,
+    tenantId: string,
+  ): Promise<VenueRow | null> {
+    const { rows } = await this.query<VenueRow>(
+      this.pool,
+      `SELECT
+        id,
+        tenant_id,
+        name,
+        address,
+        maps_url,
+        picture_url,
+        sport_types,
+        is_active,
+        created_at,
+        updated_at
+      FROM venues
+      WHERE id = $1 AND tenant_id = $2`,
+      [venueId, tenantId],
+    );
+    return rows[0] ?? null;
+  }
+
+  /**
+   * Matches that block venue deactivation: in progress, or scheduled and not yet started (upcoming).
+   */
+  async countBlockingMatchesForVenue(venueId: string): Promise<number> {
+    const { rows } = await this.query<{ count: string }>(
+      this.pool,
+      `SELECT COUNT(*)::text AS count
+      FROM matches
+      WHERE venue_id = $1
+        AND (
+          status = 'in_progress'
+          OR (status = 'scheduled' AND scheduled_at >= now())
+        )`,
+      [venueId],
+    );
+    return parseInt(rows[0]?.count ?? '0', 10);
+  }
+
+  /** Sets is_active = false; returns null if venue missing or wrong tenant. */
+  async deactivateVenueForTenant(
+    tenantId: string,
+    venueId: string,
+  ): Promise<VenueRow | null> {
+    const { rows } = await this.query<VenueRow>(
+      this.pool,
+      `UPDATE venues
+      SET is_active = false, updated_at = now()
+      WHERE id = $1
+        AND tenant_id = $2
+        AND is_active = true
+      RETURNING
+        id,
+        tenant_id,
+        name,
+        address,
+        maps_url,
+        picture_url,
+        sport_types,
+        is_active,
+        created_at,
+        updated_at`,
+      [venueId, tenantId],
+    );
+    return rows[0] ?? null;
+  }
+
   /**
    * Partial update; only provided keys are set. Returns null if no row matched (wrong tenant or id).
    */
