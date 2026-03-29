@@ -17,6 +17,23 @@ export type MatchRow = {
   updated_at: Date;
 };
 
+/** Row for GET /matches/:id (tenant-scoped). */
+export type MatchDetailRow = {
+  id: string;
+  venue_id: string;
+  title: string;
+  sport_type: string;
+  scheduled_at: Date;
+  duration_mins: number;
+  price_per_player: string;
+  status: string;
+  max_players: number | null;
+  created_at: Date;
+  updated_at: Date;
+  spots_remaining: number;
+  roster: unknown;
+};
+
 /** Row for player browse list (upcoming matches). */
 export type MatchBrowseRow = {
   id: string;
@@ -84,6 +101,64 @@ export class MatchesRepository extends BaseRepository {
       ],
     );
     return parseInt(rows[0]?.count ?? '0', 10);
+  }
+
+  /**
+   * Match in tenant with spots + confirmed roster (pending bookings excluded).
+   * Returns null if match id wrong or venue not in tenant.
+   */
+  async findMatchDetailForTenant(
+    matchId: string,
+    tenantId: string,
+  ): Promise<MatchDetailRow | null> {
+    const { rows } = await this.query<MatchDetailRow>(
+      this.pool,
+      `SELECT
+        m.id,
+        m.venue_id,
+        m.title,
+        m.sport_type,
+        m.scheduled_at,
+        m.duration_mins,
+        m.price_per_player,
+        m.status,
+        m.max_players,
+        m.created_at,
+        m.updated_at,
+        GREATEST(
+          0,
+          COALESCE(m.max_players, 0) - COALESCE(bc.confirmed_count, 0)
+        ) AS spots_remaining,
+        COALESCE(
+          (
+            SELECT json_agg(
+              json_build_object(
+                'userId', u.id::text,
+                'name', u.name,
+                'photoUrl', u.photo_url
+              )
+              ORDER BY u.name
+            )
+            FROM bookings b
+            INNER JOIN users u ON u.id = b.user_id
+            WHERE b.match_id = m.id
+              AND b.status = 'confirmed'
+              AND u.deleted_at IS NULL
+          ),
+          '[]'::json
+        ) AS roster
+      FROM matches m
+      INNER JOIN venues v ON v.id = m.venue_id
+      LEFT JOIN (
+        SELECT match_id, COUNT(*)::int AS confirmed_count
+        FROM bookings
+        WHERE status = 'confirmed'
+        GROUP BY match_id
+      ) bc ON bc.match_id = m.id
+      WHERE m.id = $1 AND v.tenant_id = $2`,
+      [matchId, tenantId],
+    );
+    return rows[0] ?? null;
   }
 
   async findUpcomingMatchesForBrowse(params: {

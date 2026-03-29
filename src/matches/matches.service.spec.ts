@@ -14,6 +14,7 @@ describe('MatchesService', () => {
     Pick<
       MatchesRepository,
       | 'countUpcomingMatchesForBrowse'
+      | 'findMatchDetailForTenant'
       | 'findUpcomingMatchesForBrowse'
       | 'hasOverlappingMatchAtVenue'
       | 'insertMatch'
@@ -43,6 +44,7 @@ describe('MatchesService', () => {
   beforeEach(() => {
     matchesRepo = {
       countUpcomingMatchesForBrowse: jest.fn(),
+      findMatchDetailForTenant: jest.fn(),
       findUpcomingMatchesForBrowse: jest.fn(),
       hasOverlappingMatchAtVenue: jest.fn().mockResolvedValue(false),
       insertMatch: jest.fn(),
@@ -103,6 +105,57 @@ describe('MatchesService', () => {
       maxCapacity: 22,
       status: 'upcoming',
     });
+  });
+
+  it('returns match detail with roster and spotsRemaining', async () => {
+    const matchId = '770e8400-e29b-41d4-a716-446655440002';
+    const playerId = '880e8400-e29b-41d4-a716-446655440003';
+    matchesRepo.findMatchDetailForTenant.mockResolvedValue({
+      id: matchId,
+      venue_id: venueId,
+      title: 'Cup',
+      sport_type: 'football',
+      scheduled_at: new Date('2026-07-01T12:00:00.000Z'),
+      duration_mins: 60,
+      price_per_player: '12.00',
+      status: 'upcoming',
+      max_players: 10,
+      created_at: new Date(),
+      updated_at: new Date(),
+      spots_remaining: 8,
+      roster: [
+        {
+          userId: playerId,
+          name: 'Alex',
+          photoUrl: 'https://cdn.example.com/p.jpg',
+        },
+      ],
+    });
+
+    const result = await service.getDetailForTenant(tenantId, matchId);
+
+    expect(matchesRepo.findMatchDetailForTenant).toHaveBeenCalledWith(
+      matchId,
+      tenantId,
+    );
+    expect(result.spotsRemaining).toBe(8);
+    expect(result.roster).toHaveLength(1);
+    expect(result.roster[0]).toEqual({
+      userId: playerId,
+      name: 'Alex',
+      photoUrl: 'https://cdn.example.com/p.jpg',
+    });
+  });
+
+  it('throws NotFoundException when match detail not in tenant', async () => {
+    matchesRepo.findMatchDetailForTenant.mockResolvedValue(null);
+
+    await expect(
+      service.getDetailForTenant(
+        tenantId,
+        '770e8400-e29b-41d4-a716-446655440002',
+      ),
+    ).rejects.toThrow(NotFoundException);
   });
 
   const baseDto = {

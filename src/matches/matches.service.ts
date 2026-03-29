@@ -6,12 +6,15 @@ import {
 } from '@nestjs/common';
 import type { CreateMatchDto } from './dto/create-match.dto';
 import type { MatchBrowseItemDto } from './dto/match-browse-item.dto';
+import type { MatchDetailResponseDto } from './dto/match-detail-response.dto';
+import type { MatchRosterPlayerDto } from './dto/match-roster-player.dto';
 import type { ListMatchesQueryDto } from './dto/list-matches-query.dto';
 import type { MatchResponseDto } from './dto/match-response.dto';
 import type { PaginatedMatchesListDto } from './dto/paginated-matches-list.dto';
 import {
   MatchesRepository,
   type MatchBrowseRow,
+  type MatchDetailRow,
   type MatchRow,
 } from './matches.repository';
 import { VenuesRepository } from '../venues/venues.repository';
@@ -25,6 +28,20 @@ export class MatchesService {
     private readonly matchesRepository: MatchesRepository,
     private readonly venuesRepository: VenuesRepository,
   ) {}
+
+  async getDetailForTenant(
+    tenantId: string,
+    matchId: string,
+  ): Promise<MatchDetailResponseDto> {
+    const row = await this.matchesRepository.findMatchDetailForTenant(
+      matchId,
+      tenantId,
+    );
+    if (!row) {
+      throw new NotFoundException('Match not found');
+    }
+    return this.toDetailDto(row);
+  }
 
   async listUpcomingForTenant(
     tenantId: string,
@@ -106,6 +123,42 @@ export class MatchesService {
       }
       throw err;
     }
+  }
+
+  private toDetailDto(row: MatchDetailRow): MatchDetailResponseDto {
+    return {
+      id: row.id,
+      title: row.title,
+      sportType: row.sport_type as VenueSportType,
+      venueId: row.venue_id,
+      scheduledAt: row.scheduled_at.toISOString(),
+      durationMins: row.duration_mins,
+      maxCapacity: row.max_players ?? 0,
+      pricePerPlayer: Number(row.price_per_player),
+      status: row.status,
+      spotsRemaining: Number(row.spots_remaining),
+      roster: MatchesService.parseRoster(row.roster),
+      createdAt: row.created_at.toISOString(),
+      updatedAt: row.updated_at.toISOString(),
+    };
+  }
+
+  private static parseRoster(raw: unknown): MatchRosterPlayerDto[] {
+    if (!Array.isArray(raw)) {
+      return [];
+    }
+    return raw.map((item) => {
+      const r = item as {
+        userId?: string;
+        name?: string;
+        photoUrl?: string | null;
+      };
+      return {
+        userId: String(r.userId ?? ''),
+        name: String(r.name ?? ''),
+        photoUrl: r.photoUrl ?? null,
+      };
+    });
   }
 
   private toBrowseItemDto(row: MatchBrowseRow): MatchBrowseItemDto {

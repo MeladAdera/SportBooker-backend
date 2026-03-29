@@ -5,6 +5,8 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Param,
+  ParseUUIDPipe,
   Post,
   Query,
   UseGuards,
@@ -28,6 +30,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { UserRole } from '../users/user-role';
 import { CreateMatchDto } from './dto/create-match.dto';
 import { ListMatchesQueryDto } from './dto/list-matches-query.dto';
+import { MatchDetailResponseDto } from './dto/match-detail-response.dto';
 import { MatchResponseDto } from './dto/match-response.dto';
 import { PaginatedMatchesListDto } from './dto/paginated-matches-list.dto';
 import { MatchesService } from './matches.service';
@@ -57,6 +60,27 @@ export class MatchesController {
       );
     }
     return this.matchesService.listUpcomingForTenant(tenant.id, query);
+  }
+
+  @Get(':id')
+  @ApiOperation({
+    summary: 'Get match details',
+    description:
+      'Any authenticated user in the tenant. Includes confirmed player roster only (pending / waitlist excluded).',
+  })
+  @ApiOkResponse({ type: MatchDetailResponseDto })
+  @ApiNotFoundResponse({ description: 'Match not found for this tenant' })
+  @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
+  async getById(
+    @TenantDecorator() tenant: Tenant | undefined,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<MatchDetailResponseDto> {
+    if (!tenant) {
+      throw new BadRequestException(
+        'Tenant is required. Use Host header with tenant subdomain (e.g. acfc.localhost:3000).',
+      );
+    }
+    return this.matchesService.getDetailForTenant(tenant.id, id);
   }
 
   @Post()
