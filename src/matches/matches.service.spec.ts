@@ -11,7 +11,13 @@ import { VenuesRepository } from '../venues/venues.repository';
 describe('MatchesService', () => {
   let service: MatchesService;
   let matchesRepo: jest.Mocked<
-    Pick<MatchesRepository, 'hasOverlappingMatchAtVenue' | 'insertMatch'>
+    Pick<
+      MatchesRepository,
+      | 'countUpcomingMatchesForBrowse'
+      | 'findUpcomingMatchesForBrowse'
+      | 'hasOverlappingMatchAtVenue'
+      | 'insertMatch'
+    >
   >;
   let venuesRepo: jest.Mocked<
     Pick<VenuesRepository, 'findVenueRowByIdForTenant'>
@@ -36,6 +42,8 @@ describe('MatchesService', () => {
 
   beforeEach(() => {
     matchesRepo = {
+      countUpcomingMatchesForBrowse: jest.fn(),
+      findUpcomingMatchesForBrowse: jest.fn(),
       hasOverlappingMatchAtVenue: jest.fn().mockResolvedValue(false),
       insertMatch: jest.fn(),
     };
@@ -46,6 +54,55 @@ describe('MatchesService', () => {
       matchesRepo as unknown as MatchesRepository,
       venuesRepo as unknown as VenuesRepository,
     );
+  });
+
+  it('lists upcoming matches with pagination defaults', async () => {
+    matchesRepo.countUpcomingMatchesForBrowse.mockResolvedValue(1);
+    matchesRepo.findUpcomingMatchesForBrowse.mockResolvedValue([
+      {
+        id: '770e8400-e29b-41d4-a716-446655440002',
+        title: 'Sunday league',
+        sport_type: 'football',
+        scheduled_at: new Date('2026-06-01T18:00:00.000Z'),
+        duration_mins: 90,
+        price_per_player: '10.00',
+        max_players: 22,
+        status: 'upcoming',
+        venue_name: 'Main Pitch',
+        spots_remaining: 20,
+      },
+    ]);
+
+    const result = await service.listUpcomingForTenant(tenantId, {});
+
+    expect(matchesRepo.countUpcomingMatchesForBrowse).toHaveBeenCalledWith({
+      tenantId,
+      sportType: null,
+      venueId: null,
+      date: null,
+      available: null,
+    });
+    expect(matchesRepo.findUpcomingMatchesForBrowse).toHaveBeenCalledWith({
+      tenantId,
+      sportType: null,
+      venueId: null,
+      date: null,
+      available: null,
+      limit: 20,
+      offset: 0,
+    });
+    expect(result.page).toBe(1);
+    expect(result.limit).toBe(20);
+    expect(result.total).toBe(1);
+    expect(result.items[0]).toMatchObject({
+      id: '770e8400-e29b-41d4-a716-446655440002',
+      title: 'Sunday league',
+      sportType: VenueSportType.Football,
+      venueName: 'Main Pitch',
+      spotsRemaining: 20,
+      maxCapacity: 22,
+      status: 'upcoming',
+    });
   });
 
   const baseDto = {

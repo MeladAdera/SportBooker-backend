@@ -5,8 +5,15 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import type { CreateMatchDto } from './dto/create-match.dto';
+import type { MatchBrowseItemDto } from './dto/match-browse-item.dto';
+import type { ListMatchesQueryDto } from './dto/list-matches-query.dto';
 import type { MatchResponseDto } from './dto/match-response.dto';
-import { MatchesRepository, type MatchRow } from './matches.repository';
+import type { PaginatedMatchesListDto } from './dto/paginated-matches-list.dto';
+import {
+  MatchesRepository,
+  type MatchBrowseRow,
+  type MatchRow,
+} from './matches.repository';
 import { VenuesRepository } from '../venues/venues.repository';
 import type { VenueSportType } from '../venues/venue-sport-type';
 
@@ -18,6 +25,39 @@ export class MatchesService {
     private readonly matchesRepository: MatchesRepository,
     private readonly venuesRepository: VenuesRepository,
   ) {}
+
+  async listUpcomingForTenant(
+    tenantId: string,
+    query: ListMatchesQueryDto,
+  ): Promise<PaginatedMatchesListDto> {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+    const offset = (page - 1) * limit;
+
+    const filter = {
+      tenantId,
+      sportType: query.sportType ?? null,
+      venueId: query.venueId ?? null,
+      date: query.date ?? null,
+      available: query.available ?? null,
+    };
+
+    const [total, rows] = await Promise.all([
+      this.matchesRepository.countUpcomingMatchesForBrowse(filter),
+      this.matchesRepository.findUpcomingMatchesForBrowse({
+        ...filter,
+        limit,
+        offset,
+      }),
+    ]);
+
+    return {
+      page,
+      limit,
+      total,
+      items: rows.map((row) => this.toBrowseItemDto(row)),
+    };
+  }
 
   async createForTenant(
     tenantId: string,
@@ -66,6 +106,21 @@ export class MatchesService {
       }
       throw err;
     }
+  }
+
+  private toBrowseItemDto(row: MatchBrowseRow): MatchBrowseItemDto {
+    return {
+      id: row.id,
+      title: row.title,
+      sportType: row.sport_type as VenueSportType,
+      scheduledAt: row.scheduled_at.toISOString(),
+      durationMins: row.duration_mins,
+      pricePerPlayer: Number(row.price_per_player),
+      maxCapacity: row.max_players ?? 0,
+      spotsRemaining: Number(row.spots_remaining),
+      status: row.status,
+      venueName: row.venue_name,
+    };
   }
 
   private toResponseDto(row: MatchRow): MatchResponseDto {
