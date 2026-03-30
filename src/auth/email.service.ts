@@ -35,4 +35,29 @@ export class EmailService {
       );
     }
   }
+
+  async sendBookingConfirmedEmail(to: string): Promise<void> {
+    const from = this.config.get<string>(
+      'EMAIL_FROM',
+      'noreply@sportbooker.com',
+    );
+    const apiKey = this.config.get<string>('SENDGRID_API_KEY');
+
+    const msg = {
+      to,
+      from,
+      subject: 'Booking confirmed — Sportbooker',
+      text: 'Your spot on the match is confirmed. The fee has been charged to your wallet.',
+      html: '<p>Your spot on the match is confirmed. The fee has been charged to your wallet.</p>',
+    };
+
+    if (apiKey) {
+      await sgMail.send(msg);
+    } else {
+      console.warn(
+        '[EmailService] SENDGRID_API_KEY not set. Booking confirmed (dev), to:',
+        to,
+      );
+    }
+  }
 }

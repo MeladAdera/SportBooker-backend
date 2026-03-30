@@ -14,6 +14,7 @@ import { TenantModule } from './tenant/tenant.module';
 import { UsersModule } from './users/users.module';
 import { VenuesModule } from './venues/venues.module';
 import { MatchesModule } from './matches/matches.module';
+import { BookingsModule } from './bookings/bookings.module';
 
 /** Extract client IP from request; supports X-Forwarded-For when behind a proxy. */
 function getClientIp(req: Record<string, unknown>): string {
@@ -63,6 +64,7 @@ function getClientIp(req: Record<string, unknown>): string {
     UsersModule,
     VenuesModule,
     MatchesModule,
+    BookingsModule,
     AdminModule,
   ],
   controllers: [AppController],
