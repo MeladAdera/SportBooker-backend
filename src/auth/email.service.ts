@@ -60,4 +60,29 @@ export class EmailService {
       );
     }
   }
+
+  async sendMatchCancelledEmail(to: string): Promise<void> {
+    const from = this.config.get<string>(
+      'EMAIL_FROM',
+      'noreply@sportbooker.com',
+    );
+    const apiKey = this.config.get<string>('SENDGRID_API_KEY');
+
+    const msg = {
+      to,
+      from,
+      subject: 'Match cancelled — Sportbooker',
+      text: 'The match you were booked for has been cancelled. Any payment has been refunded to your wallet.',
+      html: '<p>The match you were booked for has been cancelled. Any payment has been refunded to your wallet.</p>',
+    };
+
+    if (apiKey) {
+      await sgMail.send(msg);
+    } else {
+      console.warn(
+        '[EmailService] SENDGRID_API_KEY not set. Match cancelled (dev), to:',
+        to,
+      );
+    }
+  }
 }

@@ -2,9 +2,13 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { EmailService } from '../auth/email.service';
+import { BookingsRepository } from '../bookings/bookings.repository';
 import type { CreateMatchDto } from './dto/create-match.dto';
+import type { CancelMatchResponseDto } from './dto/cancel-match-response.dto';
 import type { UpdateMatchDto } from './dto/update-match.dto';
 import type { MatchBrowseItemDto } from './dto/match-browse-item.dto';
 import type { MatchDetailResponseDto } from './dto/match-detail-response.dto';
@@ -25,9 +29,13 @@ const PG_UNIQUE_VIOLATION = '23505';
 
 @Injectable()
 export class MatchesService {
+  private readonly logger = new Logger(MatchesService.name);
+
   constructor(
     private readonly matchesRepository: MatchesRepository,
     private readonly venuesRepository: VenuesRepository,
+    private readonly bookingsRepository: BookingsRepository,
+    private readonly emailService: EmailService,
   ) {}
 
   async getDetailForTenant(
@@ -247,6 +255,36 @@ export class MatchesService {
       }
       throw err;
     }
+  }
+
+  async cancelMatchForTenant(
+    tenantId: string,
+    matchId: string,
+  ): Promise<CancelMatchResponseDto> {
+    const result = await this.bookingsRepository.cancelMatchForTenant({
+      tenantId,
+      matchId,
+    });
+    if (!result.success) {
+      if (result.code === 'MATCH_NOT_FOUND') {
+        throw new NotFoundException('Match not found');
+      }
+      throw new BadRequestException('Match is already cancelled');
+    }
+    const uniqueEmails = [...new Set(result.emailsForMatchCancelled)];
+    for (const email of uniqueEmails) {
+      void this.emailService
+        .sendMatchCancelledEmail(email)
+        .catch((err: unknown) => {
+          this.logger.warn(
+            `sendMatchCancelledEmail failed: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        });
+    }
+    return {
+      cancelledBookings: result.cancelledBookings,
+      refundedAmount: result.refundedAmount,
+    };
   }
 
   private toDetailDto(row: MatchDetailRow): MatchDetailResponseDto {

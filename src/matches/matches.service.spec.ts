@@ -3,6 +3,8 @@ import {
   ConflictException,
   NotFoundException,
 } from '@nestjs/common';
+import { EmailService } from '../auth/email.service';
+import { BookingsRepository } from '../bookings/bookings.repository';
 import { VenueSportType } from '../venues/venue-sport-type';
 import { MatchesRepository } from './matches.repository';
 import { MatchesService } from './matches.service';
@@ -26,6 +28,10 @@ describe('MatchesService', () => {
   let venuesRepo: jest.Mocked<
     Pick<VenuesRepository, 'findVenueRowByIdForTenant'>
   >;
+  let bookingsRepo: jest.Mocked<
+    Pick<BookingsRepository, 'cancelMatchForTenant'>
+  >;
+  let emailService: jest.Mocked<Pick<EmailService, 'sendMatchCancelledEmail'>>;
 
   const tenantId = '550e8400-e29b-41d4-a716-446655440000';
   const venueId = '660e8400-e29b-41d4-a716-446655440001';
@@ -58,9 +64,17 @@ describe('MatchesService', () => {
     venuesRepo = {
       findVenueRowByIdForTenant: jest.fn(),
     };
+    bookingsRepo = {
+      cancelMatchForTenant: jest.fn(),
+    };
+    emailService = {
+      sendMatchCancelledEmail: jest.fn().mockResolvedValue(undefined),
+    };
     service = new MatchesService(
       matchesRepo as unknown as MatchesRepository,
       venuesRepo as unknown as VenuesRepository,
+      bookingsRepo as unknown as BookingsRepository,
+      emailService as unknown as EmailService,
     );
   });
 
@@ -344,6 +358,57 @@ describe('MatchesService', () => {
         service.updateForTenant(tenantId, matchId, { maxCapacity: 3 }),
       ).rejects.toThrow(ConflictException);
       expect(matchesRepo.patchMatchForTenant).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('cancelMatchForTenant', () => {
+    const matchId = '770e8400-e29b-41d4-a716-446655440002';
+
+    it('returns counts and sends one email per distinct confirmed player', async () => {
+      bookingsRepo.cancelMatchForTenant.mockResolvedValue({
+        success: true,
+        cancelledBookings: 2,
+        refundedAmount: '31.00',
+        emailsForMatchCancelled: ['a@test.com', 'a@test.com'],
+      });
+
+      const result = await service.cancelMatchForTenant(tenantId, matchId);
+
+      expect(result).toEqual({
+        cancelledBookings: 2,
+        refundedAmount: '31.00',
+      });
+      expect(bookingsRepo.cancelMatchForTenant).toHaveBeenCalledWith({
+        tenantId,
+        matchId,
+      });
+      expect(emailService.sendMatchCancelledEmail).toHaveBeenCalledTimes(1);
+      expect(emailService.sendMatchCancelledEmail).toHaveBeenCalledWith(
+        'a@test.com',
+      );
+    });
+
+    it('throws NotFoundException when match not found', async () => {
+      bookingsRepo.cancelMatchForTenant.mockResolvedValue({
+        success: false,
+        code: 'MATCH_NOT_FOUND',
+      });
+
+      await expect(
+        service.cancelMatchForTenant(tenantId, matchId),
+      ).rejects.toThrow(NotFoundException);
+      expect(emailService.sendMatchCancelledEmail).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException when already cancelled', async () => {
+      bookingsRepo.cancelMatchForTenant.mockResolvedValue({
+        success: false,
+        code: 'ALREADY_CANCELLED',
+      });
+
+      await expect(
+        service.cancelMatchForTenant(tenantId, matchId),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 });

@@ -9,5 +9,6 @@ import { BookingsService } from './bookings.service';
   imports: [AuthModule],
   controllers: [BookingsController],
   providers: [BookingsRepository, BookingsService, RolesGuard],
+  exports: [BookingsRepository],
 })
 export class BookingsModule {}

@@ -32,6 +32,18 @@ export type CreateBookingResult =
     }
   | { success: false; code: CreateBookingFailureCode };
 
+export type CancelMatchFailureCode = 'MATCH_NOT_FOUND' | 'ALREADY_CANCELLED';
+
+export type CancelMatchResult =
+  | {
+      success: true;
+      cancelledBookings: number;
+      refundedAmount: string;
+      /** Distinct confirmed-player emails (for match_cancelled after commit) */
+      emailsForMatchCancelled: string[];
+    }
+  | { success: false; code: CancelMatchFailureCode };
+
 type MatchLockRow = {
   id: string;
   status: string;
@@ -219,6 +231,136 @@ export class BookingsRepository extends BaseRepository {
       }
       throw err;
     }
+  }
+
+  /**
+   * Atomic cancel: refund confirmed bookings, cancel waitlist, set match cancelled.
+   */
+  async cancelMatchForTenant(params: {
+    tenantId: string;
+    matchId: string;
+  }): Promise<CancelMatchResult> {
+    return this.withTransaction(async (client) =>
+      this.cancelMatchInTransaction(client, params),
+    );
+  }
+
+  private async cancelMatchInTransaction(
+    client: PoolClient,
+    params: { tenantId: string; matchId: string },
+  ): Promise<CancelMatchResult> {
+    const { tenantId, matchId } = params;
+
+    const { rows: matchRows } = await this.query<{
+      id: string;
+      status: string;
+    }>(
+      client,
+      `SELECT m.id, m.status
+       FROM matches m
+       INNER JOIN venues v ON v.id = m.venue_id
+       WHERE m.id = $1 AND v.tenant_id = $2
+       FOR UPDATE OF m`,
+      [matchId, tenantId],
+    );
+    const match = matchRows[0];
+    if (!match) {
+      return { success: false, code: 'MATCH_NOT_FOUND' };
+    }
+    if (match.status === 'cancelled') {
+      return { success: false, code: 'ALREADY_CANCELLED' };
+    }
+
+    await this.query(
+      client,
+      `SELECT id FROM bookings WHERE match_id = $1 FOR UPDATE`,
+      [matchId],
+    );
+
+    const { rows: sumRows } = await this.query<{ total: string }>(
+      client,
+      `SELECT COALESCE(SUM(paid_amount), 0)::text AS total
+       FROM bookings
+       WHERE match_id = $1 AND status = 'confirmed'`,
+      [matchId],
+    );
+    const refundedAmount = sumRows[0]?.total ?? '0';
+
+    const { rows: confirmedRows } = await this.query<{
+      id: string;
+      user_id: string;
+      paid_amount: string;
+      email: string;
+    }>(
+      client,
+      `SELECT b.id, b.user_id, b.paid_amount::text AS paid_amount, u.email
+       FROM bookings b
+       INNER JOIN users u ON u.id = b.user_id
+       WHERE b.match_id = $1 AND b.status = 'confirmed'
+       ORDER BY u.id, b.id`,
+      [matchId],
+    );
+
+    const emailsForMatchCancelled: string[] = [];
+    for (const row of confirmedRows) {
+      emailsForMatchCancelled.push(row.email);
+
+      await this.query(
+        client,
+        `UPDATE users
+         SET wallet_balance = wallet_balance + $3::numeric,
+             updated_at = now()
+         WHERE id = $1 AND tenant_id = $2`,
+        [row.user_id, tenantId, row.paid_amount],
+      );
+
+      await this.query(
+        client,
+        `INSERT INTO wallet_transactions (user_id, amount, type, reference_id)
+         VALUES ($1, $2, 'refund', $3)`,
+        [row.user_id, row.paid_amount, row.id],
+      );
+
+      await this.query(
+        client,
+        `UPDATE bookings
+         SET status = 'cancelled'::booking_status,
+             cancelled_at = now(),
+             refunded_at = now(),
+             updated_at = now()
+         WHERE id = $1`,
+        [row.id],
+      );
+    }
+
+    const pendingResult = await this.query(
+      client,
+      `UPDATE bookings
+       SET status = 'cancelled'::booking_status,
+           cancelled_at = now(),
+           updated_at = now()
+       WHERE match_id = $1 AND status = 'pending'`,
+      [matchId],
+    );
+    const pendingCancelled = pendingResult.rowCount ?? 0;
+
+    await this.query(
+      client,
+      `UPDATE matches
+       SET status = 'cancelled'::match_status,
+           updated_at = now()
+       WHERE id = $1`,
+      [matchId],
+    );
+
+    const cancelledBookings = confirmedRows.length + pendingCancelled;
+
+    return {
+      success: true,
+      cancelledBookings,
+      refundedAmount,
+      emailsForMatchCancelled,
+    };
   }
 
   private computeRemainingSpots(

@@ -34,6 +34,7 @@ import { UpdateMatchDto } from './dto/update-match.dto';
 import { ListMatchesQueryDto } from './dto/list-matches-query.dto';
 import { MatchDetailResponseDto } from './dto/match-detail-response.dto';
 import { MatchResponseDto } from './dto/match-response.dto';
+import { CancelMatchResponseDto } from './dto/cancel-match-response.dto';
 import { PaginatedMatchesListDto } from './dto/paginated-matches-list.dto';
 import { MatchesService } from './matches.service';
 
@@ -83,6 +84,31 @@ export class MatchesController {
       );
     }
     return this.matchesService.getDetailForTenant(tenant.id, id);
+  }
+
+  @Post(':id/cancel')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.TenantAdmin)
+  @ApiOperation({
+    summary: 'Cancel a match and refund confirmed players',
+    description:
+      'Tenant admin only. Refunds paid_amount to wallets, records refund transactions, cancels all bookings. Emails sent after commit.',
+  })
+  @ApiOkResponse({ type: CancelMatchResponseDto })
+  @ApiNotFoundResponse({ description: 'Match not found for this tenant' })
+  @ApiBadRequestResponse({ description: 'Match is already cancelled' })
+  @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
+  @ApiForbiddenResponse({ description: 'Insufficient role' })
+  async cancelMatch(
+    @TenantDecorator() tenant: Tenant | undefined,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<CancelMatchResponseDto> {
+    if (!tenant) {
+      throw new BadRequestException(
+        'Tenant is required. Use Host header with tenant subdomain (e.g. acfc.localhost:3000).',
+      );
+    }
+    return this.matchesService.cancelMatchForTenant(tenant.id, id);
   }
 
   @Patch(':id')
