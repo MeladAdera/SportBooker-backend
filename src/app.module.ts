@@ -5,6 +5,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
+import { TenantUserMatchGuard } from './auth/guards/tenant-user-match.guard';
 import { AuthModule } from './auth/auth.module';
 import { envSchema } from './config/env.schema';
 import { DatabaseModule } from './database/db.module';
@@ -69,6 +70,7 @@ function getClientIp(req: Record<string, unknown>): string {
     AppService,
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_GUARD, useClass: TenantUserMatchGuard },
   ],
 })
 export class AppModule {}
