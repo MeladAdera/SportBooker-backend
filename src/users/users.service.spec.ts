@@ -30,6 +30,7 @@ describe('UsersService', () => {
       | 'updateRole'
       | 'countTenantUsers'
       | 'findTenantUsers'
+      | 'findTenantUserDetailById'
     >
   >;
   let bookingsRepository: jest.Mocked<
@@ -77,6 +78,7 @@ describe('UsersService', () => {
       updateRole: jest.fn(),
       countTenantUsers: jest.fn().mockResolvedValue(0),
       findTenantUsers: jest.fn().mockResolvedValue([]),
+      findTenantUserDetailById: jest.fn(),
     };
     bookingsRepository = {
       countMyBookingsForUser: jest.fn().mockResolvedValue(0),
@@ -245,6 +247,83 @@ describe('UsersService', () => {
           query: {},
         }),
       ).rejects.toThrow(ForbiddenException);
+    });
+  });
+
+  describe('getTenantUserById', () => {
+    const detailRow = {
+      id: targetId,
+      name: 'Player',
+      email: 'p@test.com',
+      phone: '+1000',
+      photo_url: null,
+      role: 'player',
+      is_active: true,
+      wallet_balance: '99.00',
+      created_at: new Date('2024-06-01'),
+      updated_at: new Date('2024-06-02'),
+    };
+
+    it('returns detail with walletBalance for tenant_admin', async () => {
+      repository.findTenantUserDetailById.mockResolvedValue(detailRow);
+
+      const result = await service.getTenantUserById({
+        tenantId,
+        actorRole: UserRole.TenantAdmin,
+        targetUserId: targetId,
+      });
+
+      expect(result).toEqual({
+        id: targetId,
+        name: 'Player',
+        email: 'p@test.com',
+        phone: '+1000',
+        photoUrl: null,
+        role: 'player',
+        isActive: true,
+        walletBalance: 99,
+        createdAt: detailRow.created_at,
+        updatedAt: detailRow.updated_at,
+      });
+      expect(repository.findTenantUserDetailById).toHaveBeenCalledWith(
+        tenantId,
+        targetId,
+      );
+    });
+
+    it('allows tenant_staff', async () => {
+      repository.findTenantUserDetailById.mockResolvedValue(detailRow);
+
+      await service.getTenantUserById({
+        tenantId,
+        actorRole: UserRole.TenantStaff,
+        targetUserId: targetId,
+      });
+
+      expect(repository.findTenantUserDetailById).toHaveBeenCalled();
+    });
+
+    it('throws NotFound when user not in tenant or soft-deleted', async () => {
+      repository.findTenantUserDetailById.mockResolvedValue(null);
+
+      await expect(
+        service.getTenantUserById({
+          tenantId,
+          actorRole: UserRole.TenantAdmin,
+          targetUserId: targetId,
+        }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('throws Forbidden when actor is player', async () => {
+      await expect(
+        service.getTenantUserById({
+          tenantId,
+          actorRole: UserRole.Player,
+          targetUserId: targetId,
+        }),
+      ).rejects.toThrow(ForbiddenException);
+      expect(repository.findTenantUserDetailById).not.toHaveBeenCalled();
     });
   });
 

@@ -20,6 +20,7 @@ import type { PaginatedMyBookingsDto } from './dto/paginated-my-bookings.dto';
 import type { PaginatedTenantUsersDto } from './dto/paginated-tenant-users.dto';
 import type { ListTenantUsersQueryDto } from './dto/list-tenant-users-query.dto';
 import type { MyWalletResponseDto } from './dto/my-wallet-response.dto';
+import type { TenantUserDetailDto } from './dto/tenant-user-detail.dto';
 import type { TenantUserListItemDto } from './dto/tenant-user-list-item.dto';
 import type { UpdateMyProfileDto } from './dto/update-my-profile.dto';
 import type { UserResponseDto } from './dto/user-response.dto';
@@ -28,7 +29,11 @@ import type {
   WalletTransactionApiType,
   WalletTransactionItemDto,
 } from './dto/wallet-transaction-item.dto';
-import type { TenantUserListRow, UserSelfProfileRow } from './users.repository';
+import type {
+  TenantUserDetailRow,
+  TenantUserListRow,
+  UserSelfProfileRow,
+} from './users.repository';
 import { UsersRepository } from './users.repository';
 import type { WalletTransactionRow } from './wallet.repository';
 import { WalletRepository } from './wallet.repository';
@@ -134,6 +139,28 @@ export class UsersService {
       total,
       items: rows.map((row) => this.toTenantUserListItemDto(row)),
     };
+  }
+
+  /**
+   * Single user in tenant for tenant_admin / tenant_staff. Missing or soft-deleted → 404.
+   */
+  async getTenantUserById(params: {
+    tenantId: string;
+    actorRole: string;
+    targetUserId: string;
+  }): Promise<TenantUserDetailDto> {
+    const { tenantId, actorRole, targetUserId } = params;
+    if (actorRole !== 'tenant_admin' && actorRole !== 'tenant_staff') {
+      throw new ForbiddenException('Insufficient role');
+    }
+    const row = await this.usersRepository.findTenantUserDetailById(
+      tenantId,
+      targetUserId,
+    );
+    if (!row) {
+      throw new NotFoundException('User not found in this tenant');
+    }
+    return this.toTenantUserDetailDto(row);
   }
 
   /**
@@ -378,6 +405,21 @@ export class UsersService {
       isActive: row.is_active,
       walletBalance: Number(row.wallet_balance),
       createdAt: row.created_at.toISOString(),
+    };
+  }
+
+  private toTenantUserDetailDto(row: TenantUserDetailRow): TenantUserDetailDto {
+    return {
+      id: row.id,
+      name: row.name,
+      email: row.email,
+      phone: row.phone,
+      photoUrl: row.photo_url,
+      role: row.role,
+      isActive: row.is_active,
+      walletBalance: Number(row.wallet_balance),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
     };
   }
 

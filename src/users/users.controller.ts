@@ -29,6 +29,7 @@ import { MyWalletResponseDto } from './dto/my-wallet-response.dto';
 import { MyProfileResponseDto } from './dto/my-profile-response.dto';
 import { PaginatedMyBookingsDto } from './dto/paginated-my-bookings.dto';
 import { PaginatedTenantUsersDto } from './dto/paginated-tenant-users.dto';
+import { TenantUserDetailDto } from './dto/tenant-user-detail.dto';
 import { WalletQueryDto } from './dto/wallet-query.dto';
 import { UpdateMyProfileDto } from './dto/update-my-profile.dto';
 import { UserResponseDto } from './dto/user-response.dto';
@@ -227,6 +228,30 @@ export class UsersController {
     return this.usersService.deleteMyAccount({
       tenantId: user.tenantId,
       userId: user.sub,
+    });
+  }
+
+  @Get(':userId')
+  @Roles(UserRole.TenantAdmin, UserRole.TenantStaff)
+  @ApiOperation({
+    summary: 'Get a user in the current tenant by id',
+    description:
+      'Tenant admin or staff. Target must belong to this tenant (404 otherwise). Returns profile fields and wallet balance; never includes password hash. Soft-deleted users are not found (404).',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'User detail',
+    type: TenantUserDetailDto,
+  })
+  @ApiResponse({ status: 404, description: 'User not found in this tenant' })
+  async getTenantUser(
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<TenantUserDetailDto> {
+    return this.usersService.getTenantUserById({
+      tenantId: user.tenantId,
+      actorRole: user.role,
+      targetUserId: userId,
     });
   }
 

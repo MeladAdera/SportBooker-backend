@@ -48,6 +48,21 @@ export type TenantUserListRow = {
   created_at: Date;
 };
 
+/** Row for GET /users/:userId (tenant staff detail). */
+export type TenantUserDetailRow = {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  photo_url: string | null;
+  role: string;
+  is_active: boolean;
+  /** pg `numeric` — use Number() when mapping to API */
+  wallet_balance: string;
+  created_at: Date;
+  updated_at: Date;
+};
+
 /** Row for GET /users/me; includes deleted_at to distinguish soft-deleted users. */
 export type UserSelfProfileRow = {
   id: string;
@@ -75,6 +90,34 @@ export class UsersRepository extends BaseRepository {
     const { rows } = await this.query<UserRow>(
       this.pool,
       `SELECT id, tenant_id, name, email, role, is_active, deleted_at, created_at, updated_at
+       FROM users
+       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
+      [userId, tenantId],
+    );
+    return rows[0] ?? null;
+  }
+
+  /**
+   * Tenant-scoped user detail for admin/staff. Excludes password_hash and other secrets.
+   * Soft-deleted users → null (caller returns 404).
+   */
+  async findTenantUserDetailById(
+    tenantId: string,
+    userId: string,
+  ): Promise<TenantUserDetailRow | null> {
+    const { rows } = await this.query<TenantUserDetailRow>(
+      this.pool,
+      `SELECT
+         id,
+         name,
+         email,
+         phone,
+         photo_url,
+         role::text AS role,
+         is_active,
+         wallet_balance::text AS wallet_balance,
+         created_at,
+         updated_at
        FROM users
        WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
       [userId, tenantId],
