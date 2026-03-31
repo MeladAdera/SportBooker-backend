@@ -28,6 +28,8 @@ describe('UsersService', () => {
       | 'patchSelfProfile'
       | 'softDeleteAccount'
       | 'updateRole'
+      | 'countTenantUsers'
+      | 'findTenantUsers'
     >
   >;
   let bookingsRepository: jest.Mocked<
@@ -73,6 +75,8 @@ describe('UsersService', () => {
       patchSelfProfile: jest.fn(),
       softDeleteAccount: jest.fn(),
       updateRole: jest.fn(),
+      countTenantUsers: jest.fn().mockResolvedValue(0),
+      findTenantUsers: jest.fn().mockResolvedValue([]),
     };
     bookingsRepository = {
       countMyBookingsForUser: jest.fn().mockResolvedValue(0),
@@ -189,6 +193,59 @@ describe('UsersService', () => {
         newRole: UserRole.TenantAdmin,
       }),
     ).rejects.toThrow(BadRequestException);
+  });
+
+  describe('listTenantUsers', () => {
+    it('returns paginated items for tenant_admin', async () => {
+      repository.countTenantUsers.mockResolvedValue(1);
+      repository.findTenantUsers.mockResolvedValue([
+        {
+          id: 'u1',
+          name: 'Player',
+          email: 'a@test.com',
+          role: 'player',
+          is_active: true,
+          wallet_balance: '10.00',
+          created_at: new Date('2024-01-01'),
+        },
+      ]);
+
+      const result = await service.listTenantUsers({
+        tenantId,
+        actorRole: UserRole.TenantAdmin,
+        query: { page: 1, limit: 20 },
+      });
+
+      expect(result.total).toBe(1);
+      expect(result.items[0]?.walletBalance).toBe(10);
+      expect(repository.countTenantUsers).toHaveBeenCalledWith({
+        tenantId,
+        role: undefined,
+        isActive: undefined,
+        includeDeleted: false,
+      });
+    });
+
+    it('throws Forbidden when tenant_staff requests includeDeleted', async () => {
+      await expect(
+        service.listTenantUsers({
+          tenantId,
+          actorRole: UserRole.TenantStaff,
+          query: { includeDeleted: true },
+        }),
+      ).rejects.toThrow(ForbiddenException);
+      expect(repository.countTenantUsers).not.toHaveBeenCalled();
+    });
+
+    it('throws Forbidden when actor is player', async () => {
+      await expect(
+        service.listTenantUsers({
+          tenantId,
+          actorRole: UserRole.Player,
+          query: {},
+        }),
+      ).rejects.toThrow(ForbiddenException);
+    });
   });
 
   describe('getMyProfile', () => {

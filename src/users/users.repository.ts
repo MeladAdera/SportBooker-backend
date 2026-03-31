@@ -37,6 +37,17 @@ export type ForgotPasswordUserRow = {
   email: string;
 };
 
+/** Row for GET /users (tenant staff list). */
+export type TenantUserListRow = {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  is_active: boolean;
+  wallet_balance: string;
+  created_at: Date;
+};
+
 /** Row for GET /users/me; includes deleted_at to distinguish soft-deleted users. */
 export type UserSelfProfileRow = {
   id: string;
@@ -256,5 +267,81 @@ export class UsersRepository extends BaseRepository {
       'UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2',
       [passwordHash, userId],
     );
+  }
+
+  /** Row for GET /users (tenant staff list). */
+  async countTenantUsers(params: {
+    tenantId: string;
+    role?: string;
+    isActive?: boolean;
+    includeDeleted: boolean;
+  }): Promise<number> {
+    const { whereSql, values } =
+      UsersRepository.buildTenantUserListWhere(params);
+    const { rows } = await this.query<{ c: string }>(
+      this.pool,
+      `SELECT COUNT(*)::text AS c FROM users WHERE ${whereSql}`,
+      values,
+    );
+    return parseInt(rows[0]?.c ?? '0', 10);
+  }
+
+  async findTenantUsers(params: {
+    tenantId: string;
+    role?: string;
+    isActive?: boolean;
+    includeDeleted: boolean;
+    limit: number;
+    offset: number;
+  }): Promise<TenantUserListRow[]> {
+    const { whereSql, values } =
+      UsersRepository.buildTenantUserListWhere(params);
+    const limitIdx = values.length + 1;
+    const offsetIdx = values.length + 2;
+    const { rows } = await this.query<TenantUserListRow>(
+      this.pool,
+      `SELECT
+         id,
+         name,
+         email,
+         role::text AS role,
+         is_active,
+         wallet_balance::text AS wallet_balance,
+         created_at
+       FROM users
+       WHERE ${whereSql}
+       ORDER BY created_at DESC
+       LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
+      [...values, params.limit, params.offset],
+    );
+    return rows;
+  }
+
+  private static buildTenantUserListWhere(params: {
+    tenantId: string;
+    role?: string;
+    isActive?: boolean;
+    includeDeleted: boolean;
+  }): { whereSql: string; values: unknown[] } {
+    const values: unknown[] = [];
+    const parts: string[] = [];
+    let n = 1;
+
+    parts.push(`tenant_id = $${n++}`);
+    values.push(params.tenantId);
+    parts.push(`role <> 'super_admin'::user_role`);
+    if (!params.includeDeleted) {
+      parts.push('deleted_at IS NULL');
+    }
+    if (params.role !== undefined) {
+      parts.push(`role = $${n++}::user_role`);
+      values.push(params.role);
+    }
+    if (params.isActive !== undefined) {
+      parts.push(`is_active = $${n++}`);
+      values.push(params.isActive);
+    }
+
+    return { whereSql: parts.join(' AND '), values };
   }
 }

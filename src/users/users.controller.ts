@@ -12,6 +12,7 @@ import {
 import {
   ApiBearerAuth,
   ApiBody,
+  ApiForbiddenResponse,
   ApiOperation,
   ApiResponse,
   ApiTags,
@@ -22,10 +23,12 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import type { AuthenticatedUser } from '../auth/auth.types';
 import { AccountDeletedResponseDto } from './dto/account-deleted-response.dto';
 import { AssignRoleDto } from './dto/assign-role.dto';
+import { ListTenantUsersQueryDto } from './dto/list-tenant-users-query.dto';
 import { MyBookingsQueryDto } from './dto/my-bookings-query.dto';
 import { MyWalletResponseDto } from './dto/my-wallet-response.dto';
 import { MyProfileResponseDto } from './dto/my-profile-response.dto';
 import { PaginatedMyBookingsDto } from './dto/paginated-my-bookings.dto';
+import { PaginatedTenantUsersDto } from './dto/paginated-tenant-users.dto';
 import { WalletQueryDto } from './dto/wallet-query.dto';
 import { UpdateMyProfileDto } from './dto/update-my-profile.dto';
 import { UserResponseDto } from './dto/user-response.dto';
@@ -39,6 +42,32 @@ import { UsersService } from './users.service';
 @Roles('super_admin', 'tenant_admin')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
+
+  @Get()
+  @Roles(UserRole.TenantAdmin, UserRole.TenantStaff)
+  @ApiOperation({
+    summary: 'List users in the current tenant',
+    description:
+      'Tenant admin or staff. Filter by role (player, tenant_staff, tenant_admin), isActive. Soft-deleted users excluded unless includeDeleted=true (tenant_admin only). super_admin users are never listed.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Paginated tenant users',
+    type: PaginatedTenantUsersDto,
+  })
+  @ApiForbiddenResponse({
+    description: 'Wrong role, or tenant_staff requested includeDeleted=true',
+  })
+  async listTenantUsers(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: ListTenantUsersQueryDto,
+  ): Promise<PaginatedTenantUsersDto> {
+    return this.usersService.listTenantUsers({
+      tenantId: user.tenantId,
+      actorRole: user.role,
+      query,
+    });
+  }
 
   @Get('me')
   @Roles(

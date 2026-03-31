@@ -17,7 +17,10 @@ import type { MyBookingItemDto } from './dto/my-booking-item.dto';
 import type { MyBookingsQueryDto } from './dto/my-bookings-query.dto';
 import type { MyProfileResponseDto } from './dto/my-profile-response.dto';
 import type { PaginatedMyBookingsDto } from './dto/paginated-my-bookings.dto';
+import type { PaginatedTenantUsersDto } from './dto/paginated-tenant-users.dto';
+import type { ListTenantUsersQueryDto } from './dto/list-tenant-users-query.dto';
 import type { MyWalletResponseDto } from './dto/my-wallet-response.dto';
+import type { TenantUserListItemDto } from './dto/tenant-user-list-item.dto';
 import type { UpdateMyProfileDto } from './dto/update-my-profile.dto';
 import type { UserResponseDto } from './dto/user-response.dto';
 import type { WalletQueryDto } from './dto/wallet-query.dto';
@@ -25,7 +28,7 @@ import type {
   WalletTransactionApiType,
   WalletTransactionItemDto,
 } from './dto/wallet-transaction-item.dto';
-import type { UserSelfProfileRow } from './users.repository';
+import type { TenantUserListRow, UserSelfProfileRow } from './users.repository';
 import { UsersRepository } from './users.repository';
 import type { WalletTransactionRow } from './wallet.repository';
 import { WalletRepository } from './wallet.repository';
@@ -87,6 +90,50 @@ export class UsersService {
     }
 
     return this.toResponseDto(updated);
+  }
+
+  /**
+   * Tenant-scoped user list for tenant_admin / tenant_staff.
+   * includeDeleted=true only allowed for tenant_admin.
+   */
+  async listTenantUsers(params: {
+    tenantId: string;
+    actorRole: string;
+    query: ListTenantUsersQueryDto;
+  }): Promise<PaginatedTenantUsersDto> {
+    const { tenantId, actorRole, query } = params;
+    if (actorRole !== 'tenant_admin' && actorRole !== 'tenant_staff') {
+      throw new ForbiddenException('Insufficient role');
+    }
+    const includeDeleted = query.includeDeleted === true;
+    if (includeDeleted && actorRole !== 'tenant_admin') {
+      throw new ForbiddenException(
+        'Only tenant admins can include deleted users',
+      );
+    }
+
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+    const offset = (page - 1) * limit;
+
+    const filter = {
+      tenantId,
+      role: query.role,
+      isActive: query.isActive,
+      includeDeleted,
+    };
+
+    const [total, rows] = await Promise.all([
+      this.usersRepository.countTenantUsers(filter),
+      this.usersRepository.findTenantUsers({ ...filter, limit, offset }),
+    ]);
+
+    return {
+      page,
+      limit,
+      total,
+      items: rows.map((row) => this.toTenantUserListItemDto(row)),
+    };
   }
 
   /**
@@ -316,6 +363,20 @@ export class UsersService {
       sportType: row.sport_type as VenueSportType,
       matchScheduledAt: row.scheduled_at.toISOString(),
       venueName: row.venue_name,
+      createdAt: row.created_at.toISOString(),
+    };
+  }
+
+  private toTenantUserListItemDto(
+    row: TenantUserListRow,
+  ): TenantUserListItemDto {
+    return {
+      id: row.id,
+      name: row.name,
+      email: row.email,
+      role: row.role,
+      isActive: row.is_active,
+      walletBalance: Number(row.wallet_balance),
       createdAt: row.created_at.toISOString(),
     };
   }
