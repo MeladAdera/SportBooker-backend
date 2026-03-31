@@ -23,8 +23,10 @@ import type { AuthenticatedUser } from '../auth/auth.types';
 import { AccountDeletedResponseDto } from './dto/account-deleted-response.dto';
 import { AssignRoleDto } from './dto/assign-role.dto';
 import { MyBookingsQueryDto } from './dto/my-bookings-query.dto';
+import { MyWalletResponseDto } from './dto/my-wallet-response.dto';
 import { MyProfileResponseDto } from './dto/my-profile-response.dto';
 import { PaginatedMyBookingsDto } from './dto/paginated-my-bookings.dto';
+import { WalletQueryDto } from './dto/wallet-query.dto';
 import { UpdateMyProfileDto } from './dto/update-my-profile.dto';
 import { UserResponseDto } from './dto/user-response.dto';
 import { UserRole } from './user-role';
@@ -94,6 +96,38 @@ export class UsersController {
     @Query() query: MyBookingsQueryDto,
   ): Promise<PaginatedMyBookingsDto> {
     return this.usersService.listMyBookings({
+      tenantId: user.tenantId,
+      userId: user.sub,
+      query,
+    });
+  }
+
+  @Get('me/wallet')
+  @Roles(
+    UserRole.SuperAdmin,
+    UserRole.TenantAdmin,
+    UserRole.TenantStaff,
+    UserRole.Player,
+  )
+  @ApiOperation({
+    summary: 'Get my wallet balance and transaction history',
+    description:
+      'Balance from users.wallet_balance. Transactions paginated, newest first. Types: topup, deduction, refund, credit (DB debit→deduction).',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Balance and transactions',
+    type: MyWalletResponseDto,
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized or soft-deleted user',
+  })
+  async getMyWallet(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: WalletQueryDto,
+  ): Promise<MyWalletResponseDto> {
+    return this.usersService.getMyWallet({
       tenantId: user.tenantId,
       userId: user.sub,
       query,

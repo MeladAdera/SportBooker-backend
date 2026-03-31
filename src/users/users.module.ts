@@ -5,11 +5,12 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { UsersController } from './users.controller';
 import { UsersRepository } from './users.repository';
 import { UsersService } from './users.service';
+import { WalletRepository } from './wallet.repository';
 
 @Module({
   imports: [forwardRef(() => AuthModule), BookingsModule],
   controllers: [UsersController],
-  providers: [UsersRepository, UsersService, RolesGuard],
+  providers: [UsersRepository, WalletRepository, UsersService, RolesGuard],
   exports: [UsersService, UsersRepository],
 })
 export class UsersModule {}

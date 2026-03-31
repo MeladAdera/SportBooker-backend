@@ -12,6 +12,7 @@ import { UpdateMyProfileDto } from './dto/update-my-profile.dto';
 import { UserRole } from './user-role';
 import { UsersRepository } from './users.repository';
 import { UsersService } from './users.service';
+import { WalletRepository } from './wallet.repository';
 
 describe('UsersService', () => {
   let service: UsersService;
@@ -31,6 +32,14 @@ describe('UsersService', () => {
   >;
   let bookingsRepository: jest.Mocked<
     Pick<BookingsRepository, 'countMyBookingsForUser' | 'findMyBookingsForUser'>
+  >;
+  let walletRepository: jest.Mocked<
+    Pick<
+      WalletRepository,
+      | 'findWalletBalanceForUser'
+      | 'countWalletTransactionsForUser'
+      | 'findWalletTransactionsForUser'
+    >
   >;
 
   const tenantId = 'tenant-uuid';
@@ -69,10 +78,16 @@ describe('UsersService', () => {
       countMyBookingsForUser: jest.fn().mockResolvedValue(0),
       findMyBookingsForUser: jest.fn().mockResolvedValue([]),
     };
+    walletRepository = {
+      findWalletBalanceForUser: jest.fn().mockResolvedValue('100.00'),
+      countWalletTransactionsForUser: jest.fn().mockResolvedValue(0),
+      findWalletTransactionsForUser: jest.fn().mockResolvedValue([]),
+    };
     service = new UsersService(
       repository as unknown as UsersRepository,
       authRepository as unknown as AuthRepository,
       bookingsRepository as unknown as BookingsRepository,
+      walletRepository as unknown as WalletRepository,
     );
   });
 
@@ -366,6 +381,52 @@ describe('UsersService', () => {
 
       await expect(
         service.listMyBookings({
+          tenantId,
+          userId: actorId,
+          query: {},
+        }),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
+  describe('getMyWallet', () => {
+    it('returns balance from wallet repo and maps debit to deduction', async () => {
+      repository.findByIdForSelfProfile.mockResolvedValue(profileRow);
+      walletRepository.findWalletBalanceForUser.mockResolvedValue('125.50');
+      walletRepository.countWalletTransactionsForUser.mockResolvedValue(1);
+      walletRepository.findWalletTransactionsForUser.mockResolvedValue([
+        {
+          id: 'tx-1',
+          type: 'debit',
+          amount: '15.50',
+          reference_id: 'booking-uuid',
+          created_at: new Date('2026-03-30T12:00:00.000Z'),
+        },
+      ]);
+
+      const result = await service.getMyWallet({
+        tenantId,
+        userId: actorId,
+        query: { page: 1, limit: 20 },
+      });
+
+      expect(result.balance).toBe(125.5);
+      expect(result.total).toBe(1);
+      expect(result.transactions[0]?.type).toBe('deduction');
+      expect(result.transactions[0]?.amount).toBe('15.50');
+      expect(result.transactions[0]?.reference).toBe('booking-uuid');
+      expect(walletRepository.findWalletBalanceForUser).toHaveBeenCalledWith(
+        tenantId,
+        actorId,
+      );
+    });
+
+    it('throws Unauthorized when balance row missing', async () => {
+      repository.findByIdForSelfProfile.mockResolvedValue(profileRow);
+      walletRepository.findWalletBalanceForUser.mockResolvedValue(null);
+
+      await expect(
+        service.getMyWallet({
           tenantId,
           userId: actorId,
           query: {},

@@ -17,10 +17,18 @@ import type { MyBookingItemDto } from './dto/my-booking-item.dto';
 import type { MyBookingsQueryDto } from './dto/my-bookings-query.dto';
 import type { MyProfileResponseDto } from './dto/my-profile-response.dto';
 import type { PaginatedMyBookingsDto } from './dto/paginated-my-bookings.dto';
+import type { MyWalletResponseDto } from './dto/my-wallet-response.dto';
 import type { UpdateMyProfileDto } from './dto/update-my-profile.dto';
 import type { UserResponseDto } from './dto/user-response.dto';
+import type { WalletQueryDto } from './dto/wallet-query.dto';
+import type {
+  WalletTransactionApiType,
+  WalletTransactionItemDto,
+} from './dto/wallet-transaction-item.dto';
 import type { UserSelfProfileRow } from './users.repository';
 import { UsersRepository } from './users.repository';
+import type { WalletTransactionRow } from './wallet.repository';
+import { WalletRepository } from './wallet.repository';
 
 export const UPCOMING_BOOKINGS_BLOCK_DELETE_MESSAGE =
   'You have confirmed upcoming bookings. Cancel them before deleting your account.';
@@ -31,6 +39,7 @@ export class UsersService {
     private readonly usersRepository: UsersRepository,
     private readonly authRepository: AuthRepository,
     private readonly bookingsRepository: BookingsRepository,
+    private readonly walletRepository: WalletRepository,
   ) {}
 
   /**
@@ -149,6 +158,52 @@ export class UsersService {
   }
 
   /**
+   * Wallet balance (from users.wallet_balance) and paginated transaction history.
+   */
+  async getMyWallet(params: {
+    tenantId: string;
+    userId: string;
+    query: WalletQueryDto;
+  }): Promise<MyWalletResponseDto> {
+    const { tenantId, userId, query } = params;
+
+    const profile = await this.usersRepository.findByIdForSelfProfile(
+      tenantId,
+      userId,
+    );
+    if (!profile || profile.deleted_at != null) {
+      throw new UnauthorizedException('Invalid or expired session');
+    }
+
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+    const offset = (page - 1) * limit;
+
+    const [balanceStr, total, rows] = await Promise.all([
+      this.walletRepository.findWalletBalanceForUser(tenantId, userId),
+      this.walletRepository.countWalletTransactionsForUser(tenantId, userId),
+      this.walletRepository.findWalletTransactionsForUser({
+        tenantId,
+        userId,
+        limit,
+        offset,
+      }),
+    ]);
+
+    if (balanceStr === null) {
+      throw new UnauthorizedException('Invalid or expired session');
+    }
+
+    return {
+      balance: Number(balanceStr),
+      page,
+      limit,
+      total,
+      transactions: rows.map((row) => this.toWalletTransactionItem(row)),
+    };
+  }
+
+  /**
    * Updates optional profile fields; same response shape as GET /users/me.
    */
   async updateMyProfile(params: {
@@ -204,6 +259,51 @@ export class UsersService {
 
       return { message: 'Account deleted' };
     });
+  }
+
+  private toWalletTransactionItem(
+    row: WalletTransactionRow,
+  ): WalletTransactionItemDto {
+    const apiType = UsersService.mapDbWalletTypeToApi(row.type);
+    return {
+      id: row.id,
+      type: apiType,
+      amount: row.amount,
+      description: UsersService.walletTxDescription(apiType),
+      reference: row.reference_id,
+      createdAt: row.created_at.toISOString(),
+    };
+  }
+
+  private static mapDbWalletTypeToApi(db: string): WalletTransactionApiType {
+    switch (db) {
+      case 'debit':
+        return 'deduction';
+      case 'refund':
+        return 'refund';
+      case 'topup':
+        return 'topup';
+      case 'credit':
+      default:
+        return 'credit';
+    }
+  }
+
+  private static walletTxDescription(
+    apiType: WalletTransactionApiType,
+  ): string {
+    switch (apiType) {
+      case 'deduction':
+        return 'Match booking payment';
+      case 'refund':
+        return 'Match cancellation refund';
+      case 'topup':
+        return 'Wallet top-up';
+      case 'credit':
+        return 'Wallet credit';
+      default:
+        return 'Transaction';
+    }
   }
 
   private toMyBookingItemDto(row: MyBookingHistoryRow): MyBookingItemDto {
