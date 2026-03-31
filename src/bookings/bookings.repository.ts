@@ -56,6 +56,27 @@ export type CancelMatchResult =
     }
   | { success: false; code: CancelMatchFailureCode };
 
+export type CancelPlayerBookingFailureCode =
+  | 'BOOKING_NOT_FOUND'
+  | 'NOT_OWNER'
+  | 'NOT_CONFIRMED'
+  | 'ALREADY_CANCELLED'
+  | 'MATCH_CANCELLED'
+  | 'MATCH_PAST'
+  | 'TOO_LATE_TO_CANCEL';
+
+export type CancelPlayerBookingResult =
+  | {
+      success: true;
+      cancelledAt: Date;
+      /** Always "0.00" — player self-cancel does not refund */
+      refundAmount: '0.00';
+      playerEmail: string;
+      /** If first waitlist user was promoted to confirmed (for confirmation email) */
+      promotedConfirmationEmail: string | null;
+    }
+  | { success: false; code: CancelPlayerBookingFailureCode };
+
 type MatchLockRow = {
   id: string;
   status: string;
@@ -372,6 +393,171 @@ export class BookingsRepository extends BaseRepository {
       cancelledBookings,
       refundedAmount,
       emailsForMatchCancelled,
+    };
+  }
+
+  /**
+   * Player cancels own confirmed booking: no refund, optional waitlist promotion.
+   */
+  async cancelBookingForPlayer(params: {
+    tenantId: string;
+    matchId: string;
+    bookingId: string;
+    userId: string;
+  }): Promise<CancelPlayerBookingResult> {
+    return this.withTransaction(async (client) =>
+      this.cancelPlayerBookingInTransaction(client, params),
+    );
+  }
+
+  private async cancelPlayerBookingInTransaction(
+    client: PoolClient,
+    params: {
+      tenantId: string;
+      matchId: string;
+      bookingId: string;
+      userId: string;
+    },
+  ): Promise<CancelPlayerBookingResult> {
+    const { tenantId, matchId, bookingId, userId } = params;
+
+    const { rows: lockRows } = await this.query<{
+      bid: string;
+      b_user_id: string;
+      b_status: string;
+      match_status: string;
+      scheduled_at: Date;
+      price_per_player: string;
+      user_email: string;
+      is_future: boolean;
+      can_cancel: boolean;
+    }>(
+      client,
+      `SELECT
+         b.id AS bid,
+         b.user_id AS b_user_id,
+         b.status AS b_status,
+         m.status AS match_status,
+         m.scheduled_at,
+         m.price_per_player::text AS price_per_player,
+         u.email AS user_email,
+         (m.scheduled_at > now()) AS is_future,
+         (m.scheduled_at >= now() + interval '24 hours') AS can_cancel
+       FROM bookings b
+       INNER JOIN matches m ON m.id = b.match_id
+       INNER JOIN venues v ON v.id = m.venue_id
+       INNER JOIN users u ON u.id = b.user_id
+       WHERE b.id = $1 AND b.match_id = $2 AND v.tenant_id = $3
+       FOR UPDATE OF b, m`,
+      [bookingId, matchId, tenantId],
+    );
+
+    const row = lockRows[0];
+    if (!row) {
+      return { success: false, code: 'BOOKING_NOT_FOUND' };
+    }
+    if (row.b_user_id !== userId) {
+      return { success: false, code: 'NOT_OWNER' };
+    }
+    if (row.b_status === 'cancelled') {
+      return { success: false, code: 'ALREADY_CANCELLED' };
+    }
+    if (row.b_status !== 'confirmed') {
+      return { success: false, code: 'NOT_CONFIRMED' };
+    }
+    if (row.match_status === 'cancelled') {
+      return { success: false, code: 'MATCH_CANCELLED' };
+    }
+    if (!row.is_future) {
+      return { success: false, code: 'MATCH_PAST' };
+    }
+    if (!row.can_cancel) {
+      return { success: false, code: 'TOO_LATE_TO_CANCEL' };
+    }
+
+    const { rows: updatedRows } = await this.query<{ cancelled_at: Date }>(
+      client,
+      `UPDATE bookings
+       SET status = 'cancelled'::booking_status,
+           cancelled_at = now(),
+           updated_at = now()
+       WHERE id = $1
+       RETURNING cancelled_at`,
+      [bookingId],
+    );
+    const cancelledAt = updatedRows[0]?.cancelled_at;
+    if (!cancelledAt) {
+      throw new Error('cancelPlayerBooking: expected cancelled_at');
+    }
+
+    let promotedConfirmationEmail: string | null = null;
+
+    const { rows: pendingRows } = await this.query<{
+      id: string;
+      user_id: string;
+      email: string;
+    }>(
+      client,
+      `SELECT b.id, b.user_id, u.email
+       FROM bookings b
+       INNER JOIN users u ON u.id = b.user_id
+       WHERE b.match_id = $1 AND b.status = 'pending'
+       ORDER BY b.created_at ASC
+       LIMIT 1
+       FOR UPDATE OF b`,
+      [matchId],
+    );
+    const pending = pendingRows[0];
+    const price = row.price_per_player;
+
+    if (pending) {
+      const { rows: walletRows } = await this.query<{ wallet_balance: string }>(
+        client,
+        `SELECT wallet_balance::text AS wallet_balance
+         FROM users
+         WHERE id = $1 AND tenant_id = $2
+         FOR UPDATE`,
+        [pending.user_id, tenantId],
+      );
+      if (walletRows[0]) {
+        const { rows: debited } = await this.query<{ wallet_balance: string }>(
+          client,
+          `UPDATE users
+           SET wallet_balance = wallet_balance - $3::numeric,
+               updated_at = now()
+           WHERE id = $1
+             AND tenant_id = $2
+             AND wallet_balance >= $3::numeric
+           RETURNING wallet_balance`,
+          [pending.user_id, tenantId, price],
+        );
+        if (debited[0]) {
+          await this.query(
+            client,
+            `UPDATE bookings
+             SET status = 'confirmed'::booking_status,
+                 paid_amount = $2::numeric,
+                 updated_at = now()
+             WHERE id = $1`,
+            [pending.id, price],
+          );
+          await this.query(
+            client,
+            `INSERT INTO wallet_transactions (user_id, amount, type, reference_id)
+             VALUES ($1, $2, 'debit', $3)`,
+            [pending.user_id, price, pending.id],
+          );
+          promotedConfirmationEmail = pending.email;
+        }
+      }
+    }
+
+    return {
+      success: true,
+      cancelledAt,
+      refundAmount: '0.00',
+      playerEmail: row.user_email,
+      promotedConfirmationEmail,
     };
   }
 

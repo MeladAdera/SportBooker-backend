@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
 import { EmailService } from '../auth/email.service';
@@ -10,10 +11,13 @@ import { BookingsService } from './bookings.service';
 describe('BookingsService', () => {
   let service: BookingsService;
   let bookingsRepo: jest.Mocked<
-    Pick<BookingsRepository, 'createBookingForMatch'>
+    Pick<BookingsRepository, 'createBookingForMatch' | 'cancelBookingForPlayer'>
   >;
   let emailService: jest.Mocked<
-    Pick<EmailService, 'sendBookingConfirmedEmail'>
+    Pick<
+      EmailService,
+      'sendBookingConfirmedEmail' | 'sendBookingCancelledEmail'
+    >
   >;
 
   const tenantId = '550e8400-e29b-41d4-a716-446655440000';
@@ -33,9 +37,11 @@ describe('BookingsService', () => {
   beforeEach(() => {
     bookingsRepo = {
       createBookingForMatch: jest.fn(),
+      cancelBookingForPlayer: jest.fn(),
     };
     emailService = {
       sendBookingConfirmedEmail: jest.fn().mockResolvedValue(undefined),
+      sendBookingCancelledEmail: jest.fn().mockResolvedValue(undefined),
     };
     service = new BookingsService(
       bookingsRepo as unknown as BookingsRepository,
@@ -120,5 +126,106 @@ describe('BookingsService', () => {
     await expect(
       service.createBookingForPlayer({ tenantId, matchId, userId }),
     ).rejects.toThrow(BadRequestException);
+  });
+
+  describe('cancelBookingForPlayer', () => {
+    const cancelledAt = new Date('2026-06-10T10:00:00.000Z');
+
+    it('returns DTO, sends booking_cancelled email, and sends confirmation when promoted', async () => {
+      bookingsRepo.cancelBookingForPlayer.mockResolvedValue({
+        success: true,
+        cancelledAt,
+        refundAmount: '0.00',
+        playerEmail: 'player@example.com',
+        promotedConfirmationEmail: 'wait@example.com',
+      });
+
+      const dto = await service.cancelBookingForPlayer({
+        tenantId,
+        matchId,
+        bookingId: bookingRow.id,
+        userId,
+      });
+
+      expect(dto).toEqual({
+        cancelled: true,
+        cancelledAt: cancelledAt.toISOString(),
+        refundAmount: '0.00',
+      });
+      expect(emailService.sendBookingCancelledEmail).toHaveBeenCalledWith(
+        'player@example.com',
+      );
+      expect(emailService.sendBookingConfirmedEmail).toHaveBeenCalledWith(
+        'wait@example.com',
+      );
+    });
+
+    it('does not send confirmation email when no promotion', async () => {
+      bookingsRepo.cancelBookingForPlayer.mockResolvedValue({
+        success: true,
+        cancelledAt,
+        refundAmount: '0.00',
+        playerEmail: 'player@example.com',
+        promotedConfirmationEmail: null,
+      });
+
+      await service.cancelBookingForPlayer({
+        tenantId,
+        matchId,
+        bookingId: bookingRow.id,
+        userId,
+      });
+
+      expect(emailService.sendBookingCancelledEmail).toHaveBeenCalled();
+      expect(emailService.sendBookingConfirmedEmail).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFound when booking missing', async () => {
+      bookingsRepo.cancelBookingForPlayer.mockResolvedValue({
+        success: false,
+        code: 'BOOKING_NOT_FOUND',
+      });
+
+      await expect(
+        service.cancelBookingForPlayer({
+          tenantId,
+          matchId,
+          bookingId: bookingRow.id,
+          userId,
+        }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('throws Forbidden when not owner', async () => {
+      bookingsRepo.cancelBookingForPlayer.mockResolvedValue({
+        success: false,
+        code: 'NOT_OWNER',
+      });
+
+      await expect(
+        service.cancelBookingForPlayer({
+          tenantId,
+          matchId,
+          bookingId: bookingRow.id,
+          userId,
+        }),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('throws BadRequest when already cancelled', async () => {
+      bookingsRepo.cancelBookingForPlayer.mockResolvedValue({
+        success: false,
+        code: 'ALREADY_CANCELLED',
+      });
+
+      await expect(
+        service.cancelBookingForPlayer({
+          tenantId,
+          matchId,
+          bookingId: bookingRow.id,
+          userId,
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
   });
 });

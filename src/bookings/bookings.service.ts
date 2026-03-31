@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
@@ -8,8 +9,10 @@ import {
 import { EmailService } from '../auth/email.service';
 import {
   BookingsRepository,
+  type CancelPlayerBookingFailureCode,
   type CreateBookingFailureCode,
 } from './bookings.repository';
+import type { CancelPlayerBookingResponseDto } from './dto/cancel-player-booking-response.dto';
 import type { CreateBookingResponseDto } from './dto/create-booking-response.dto';
 
 const FAILURE_MESSAGES: Record<CreateBookingFailureCode, string> = {
@@ -21,6 +24,16 @@ const FAILURE_MESSAGES: Record<CreateBookingFailureCode, string> = {
   ALREADY_BOOKED: 'You already have a booking for this match',
   INSUFFICIENT_FUNDS:
     'Insufficient wallet balance to book this match. Top up your wallet and try again.',
+};
+
+const CANCEL_PLAYER_MESSAGES: Record<CancelPlayerBookingFailureCode, string> = {
+  BOOKING_NOT_FOUND: 'Booking not found',
+  NOT_OWNER: 'You can only cancel your own booking',
+  NOT_CONFIRMED: 'Only confirmed bookings can be cancelled',
+  ALREADY_CANCELLED: 'Booking is already cancelled',
+  MATCH_CANCELLED: 'This match has been cancelled',
+  MATCH_PAST: 'Cannot cancel a match that has already started or finished',
+  TOO_LATE_TO_CANCEL: 'Cancellation must be at least 24 hours before the match',
 };
 
 @Injectable()
@@ -56,6 +69,57 @@ export class BookingsService {
     }
 
     return this.toDto(booking, remainingSpots);
+  }
+
+  async cancelBookingForPlayer(params: {
+    tenantId: string;
+    matchId: string;
+    bookingId: string;
+    userId: string;
+  }): Promise<CancelPlayerBookingResponseDto> {
+    const result = await this.bookingsRepository.cancelBookingForPlayer(params);
+
+    if (!result.success) {
+      throw this.mapCancelPlayerFailure(result.code);
+    }
+
+    const { cancelledAt, playerEmail, promotedConfirmationEmail } = result;
+
+    void this.emailService
+      .sendBookingCancelledEmail(playerEmail)
+      .catch((err: unknown) => {
+        this.logger.warn(
+          `sendBookingCancelledEmail failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      });
+
+    if (promotedConfirmationEmail) {
+      void this.emailService
+        .sendBookingConfirmedEmail(promotedConfirmationEmail)
+        .catch((err: unknown) => {
+          this.logger.warn(
+            `sendBookingConfirmedEmail (promotion) failed: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        });
+    }
+
+    return {
+      cancelled: true,
+      cancelledAt: cancelledAt.toISOString(),
+      refundAmount: result.refundAmount,
+    };
+  }
+
+  private mapCancelPlayerFailure(code: CancelPlayerBookingFailureCode): Error {
+    const message = CANCEL_PLAYER_MESSAGES[code];
+    switch (code) {
+      case 'BOOKING_NOT_FOUND':
+        return new NotFoundException(message);
+      case 'NOT_OWNER':
+        return new ForbiddenException(message);
+      default:
+        return new BadRequestException(message);
+    }
   }
 
   private mapFailure(code: CreateBookingFailureCode): Error {

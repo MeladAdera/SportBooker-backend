@@ -61,6 +61,31 @@ export class EmailService {
     }
   }
 
+  async sendBookingCancelledEmail(to: string): Promise<void> {
+    const from = this.config.get<string>(
+      'EMAIL_FROM',
+      'noreply@sportbooker.com',
+    );
+    const apiKey = this.config.get<string>('SENDGRID_API_KEY');
+
+    const msg = {
+      to,
+      from,
+      subject: 'Booking cancelled — Sportbooker',
+      text: 'You have cancelled your booking. No refund was issued under the cancellation policy.',
+      html: '<p>You have cancelled your booking. No refund was issued under the cancellation policy.</p>',
+    };
+
+    if (apiKey) {
+      await sgMail.send(msg);
+    } else {
+      console.warn(
+        '[EmailService] SENDGRID_API_KEY not set. Booking cancelled (dev), to:',
+        to,
+      );
+    }
+  }
+
   async sendMatchCancelledEmail(to: string): Promise<void> {
     const from = this.config.get<string>(
       'EMAIL_FROM',

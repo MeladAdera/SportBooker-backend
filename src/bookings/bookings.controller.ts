@@ -15,6 +15,7 @@ import {
   ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
+  ApiOkResponse,
   ApiOperation,
   ApiTags,
   ApiUnauthorizedResponse,
@@ -27,6 +28,7 @@ import type { AuthenticatedUser } from '../auth/auth.types';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { UserRole } from '../users/user-role';
 import { BookingsService } from './bookings.service';
+import { CancelPlayerBookingResponseDto } from './dto/cancel-player-booking-response.dto';
 import { CreateBookingResponseDto } from './dto/create-booking-response.dto';
 
 @ApiTags('Bookings')
@@ -35,6 +37,46 @@ import { CreateBookingResponseDto } from './dto/create-booking-response.dto';
 @UseGuards(RolesGuard)
 export class BookingsController {
   constructor(private readonly bookingsService: BookingsService) {}
+
+  @Post(':matchId/bookings/:bookingId/cancel')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.Player)
+  @ApiOperation({
+    summary: 'Cancel my confirmed booking (player)',
+    description:
+      'At least 24 hours before match start. No refund. Waitlist may be promoted after commit; emails sent asynchronously.',
+  })
+  @ApiBadRequestResponse({
+    description:
+      'Not confirmed, already cancelled, match past/cancelled, or inside 24h window',
+  })
+  @ApiForbiddenResponse({ description: 'Not the booking owner' })
+  @ApiNotFoundResponse({
+    description: 'Booking not found for this match/tenant',
+  })
+  @ApiOkResponse({ type: CancelPlayerBookingResponseDto })
+  async cancelMyBooking(
+    @TenantDecorator() tenant: Tenant | undefined,
+    @CurrentUser() user: AuthenticatedUser | undefined,
+    @Param('matchId', ParseUUIDPipe) matchId: string,
+    @Param('bookingId', ParseUUIDPipe) bookingId: string,
+  ): Promise<CancelPlayerBookingResponseDto> {
+    if (!tenant) {
+      throw new BadRequestException(
+        'Tenant is required. Use Host header with tenant subdomain (e.g. acfc.localhost:3000).',
+      );
+    }
+    if (!user?.sub) {
+      throw new BadRequestException('Authentication required');
+    }
+
+    return this.bookingsService.cancelBookingForPlayer({
+      tenantId: tenant.id,
+      matchId,
+      bookingId,
+      userId: user.sub,
+    });
+  }
 
   @Post(':matchId/bookings')
   @HttpCode(HttpStatus.CREATED)
