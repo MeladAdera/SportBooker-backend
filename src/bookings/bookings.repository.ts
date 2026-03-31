@@ -72,10 +72,14 @@ export type CancelPlayerBookingResult =
       /** Always "0.00" — player self-cancel does not refund */
       refundAmount: '0.00';
       playerEmail: string;
-      /** If first waitlist user was promoted to confirmed (for confirmation email) */
-      promotedConfirmationEmail: string | null;
     }
   | { success: false; code: CancelPlayerBookingFailureCode };
+
+/** Result of FIFO waitlist promotion (separate transaction after a slot opens). */
+export type PromoteWaitlistResult = {
+  promotedEmail: string | null;
+  skippedEmails: string[];
+};
 
 type MatchLockRow = {
   id: string;
@@ -397,7 +401,8 @@ export class BookingsRepository extends BaseRepository {
   }
 
   /**
-   * Player cancels own confirmed booking: no refund, optional waitlist promotion.
+   * Player cancels own confirmed booking: no refund. Waitlist promotion runs after commit via
+   * promoteWaitlistForMatch (separate transaction).
    */
   async cancelBookingForPlayer(params: {
     tenantId: string;
@@ -490,9 +495,77 @@ export class BookingsRepository extends BaseRepository {
       throw new Error('cancelPlayerBooking: expected cancelled_at');
     }
 
-    let promotedConfirmationEmail: string | null = null;
+    return {
+      success: true,
+      cancelledAt,
+      refundAmount: '0.00',
+      playerEmail: row.user_email,
+    };
+  }
 
-    const { rows: pendingRows } = await this.query<{
+  /**
+   * FIFO promote one waitlisted player after a confirmed slot opens.
+   * Run in a new transaction after the cancellation commit. Not used when a match is cancelled.
+   * Skips entries with insufficient wallet (deduction = DB type `debit`) and continues.
+   */
+  async promoteWaitlistForMatch(params: {
+    tenantId: string;
+    matchId: string;
+  }): Promise<PromoteWaitlistResult> {
+    return this.withTransaction(async (client) =>
+      this.promoteWaitlistInTransaction(client, params),
+    );
+  }
+
+  private async promoteWaitlistInTransaction(
+    client: PoolClient,
+    params: { tenantId: string; matchId: string },
+  ): Promise<PromoteWaitlistResult> {
+    const { tenantId, matchId } = params;
+
+    const { rows: matchRows } = await this.query<{
+      id: string;
+      status: string;
+      price_per_player: string;
+      max_players: number | null;
+    }>(
+      client,
+      `SELECT m.id, m.status::text AS status, m.price_per_player::text AS price_per_player, m.max_players
+       FROM matches m
+       INNER JOIN venues v ON v.id = m.venue_id
+       WHERE m.id = $1 AND v.tenant_id = $2
+       FOR UPDATE OF m`,
+      [matchId, tenantId],
+    );
+    const match = matchRows[0];
+    if (!match || match.status !== 'upcoming') {
+      return { promotedEmail: null, skippedEmails: [] };
+    }
+
+    const price = match.price_per_player;
+
+    const { rows: countRows } = await this.query<{ c: string }>(
+      client,
+      `SELECT COUNT(*)::text AS c FROM bookings WHERE match_id = $1 AND status = 'pending'`,
+      [matchId],
+    );
+    const waitlistCount = parseInt(countRows[0]?.c ?? '0', 10);
+    if (waitlistCount === 0) {
+      return { promotedEmail: null, skippedEmails: [] };
+    }
+
+    const { rows: confirmedRows } = await this.query<{ c: string }>(
+      client,
+      `SELECT COUNT(*)::text AS c FROM bookings WHERE match_id = $1 AND status = 'confirmed'`,
+      [matchId],
+    );
+    const confirmedCount = parseInt(confirmedRows[0]?.c ?? '0', 10);
+    const maxP = match.max_players;
+    if (maxP !== null && maxP !== undefined && confirmedCount >= maxP) {
+      return { promotedEmail: null, skippedEmails: [] };
+    }
+
+    const { rows: pendingList } = await this.query<{
       id: string;
       user_id: string;
       email: string;
@@ -502,63 +575,76 @@ export class BookingsRepository extends BaseRepository {
        FROM bookings b
        INNER JOIN users u ON u.id = b.user_id
        WHERE b.match_id = $1 AND b.status = 'pending'
-       ORDER BY b.created_at ASC
-       LIMIT 1
-       FOR UPDATE OF b`,
+       ORDER BY b.created_at ASC`,
       [matchId],
     );
-    const pending = pendingRows[0];
-    const price = row.price_per_player;
 
-    if (pending) {
-      const { rows: walletRows } = await this.query<{ wallet_balance: string }>(
-        client,
-        `SELECT wallet_balance::text AS wallet_balance
-         FROM users
-         WHERE id = $1 AND tenant_id = $2
-         FOR UPDATE`,
-        [pending.user_id, tenantId],
-      );
-      if (walletRows[0]) {
-        const { rows: debited } = await this.query<{ wallet_balance: string }>(
-          client,
-          `UPDATE users
-           SET wallet_balance = wallet_balance - $3::numeric,
-               updated_at = now()
-           WHERE id = $1
-             AND tenant_id = $2
-             AND wallet_balance >= $3::numeric
-           RETURNING wallet_balance`,
-          [pending.user_id, tenantId, price],
-        );
-        if (debited[0]) {
-          await this.query(
-            client,
-            `UPDATE bookings
-             SET status = 'confirmed'::booking_status,
-                 paid_amount = $2::numeric,
-                 updated_at = now()
-             WHERE id = $1`,
-            [pending.id, price],
-          );
-          await this.query(
-            client,
-            `INSERT INTO wallet_transactions (user_id, amount, type, reference_id)
-             VALUES ($1, $2, 'debit', $3)`,
-            [pending.user_id, price, pending.id],
-          );
-          promotedConfirmationEmail = pending.email;
-        }
+    const skippedEmails: string[] = [];
+    const maxIterations = pendingList.length;
+
+    for (let i = 0; i < maxIterations; i++) {
+      const candidate = pendingList[i];
+      if (!candidate) {
+        break;
       }
+
+      const { rows: locked } = await this.query<{ id: string }>(
+        client,
+        `SELECT b.id
+         FROM bookings b
+         WHERE b.id = $1 AND b.match_id = $2 AND b.status = 'pending'
+         FOR UPDATE OF b`,
+        [candidate.id, matchId],
+      );
+      if (!locked[0]) {
+        continue;
+      }
+
+      await this.query(
+        client,
+        `SELECT id FROM users WHERE id = $1 AND tenant_id = $2 FOR UPDATE`,
+        [candidate.user_id, tenantId],
+      );
+
+      const { rows: debited } = await this.query<{ wallet_balance: string }>(
+        client,
+        `UPDATE users
+         SET wallet_balance = wallet_balance - $3::numeric,
+             updated_at = now()
+         WHERE id = $1
+           AND tenant_id = $2
+           AND wallet_balance >= $3::numeric
+         RETURNING wallet_balance`,
+        [candidate.user_id, tenantId, price],
+      );
+      if (!debited[0]) {
+        skippedEmails.push(candidate.email);
+        continue;
+      }
+
+      await this.query(
+        client,
+        `UPDATE bookings
+         SET status = 'confirmed'::booking_status,
+             paid_amount = $2::numeric,
+             updated_at = now()
+         WHERE id = $1`,
+        [candidate.id, price],
+      );
+      await this.query(
+        client,
+        `INSERT INTO wallet_transactions (user_id, amount, type, reference_id)
+         VALUES ($1, $2, 'debit', $3)`,
+        [candidate.user_id, price, candidate.id],
+      );
+
+      return {
+        promotedEmail: candidate.email,
+        skippedEmails,
+      };
     }
 
-    return {
-      success: true,
-      cancelledAt,
-      refundAmount: '0.00',
-      playerEmail: row.user_email,
-      promotedConfirmationEmail,
-    };
+    return { promotedEmail: null, skippedEmails };
   }
 
   private computeRemainingSpots(

@@ -9,6 +9,6 @@ import { BookingsService } from './bookings.service';
   imports: [forwardRef(() => AuthModule)],
   controllers: [BookingsController],
   providers: [BookingsRepository, BookingsService, RolesGuard],
-  exports: [BookingsRepository],
+  exports: [BookingsRepository, BookingsService],
 })
 export class BookingsModule {}

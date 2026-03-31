@@ -83,7 +83,7 @@ export class BookingsService {
       throw this.mapCancelPlayerFailure(result.code);
     }
 
-    const { cancelledAt, playerEmail, promotedConfirmationEmail } = result;
+    const { cancelledAt, playerEmail } = result;
 
     void this.emailService
       .sendBookingCancelledEmail(playerEmail)
@@ -93,21 +93,55 @@ export class BookingsService {
         );
       });
 
-    if (promotedConfirmationEmail) {
-      void this.emailService
-        .sendBookingConfirmedEmail(promotedConfirmationEmail)
-        .catch((err: unknown) => {
-          this.logger.warn(
-            `sendBookingConfirmedEmail (promotion) failed: ${err instanceof Error ? err.message : String(err)}`,
-          );
-        });
-    }
+    await this.promoteWaitlistAfterSpotOpened(params.tenantId, params.matchId);
 
     return {
       cancelled: true,
       cancelledAt: cancelledAt.toISOString(),
       refundAmount: result.refundAmount,
     };
+  }
+
+  /**
+   * FIFO waitlist promotion after a confirmed slot opens (player cancel or admin removal).
+   * Does not run for match-level cancellation. Separate transaction from the opening operation.
+   */
+  async promoteWaitlistAfterSpotOpened(
+    tenantId: string,
+    matchId: string,
+  ): Promise<void> {
+    try {
+      const { promotedEmail, skippedEmails } =
+        await this.bookingsRepository.promoteWaitlistForMatch({
+          tenantId,
+          matchId,
+        });
+
+      for (const email of skippedEmails) {
+        void this.emailService
+          .sendWaitlistSkippedEmail(email)
+          .catch((err: unknown) => {
+            this.logger.warn(
+              `sendWaitlistSkippedEmail failed: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          });
+      }
+
+      if (promotedEmail) {
+        void this.emailService
+          .sendWaitlistPromotedEmail(promotedEmail)
+          .catch((err: unknown) => {
+            this.logger.warn(
+              `sendWaitlistPromotedEmail failed: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          });
+      }
+    } catch (err: unknown) {
+      this.logger.error(
+        `promoteWaitlistAfterSpotOpened failed: ${err instanceof Error ? err.message : String(err)}`,
+        err instanceof Error ? err.stack : undefined,
+      );
+    }
   }
 
   private mapCancelPlayerFailure(code: CancelPlayerBookingFailureCode): Error {

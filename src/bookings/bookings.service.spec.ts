@@ -11,12 +11,20 @@ import { BookingsService } from './bookings.service';
 describe('BookingsService', () => {
   let service: BookingsService;
   let bookingsRepo: jest.Mocked<
-    Pick<BookingsRepository, 'createBookingForMatch' | 'cancelBookingForPlayer'>
+    Pick<
+      BookingsRepository,
+      | 'createBookingForMatch'
+      | 'cancelBookingForPlayer'
+      | 'promoteWaitlistForMatch'
+    >
   >;
   let emailService: jest.Mocked<
     Pick<
       EmailService,
-      'sendBookingConfirmedEmail' | 'sendBookingCancelledEmail'
+      | 'sendBookingConfirmedEmail'
+      | 'sendBookingCancelledEmail'
+      | 'sendWaitlistPromotedEmail'
+      | 'sendWaitlistSkippedEmail'
     >
   >;
 
@@ -38,10 +46,15 @@ describe('BookingsService', () => {
     bookingsRepo = {
       createBookingForMatch: jest.fn(),
       cancelBookingForPlayer: jest.fn(),
+      promoteWaitlistForMatch: jest
+        .fn()
+        .mockResolvedValue({ promotedEmail: null, skippedEmails: [] }),
     };
     emailService = {
       sendBookingConfirmedEmail: jest.fn().mockResolvedValue(undefined),
       sendBookingCancelledEmail: jest.fn().mockResolvedValue(undefined),
+      sendWaitlistPromotedEmail: jest.fn().mockResolvedValue(undefined),
+      sendWaitlistSkippedEmail: jest.fn().mockResolvedValue(undefined),
     };
     service = new BookingsService(
       bookingsRepo as unknown as BookingsRepository,
@@ -131,13 +144,16 @@ describe('BookingsService', () => {
   describe('cancelBookingForPlayer', () => {
     const cancelledAt = new Date('2026-06-10T10:00:00.000Z');
 
-    it('returns DTO, sends booking_cancelled email, and sends confirmation when promoted', async () => {
+    it('returns DTO, runs waitlist promotion after commit, sends waitlist_promoted and skipped emails', async () => {
       bookingsRepo.cancelBookingForPlayer.mockResolvedValue({
         success: true,
         cancelledAt,
         refundAmount: '0.00',
         playerEmail: 'player@example.com',
-        promotedConfirmationEmail: 'wait@example.com',
+      });
+      bookingsRepo.promoteWaitlistForMatch.mockResolvedValue({
+        promotedEmail: 'promoted@example.com',
+        skippedEmails: ['skipped@example.com'],
       });
 
       const dto = await service.cancelBookingForPlayer({
@@ -152,21 +168,31 @@ describe('BookingsService', () => {
         cancelledAt: cancelledAt.toISOString(),
         refundAmount: '0.00',
       });
+      expect(bookingsRepo.promoteWaitlistForMatch).toHaveBeenCalledWith({
+        tenantId,
+        matchId,
+      });
       expect(emailService.sendBookingCancelledEmail).toHaveBeenCalledWith(
         'player@example.com',
       );
-      expect(emailService.sendBookingConfirmedEmail).toHaveBeenCalledWith(
-        'wait@example.com',
+      expect(emailService.sendWaitlistPromotedEmail).toHaveBeenCalledWith(
+        'promoted@example.com',
+      );
+      expect(emailService.sendWaitlistSkippedEmail).toHaveBeenCalledWith(
+        'skipped@example.com',
       );
     });
 
-    it('does not send confirmation email when no promotion', async () => {
+    it('does not send waitlist emails when promotion finds no one', async () => {
       bookingsRepo.cancelBookingForPlayer.mockResolvedValue({
         success: true,
         cancelledAt,
         refundAmount: '0.00',
         playerEmail: 'player@example.com',
-        promotedConfirmationEmail: null,
+      });
+      bookingsRepo.promoteWaitlistForMatch.mockResolvedValue({
+        promotedEmail: null,
+        skippedEmails: [],
       });
 
       await service.cancelBookingForPlayer({
@@ -177,7 +203,8 @@ describe('BookingsService', () => {
       });
 
       expect(emailService.sendBookingCancelledEmail).toHaveBeenCalled();
-      expect(emailService.sendBookingConfirmedEmail).not.toHaveBeenCalled();
+      expect(emailService.sendWaitlistPromotedEmail).not.toHaveBeenCalled();
+      expect(emailService.sendWaitlistSkippedEmail).not.toHaveBeenCalled();
     });
 
     it('throws NotFound when booking missing', async () => {

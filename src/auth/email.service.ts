@@ -61,6 +61,56 @@ export class EmailService {
     }
   }
 
+  async sendWaitlistPromotedEmail(to: string): Promise<void> {
+    const from = this.config.get<string>(
+      'EMAIL_FROM',
+      'noreply@sportbooker.com',
+    );
+    const apiKey = this.config.get<string>('SENDGRID_API_KEY');
+
+    const msg = {
+      to,
+      from,
+      subject: 'You have been promoted from the waitlist — Sportbooker',
+      text: 'A spot opened and you have been confirmed on the match. The fee has been charged to your wallet.',
+      html: '<p>A spot opened and you have been confirmed on the match. The fee has been charged to your wallet.</p>',
+    };
+
+    if (apiKey) {
+      await sgMail.send(msg);
+    } else {
+      console.warn(
+        '[EmailService] SENDGRID_API_KEY not set. Waitlist promoted (dev), to:',
+        to,
+      );
+    }
+  }
+
+  async sendWaitlistSkippedEmail(to: string): Promise<void> {
+    const from = this.config.get<string>(
+      'EMAIL_FROM',
+      'noreply@sportbooker.com',
+    );
+    const apiKey = this.config.get<string>('SENDGRID_API_KEY');
+
+    const msg = {
+      to,
+      from,
+      subject: 'Waitlist — Sportbooker',
+      text: 'You were next on the waitlist but your wallet balance was insufficient to take the open spot. Another player may have been promoted instead.',
+      html: '<p>You were next on the waitlist but your wallet balance was insufficient to take the open spot. Another player may have been promoted instead.</p>',
+    };
+
+    if (apiKey) {
+      await sgMail.send(msg);
+    } else {
+      console.warn(
+        '[EmailService] SENDGRID_API_KEY not set. Waitlist skipped (dev), to:',
+        to,
+      );
+    }
+  }
+
   async sendBookingCancelledEmail(to: string): Promise<void> {
     const from = this.config.get<string>(
       'EMAIL_FROM',
