@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import type { PoolClient } from 'pg';
 import { AuthRepository } from '../auth/auth.repository';
+import { BookingsRepository } from '../bookings/bookings.repository';
 import { UpdateMyProfileDto } from './dto/update-my-profile.dto';
 import { UserRole } from './user-role';
 import { UsersRepository } from './users.repository';
@@ -27,6 +28,9 @@ describe('UsersService', () => {
       | 'softDeleteAccount'
       | 'updateRole'
     >
+  >;
+  let bookingsRepository: jest.Mocked<
+    Pick<BookingsRepository, 'countMyBookingsForUser' | 'findMyBookingsForUser'>
   >;
 
   const tenantId = 'tenant-uuid';
@@ -61,9 +65,14 @@ describe('UsersService', () => {
       softDeleteAccount: jest.fn(),
       updateRole: jest.fn(),
     };
+    bookingsRepository = {
+      countMyBookingsForUser: jest.fn().mockResolvedValue(0),
+      findMyBookingsForUser: jest.fn().mockResolvedValue([]),
+    };
     service = new UsersService(
       repository as unknown as UsersRepository,
       authRepository as unknown as AuthRepository,
+      bookingsRepository as unknown as BookingsRepository,
     );
   });
 
@@ -311,6 +320,55 @@ describe('UsersService', () => {
           tenantId,
           userId: actorId,
           dto: { name: 'X' },
+        }),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
+  describe('listMyBookings', () => {
+    it('returns paginated items and maps pending to waitlisted', async () => {
+      repository.findByIdForSelfProfile.mockResolvedValue(profileRow);
+      bookingsRepository.countMyBookingsForUser.mockResolvedValue(1);
+      bookingsRepository.findMyBookingsForUser.mockResolvedValue([
+        {
+          id: 'b1',
+          status: 'pending',
+          paid_amount: '0',
+          match_title: 'Sunday',
+          sport_type: 'football',
+          scheduled_at: new Date('2026-12-01T12:00:00.000Z'),
+          venue_name: 'Main',
+          created_at: new Date('2026-03-01T12:00:00.000Z'),
+        },
+      ]);
+
+      const result = await service.listMyBookings({
+        tenantId,
+        userId: actorId,
+        query: { page: 1, limit: 20 },
+      });
+
+      expect(result.page).toBe(1);
+      expect(result.limit).toBe(20);
+      expect(result.total).toBe(1);
+      expect(result.items[0]?.status).toBe('waitlisted');
+      expect(result.items[0]?.matchTitle).toBe('Sunday');
+      expect(bookingsRepository.countMyBookingsForUser).toHaveBeenCalledWith({
+        tenantId,
+        userId: actorId,
+        status: undefined,
+        upcoming: undefined,
+      });
+    });
+
+    it('throws Unauthorized when profile missing', async () => {
+      repository.findByIdForSelfProfile.mockResolvedValue(null);
+
+      await expect(
+        service.listMyBookings({
+          tenantId,
+          userId: actorId,
+          query: {},
         }),
       ).rejects.toThrow(UnauthorizedException);
     });

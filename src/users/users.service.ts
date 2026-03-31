@@ -7,10 +7,16 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { AuthRepository } from '../auth/auth.repository';
+import { BookingsRepository } from '../bookings/bookings.repository';
+import type { MyBookingHistoryRow } from '../bookings/bookings.repository';
+import type { VenueSportType } from '../venues/venue-sport-type';
 import type { AssignableRole } from './user-role';
 import { roleRank } from './user-role';
 import type { AccountDeletedResponseDto } from './dto/account-deleted-response.dto';
+import type { MyBookingItemDto } from './dto/my-booking-item.dto';
+import type { MyBookingsQueryDto } from './dto/my-bookings-query.dto';
 import type { MyProfileResponseDto } from './dto/my-profile-response.dto';
+import type { PaginatedMyBookingsDto } from './dto/paginated-my-bookings.dto';
 import type { UpdateMyProfileDto } from './dto/update-my-profile.dto';
 import type { UserResponseDto } from './dto/user-response.dto';
 import type { UserSelfProfileRow } from './users.repository';
@@ -24,6 +30,7 @@ export class UsersService {
   constructor(
     private readonly usersRepository: UsersRepository,
     private readonly authRepository: AuthRepository,
+    private readonly bookingsRepository: BookingsRepository,
   ) {}
 
   /**
@@ -92,6 +99,56 @@ export class UsersService {
   }
 
   /**
+   * Paginated booking history for the current user (tenant-scoped via venue).
+   */
+  async listMyBookings(params: {
+    tenantId: string;
+    userId: string;
+    query: MyBookingsQueryDto;
+  }): Promise<PaginatedMyBookingsDto> {
+    const { tenantId, userId, query } = params;
+
+    const profile = await this.usersRepository.findByIdForSelfProfile(
+      tenantId,
+      userId,
+    );
+    if (!profile || profile.deleted_at != null) {
+      throw new UnauthorizedException('Invalid or expired session');
+    }
+
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+    const offset = (page - 1) * limit;
+
+    const filter = {
+      status: query.status,
+      upcoming: query.upcoming,
+    };
+
+    const [total, rows] = await Promise.all([
+      this.bookingsRepository.countMyBookingsForUser({
+        tenantId,
+        userId,
+        ...filter,
+      }),
+      this.bookingsRepository.findMyBookingsForUser({
+        tenantId,
+        userId,
+        limit,
+        offset,
+        ...filter,
+      }),
+    ]);
+
+    return {
+      page,
+      limit,
+      total,
+      items: rows.map((row) => this.toMyBookingItemDto(row)),
+    };
+  }
+
+  /**
    * Updates optional profile fields; same response shape as GET /users/me.
    */
   async updateMyProfile(params: {
@@ -147,6 +204,20 @@ export class UsersService {
 
       return { message: 'Account deleted' };
     });
+  }
+
+  private toMyBookingItemDto(row: MyBookingHistoryRow): MyBookingItemDto {
+    const status = row.status === 'pending' ? 'waitlisted' : row.status;
+    return {
+      id: row.id,
+      status,
+      paidAmount: row.paid_amount,
+      matchTitle: row.match_title,
+      sportType: row.sport_type as VenueSportType,
+      matchScheduledAt: row.scheduled_at.toISOString(),
+      venueName: row.venue_name,
+      createdAt: row.created_at.toISOString(),
+    };
   }
 
   private toMyProfileDto(row: UserSelfProfileRow): MyProfileResponseDto {

@@ -6,6 +6,7 @@ import {
   Param,
   ParseUUIDPipe,
   Patch,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -21,7 +22,9 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import type { AuthenticatedUser } from '../auth/auth.types';
 import { AccountDeletedResponseDto } from './dto/account-deleted-response.dto';
 import { AssignRoleDto } from './dto/assign-role.dto';
+import { MyBookingsQueryDto } from './dto/my-bookings-query.dto';
 import { MyProfileResponseDto } from './dto/my-profile-response.dto';
+import { PaginatedMyBookingsDto } from './dto/paginated-my-bookings.dto';
 import { UpdateMyProfileDto } from './dto/update-my-profile.dto';
 import { UserResponseDto } from './dto/user-response.dto';
 import { UserRole } from './user-role';
@@ -62,6 +65,38 @@ export class UsersController {
     return this.usersService.getMyProfile({
       tenantId: user.tenantId,
       userId: user.sub,
+    });
+  }
+
+  @Get('me/bookings')
+  @Roles(
+    UserRole.SuperAdmin,
+    UserRole.TenantAdmin,
+    UserRole.TenantStaff,
+    UserRole.Player,
+  )
+  @ApiOperation({
+    summary: 'List my bookings',
+    description:
+      'Paginated booking history for this tenant. Filter by status (waitlisted = pending waitlist) or upcoming matches only. Ordered by match time, newest first.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Bookings',
+    type: PaginatedMyBookingsDto,
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized or soft-deleted user',
+  })
+  async listMyBookings(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: MyBookingsQueryDto,
+  ): Promise<PaginatedMyBookingsDto> {
+    return this.usersService.listMyBookings({
+      tenantId: user.tenantId,
+      userId: user.sub,
+      query,
     });
   }
 

@@ -13,6 +13,18 @@ export type BookingRow = {
   updated_at: Date;
 };
 
+/** Row for GET /users/me/bookings (joined query). */
+export type MyBookingHistoryRow = {
+  id: string;
+  status: string;
+  paid_amount: string;
+  match_title: string;
+  sport_type: string;
+  scheduled_at: Date;
+  venue_name: string;
+  created_at: Date;
+};
+
 export type CreateBookingFailureCode =
   | 'MATCH_NOT_FOUND'
   | 'USER_NOT_FOUND'
@@ -401,5 +413,93 @@ export class BookingsRepository extends BaseRepository {
       throw new Error('insertBooking: expected one row');
     }
     return row;
+  }
+
+  /**
+   * Paginated booking history for a user in a tenant (JOIN bookings, matches, venues).
+   */
+  async countMyBookingsForUser(params: {
+    tenantId: string;
+    userId: string;
+    status?: 'confirmed' | 'cancelled' | 'waitlisted';
+    upcoming?: boolean;
+  }): Promise<number> {
+    const { whereSql, values } =
+      BookingsRepository.buildMyBookingsFilters(params);
+    const { rows } = await this.query<{ c: string }>(
+      this.pool,
+      `SELECT COUNT(*)::text AS c
+       FROM bookings b
+       INNER JOIN matches m ON m.id = b.match_id
+       INNER JOIN venues v ON v.id = m.venue_id
+       WHERE ${whereSql}`,
+      values,
+    );
+    return parseInt(rows[0]?.c ?? '0', 10);
+  }
+
+  async findMyBookingsForUser(params: {
+    tenantId: string;
+    userId: string;
+    status?: 'confirmed' | 'cancelled' | 'waitlisted';
+    upcoming?: boolean;
+    limit: number;
+    offset: number;
+  }): Promise<MyBookingHistoryRow[]> {
+    const { whereSql, values } =
+      BookingsRepository.buildMyBookingsFilters(params);
+    const limit = params.limit;
+    const offset = params.offset;
+    const limitIdx = values.length + 1;
+    const offsetIdx = values.length + 2;
+    const { rows } = await this.query<MyBookingHistoryRow>(
+      this.pool,
+      `SELECT
+         b.id,
+         b.status,
+         b.paid_amount::text AS paid_amount,
+         m.title AS match_title,
+         m.sport_type::text AS sport_type,
+         m.scheduled_at,
+         v.name AS venue_name,
+         b.created_at
+       FROM bookings b
+       INNER JOIN matches m ON m.id = b.match_id
+       INNER JOIN venues v ON v.id = m.venue_id
+       WHERE ${whereSql}
+       ORDER BY m.scheduled_at DESC
+       LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
+      [...values, limit, offset],
+    );
+    return rows;
+  }
+
+  private static buildMyBookingsFilters(params: {
+    userId: string;
+    tenantId: string;
+    status?: 'confirmed' | 'cancelled' | 'waitlisted';
+    upcoming?: boolean;
+  }): { whereSql: string; values: unknown[] } {
+    const values: unknown[] = [];
+    const parts: string[] = [];
+    let n = 1;
+
+    parts.push(`b.user_id = $${n++}`);
+    values.push(params.userId);
+    parts.push(`v.tenant_id = $${n++}`);
+    values.push(params.tenantId);
+
+    if (params.status === 'waitlisted') {
+      parts.push(`b.status = 'pending'`);
+    } else if (params.status === 'confirmed' || params.status === 'cancelled') {
+      parts.push(`b.status = $${n++}::booking_status`);
+      values.push(params.status);
+    }
+
+    if (params.upcoming === true) {
+      parts.push('m.scheduled_at > now()');
+    }
+
+    return { whereSql: parts.join(' AND '), values };
   }
 }
