@@ -7,11 +7,14 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { EmailService } from '../auth/email.service';
+import type { VenueSportType } from '../venues/venue-sport-type';
 import {
   BookingsRepository,
+  type BookingDetailRow,
   type CancelPlayerBookingFailureCode,
   type CreateBookingFailureCode,
 } from './bookings.repository';
+import type { BookingDetailResponseDto } from './dto/booking-detail-response.dto';
 import type { CancelPlayerBookingResponseDto } from './dto/cancel-player-booking-response.dto';
 import type { CreateBookingResponseDto } from './dto/create-booking-response.dto';
 
@@ -102,6 +105,33 @@ export class BookingsService {
     };
   }
 
+  async getBookingDetail(params: {
+    tenantId: string;
+    bookingId: string;
+    actorUserId: string;
+    actorRole: string;
+  }): Promise<BookingDetailResponseDto> {
+    const row = await this.bookingsRepository.findBookingDetailForTenant({
+      bookingId: params.bookingId,
+      tenantId: params.tenantId,
+    });
+    if (!row) {
+      throw new NotFoundException('Booking not found');
+    }
+
+    const canViewAll =
+      params.actorRole === 'super_admin' ||
+      params.actorRole === 'tenant_admin' ||
+      params.actorRole === 'tenant_staff' ||
+      row.user_id === params.actorUserId;
+
+    if (!canViewAll) {
+      throw new NotFoundException('Booking not found');
+    }
+
+    return this.toBookingDetailDto(row);
+  }
+
   /**
    * FIFO waitlist promotion after a confirmed slot opens (player cancel or admin removal).
    * Does not run for match-level cancellation. Separate transaction from the opening operation.
@@ -188,6 +218,43 @@ export class BookingsService {
       paidAmount: booking.paid_amount,
       createdAt: booking.created_at.toISOString(),
       remainingSpots,
+    };
+  }
+
+  private toBookingDetailDto(row: BookingDetailRow): BookingDetailResponseDto {
+    return {
+      id: row.id,
+      matchId: row.match_id,
+      userId: row.user_id,
+      status: row.status,
+      paidAmount: row.paid_amount,
+      cancelledAt: row.cancelled_at ? row.cancelled_at.toISOString() : null,
+      refundedAt: row.refunded_at ? row.refunded_at.toISOString() : null,
+      createdAt: row.created_at.toISOString(),
+      match: {
+        id: row.match_id,
+        venueId: row.match_venue_id,
+        title: row.match_title,
+        sportType: row.sport_type as VenueSportType,
+        scheduledAt: row.scheduled_at.toISOString(),
+        durationMins: row.duration_mins,
+        maxPlayers: row.max_players,
+        pricePerPlayer: Number(row.price_per_player),
+        status: row.match_status,
+        createdAt: row.match_created_at.toISOString(),
+        updatedAt: row.match_updated_at.toISOString(),
+      },
+      venue: {
+        id: row.venue_id,
+        name: row.venue_name,
+        address: row.address,
+        mapsUrl: row.maps_url,
+        sportTypes: row.sport_types as VenueSportType[],
+        isActive: row.venue_is_active,
+        pictureUrl: row.picture_url,
+        createdAt: row.venue_created_at.toISOString(),
+        updatedAt: row.venue_updated_at.toISOString(),
+      },
     };
   }
 }

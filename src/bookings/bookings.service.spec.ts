@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { EmailService } from '../auth/email.service';
+import type { BookingDetailRow } from './bookings.repository';
 import { BookingsRepository } from './bookings.repository';
 import { BookingsService } from './bookings.service';
 
@@ -16,6 +17,7 @@ describe('BookingsService', () => {
       | 'createBookingForMatch'
       | 'cancelBookingForPlayer'
       | 'promoteWaitlistForMatch'
+      | 'findBookingDetailForTenant'
     >
   >;
   let emailService: jest.Mocked<
@@ -42,6 +44,36 @@ describe('BookingsService', () => {
     updated_at: new Date('2026-06-01T12:00:00.000Z'),
   };
 
+  const bookingDetailRow: BookingDetailRow = {
+    id: bookingRow.id,
+    match_id: matchId,
+    user_id: userId,
+    status: 'confirmed',
+    paid_amount: '15.50',
+    cancelled_at: null,
+    refunded_at: null,
+    created_at: new Date('2026-06-01T12:00:00.000Z'),
+    match_venue_id: '990e8400-e29b-41d4-a716-446655440010',
+    match_title: 'Kickabout',
+    sport_type: 'football',
+    scheduled_at: new Date('2026-07-01T18:00:00.000Z'),
+    duration_mins: 60,
+    price_per_player: '20.00',
+    match_status: 'upcoming',
+    max_players: 10,
+    match_created_at: new Date('2026-05-01T00:00:00.000Z'),
+    match_updated_at: new Date('2026-05-01T00:00:00.000Z'),
+    venue_id: 'aa0e8400-e29b-41d4-a716-446655440020',
+    venue_name: 'North Pitch',
+    address: '1 Field Rd',
+    maps_url: 'https://maps.example.com',
+    picture_url: null,
+    sport_types: ['football'],
+    venue_is_active: true,
+    venue_created_at: new Date('2026-01-01T00:00:00.000Z'),
+    venue_updated_at: new Date('2026-01-01T00:00:00.000Z'),
+  };
+
   beforeEach(() => {
     bookingsRepo = {
       createBookingForMatch: jest.fn(),
@@ -49,6 +81,7 @@ describe('BookingsService', () => {
       promoteWaitlistForMatch: jest
         .fn()
         .mockResolvedValue({ promotedEmail: null, skippedEmails: [] }),
+      findBookingDetailForTenant: jest.fn(),
     };
     emailService = {
       sendBookingConfirmedEmail: jest.fn().mockResolvedValue(undefined),
@@ -253,6 +286,72 @@ describe('BookingsService', () => {
           userId,
         }),
       ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('getBookingDetail', () => {
+    it('returns detail when player owns booking', async () => {
+      bookingsRepo.findBookingDetailForTenant.mockResolvedValue(
+        bookingDetailRow,
+      );
+
+      const dto = await service.getBookingDetail({
+        tenantId,
+        bookingId: bookingRow.id,
+        actorUserId: userId,
+        actorRole: 'player',
+      });
+
+      expect(dto.id).toBe(bookingRow.id);
+      expect(dto.match.title).toBe('Kickabout');
+      expect(dto.venue.name).toBe('North Pitch');
+      expect(dto.cancelledAt).toBeNull();
+    });
+
+    it('returns detail for tenant_admin viewing another user booking', async () => {
+      bookingsRepo.findBookingDetailForTenant.mockResolvedValue(
+        bookingDetailRow,
+      );
+
+      await service.getBookingDetail({
+        tenantId,
+        bookingId: bookingRow.id,
+        actorUserId: 'other-user-uuid',
+        actorRole: 'tenant_admin',
+      });
+
+      expect(bookingsRepo.findBookingDetailForTenant).toHaveBeenCalledWith({
+        bookingId: bookingRow.id,
+        tenantId,
+      });
+    });
+
+    it('throws NotFound when booking missing', async () => {
+      bookingsRepo.findBookingDetailForTenant.mockResolvedValue(null);
+
+      await expect(
+        service.getBookingDetail({
+          tenantId,
+          bookingId: bookingRow.id,
+          actorUserId: userId,
+          actorRole: 'player',
+        }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('throws NotFound when player requests another user booking', async () => {
+      bookingsRepo.findBookingDetailForTenant.mockResolvedValue(
+        bookingDetailRow,
+      );
+
+      await expect(
+        service.getBookingDetail({
+          tenantId,
+          bookingId: bookingRow.id,
+          actorUserId: 'other-user-uuid',
+          actorRole: 'player',
+        }),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 });

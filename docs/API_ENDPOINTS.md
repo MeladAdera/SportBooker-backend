@@ -100,9 +100,9 @@ Controller default roles: `super_admin`, `tenant_admin` — **overridden per han
 
 ---
 
-## Bookings (nested under matches)
+## Bookings
 
-Implemented in `BookingsController` with the same base path **`/matches`**.
+### Under `/matches` (`BookingsController`)
 
 | Method | Path | Roles | Notes |
 |--------|------|-------|--------|
@@ -110,6 +110,12 @@ Implemented in `BookingsController` with the same base path **`/matches`**.
 | `POST` | `/matches/:matchId/bookings` | **player** | Book or waitlist |
 
 > Register `.../bookings/:bookingId/cancel` before `.../bookings` so routes resolve correctly.
+
+### Under `/bookings` (`BookingDetailController`)
+
+| Method | Path | Roles | Notes |
+|--------|------|-------|--------|
+| `GET` | `/bookings/:bookingId` | super_admin, tenant_admin, tenant_staff, player | Own booking or tenant admin/staff; match + venue |
 
 ---
 
@@ -123,8 +129,8 @@ Implemented in `BookingsController` with the same base path **`/matches`**.
 | Users | 9 |
 | Venues | 6 |
 | Matches | 5 |
-| Bookings | 2 |
-| **Total** | **36** |
+| Bookings | 3 |
+| **Total** | **37** |
 
 ---
 

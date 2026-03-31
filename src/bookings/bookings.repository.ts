@@ -25,6 +25,37 @@ export type MyBookingHistoryRow = {
   created_at: Date;
 };
 
+/** Row for GET /bookings/:id (join match + venue; tenant via venue). */
+export type BookingDetailRow = {
+  id: string;
+  match_id: string;
+  user_id: string;
+  status: string;
+  paid_amount: string;
+  cancelled_at: Date | null;
+  refunded_at: Date | null;
+  created_at: Date;
+  match_venue_id: string;
+  match_title: string;
+  sport_type: string;
+  scheduled_at: Date;
+  duration_mins: number;
+  price_per_player: string;
+  match_status: string;
+  max_players: number | null;
+  match_created_at: Date;
+  match_updated_at: Date;
+  venue_id: string;
+  venue_name: string;
+  address: string;
+  maps_url: string;
+  picture_url: string | null;
+  sport_types: string[];
+  venue_is_active: boolean;
+  venue_created_at: Date;
+  venue_updated_at: Date;
+};
+
 export type CreateBookingFailureCode =
   | 'MATCH_NOT_FOUND'
   | 'USER_NOT_FOUND'
@@ -744,6 +775,52 @@ export class BookingsRepository extends BaseRepository {
       [...values, limit, offset],
     );
     return rows;
+  }
+
+  /**
+   * Booking + match + venue for tenant. Caller enforces auth (user or admin).
+   */
+  async findBookingDetailForTenant(params: {
+    bookingId: string;
+    tenantId: string;
+  }): Promise<BookingDetailRow | null> {
+    const { rows } = await this.query<BookingDetailRow>(
+      this.pool,
+      `SELECT
+         b.id,
+         b.match_id,
+         b.user_id,
+         b.status::text AS status,
+         b.paid_amount::text AS paid_amount,
+         b.cancelled_at,
+         b.refunded_at,
+         b.created_at,
+         m.venue_id AS match_venue_id,
+         m.title AS match_title,
+         m.sport_type::text AS sport_type,
+         m.scheduled_at,
+         m.duration_mins,
+         m.price_per_player::text AS price_per_player,
+         m.status::text AS match_status,
+         m.max_players,
+         m.created_at AS match_created_at,
+         m.updated_at AS match_updated_at,
+         v.id AS venue_id,
+         v.name AS venue_name,
+         v.address,
+         v.maps_url,
+         v.picture_url,
+         v.sport_types,
+         v.is_active AS venue_is_active,
+         v.created_at AS venue_created_at,
+         v.updated_at AS venue_updated_at
+       FROM bookings b
+       INNER JOIN matches m ON m.id = b.match_id
+       INNER JOIN venues v ON v.id = m.venue_id
+       WHERE b.id = $1 AND v.tenant_id = $2`,
+      [params.bookingId, params.tenantId],
+    );
+    return rows[0] ?? null;
   }
 
   private static buildMyBookingsFilters(params: {
