@@ -16,16 +16,7 @@ export type TenantRow = {
 };
 
 /** Admin tenant list row (no logo). */
-export type TenantAdminListRow = {
-  id: string;
-  name: string;
-  slug: string;
-  timezone: string;
-  cancel_cutoff_hours: number;
-  is_active: boolean;
-  created_at: Date;
-  updated_at: Date;
-};
+export type TenantAdminListRow = Omit<TenantRow, 'logo_url'>;
 
 @Injectable()
 export class TenantsRepository extends BaseRepository {
