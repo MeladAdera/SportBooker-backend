@@ -24,6 +24,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { CreateTenantDto } from '../tenants/dto/create-tenant.dto';
 import { ListTenantsQueryDto } from '../tenants/dto/list-tenants-query.dto';
 import { PaginatedTenantsListDto } from '../tenants/dto/paginated-tenants-list.dto';
+import { TenantActivatedResponseDto } from '../tenants/dto/tenant-activated-response.dto';
 import { TenantDeactivatedResponseDto } from '../tenants/dto/tenant-deactivated-response.dto';
 import { TenantResponseDto } from '../tenants/dto/tenant-response.dto';
 import { UpdateTenantDto } from '../tenants/dto/update-tenant.dto';
@@ -76,6 +77,20 @@ export class AdminTenantsController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<TenantDeactivatedResponseDto> {
     return this.tenantsService.deactivateTenantForAdmin(id);
+  }
+
+  @Post(':id/activate')
+  @ApiOperation({
+    summary: 'Activate tenant',
+    description:
+      'Platform super admin only. Sets is_active = true; subdomain traffic works again after tenant middleware cache refresh. Idempotent.',
+  })
+  @ApiOkResponse({ type: TenantActivatedResponseDto })
+  @ApiNotFoundResponse({ description: 'Tenant not found' })
+  async activate(
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<TenantActivatedResponseDto> {
+    return this.tenantsService.activateTenantForAdmin(id);
   }
 
   @Patch(':id')

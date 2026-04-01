@@ -54,6 +54,25 @@ export class TenantsService {
     return { message: 'Tenant deactivated' };
   }
 
+  async activateTenantForAdmin(tenantId: string): Promise<{ message: string }> {
+    const tenant = await this.tenantsRepository.findTenantById(tenantId);
+    if (!tenant) {
+      throw new NotFoundException(`Tenant "${tenantId}" not found`);
+    }
+
+    if (tenant.is_active) {
+      invalidateTenantCache(tenant.slug);
+      return { message: 'Tenant activated' };
+    }
+
+    const updated = await this.tenantsRepository.activateTenantById(tenantId);
+    if (!updated) {
+      throw new NotFoundException(`Tenant "${tenantId}" not found`);
+    }
+    invalidateTenantCache(updated.slug);
+    return { message: 'Tenant activated' };
+  }
+
   async updateTenantForAdmin(
     tenantId: string,
     dto: UpdateTenantDto,

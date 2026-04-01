@@ -16,6 +16,7 @@ describe('TenantsService', () => {
       | 'findTenantById'
       | 'updateTenantById'
       | 'deactivateTenantById'
+      | 'activateTenantById'
       | 'findTenantsForAdmin'
       | 'countTenantsForAdmin'
     >
@@ -50,6 +51,7 @@ describe('TenantsService', () => {
       findTenantById: jest.fn(),
       updateTenantById: jest.fn(),
       deactivateTenantById: jest.fn(),
+      activateTenantById: jest.fn(),
       findTenantsForAdmin: jest.fn(),
       countTenantsForAdmin: jest.fn(),
     };
@@ -199,6 +201,37 @@ describe('TenantsService', () => {
       NotFoundException,
     );
     expect(repository.deactivateTenantById).not.toHaveBeenCalled();
+  });
+
+  it('activates inactive tenant', async () => {
+    repository.findTenantById.mockResolvedValue({ ...row, is_active: false });
+    repository.activateTenantById.mockResolvedValue({
+      ...row,
+      is_active: true,
+    });
+
+    const result = await service.activateTenantForAdmin(tenantId);
+
+    expect(result).toEqual({ message: 'Tenant activated' });
+    expect(repository.activateTenantById).toHaveBeenCalledWith(tenantId);
+  });
+
+  it('is idempotent when tenant already active', async () => {
+    repository.findTenantById.mockResolvedValue({ ...row, is_active: true });
+
+    const result = await service.activateTenantForAdmin(tenantId);
+
+    expect(result).toEqual({ message: 'Tenant activated' });
+    expect(repository.activateTenantById).not.toHaveBeenCalled();
+  });
+
+  it('throws NotFound when activating missing tenant', async () => {
+    repository.findTenantById.mockResolvedValue(null);
+
+    await expect(service.activateTenantForAdmin(tenantId)).rejects.toThrow(
+      NotFoundException,
+    );
+    expect(repository.activateTenantById).not.toHaveBeenCalled();
   });
 
   it('applies isActive filter and pagination', async () => {

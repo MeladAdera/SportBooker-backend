@@ -173,4 +173,19 @@ export class TenantsRepository extends BaseRepository {
     );
     return rows[0] ?? null;
   }
+
+  /**
+   * Sets is_active = true. Returns null if no row matched (e.g. wrong id or already active).
+   */
+  async activateTenantById(id: string): Promise<TenantRow | null> {
+    const { rows } = await this.query<TenantRow>(
+      this.pool,
+      `UPDATE tenants
+       SET is_active = true, updated_at = NOW()
+       WHERE id = $1 AND is_active = false
+       RETURNING id, name, slug, logo_url, timezone, cancel_cutoff_hours, is_active, created_at, updated_at`,
+      [id],
+    );
+    return rows[0] ?? null;
+  }
 }

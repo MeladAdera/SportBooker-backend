@@ -51,8 +51,9 @@ Tenant middleware **excluded** for this subtree. All routes require JWT + **`sup
 | `POST` | `/admin/tenants` | super_admin |
 | `PATCH` | `/admin/tenants/:id` | super_admin |
 | `POST` | `/admin/tenants/:id/deactivate` | super_admin |
+| `POST` | `/admin/tenants/:id/activate` | super_admin |
 
-Deactivate sets `is_active = false`. The last active tenant may be deactivated; until at least one tenant is active again, tenant Host traffic for those subdomains returns 403.
+Deactivate sets `is_active = false`. The last active tenant may be deactivated; until at least one tenant is active again, tenant Host traffic for those subdomains returns 403. Activate sets `is_active = true` again (mirror of deactivate).
 
 ---
 
