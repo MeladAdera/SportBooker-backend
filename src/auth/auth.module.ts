@@ -8,6 +8,7 @@ import { AuthRepository } from './auth.repository';
 import { AuthService } from './auth.service';
 import { EmailService } from './email.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
+import { TenantRequiredGuard } from './guards/tenant-required.guard';
 
 @Module({
   imports: [
@@ -25,7 +26,13 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthRepository, AuthService, EmailService, JwtStrategy],
-  exports: [JwtModule, AuthRepository, EmailService],
+  providers: [
+    AuthRepository,
+    AuthService,
+    EmailService,
+    JwtStrategy,
+    TenantRequiredGuard,
+  ],
+  exports: [JwtModule, AuthRepository, EmailService, TenantRequiredGuard],
 })
 export class AuthModule {}

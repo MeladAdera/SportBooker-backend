@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   Controller,
   HttpCode,
   HttpStatus,
@@ -26,6 +25,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { Tenant as TenantDecorator } from '../auth/decorators/tenant.decorator';
 import type { AuthenticatedUser } from '../auth/auth.types';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { TenantRequiredGuard } from '../auth/guards/tenant-required.guard';
 import { UserRole } from '../users/user-role';
 import { BookingsService } from './bookings.service';
 import { CancelPlayerBookingResponseDto } from './dto/cancel-player-booking-response.dto';
@@ -34,7 +34,7 @@ import { CreateBookingResponseDto } from './dto/create-booking-response.dto';
 @ApiTags('Bookings')
 @ApiBearerAuth()
 @Controller('matches')
-@UseGuards(RolesGuard)
+@UseGuards(TenantRequiredGuard, RolesGuard)
 export class BookingsController {
   constructor(private readonly bookingsService: BookingsService) {}
 
@@ -56,20 +56,11 @@ export class BookingsController {
   })
   @ApiOkResponse({ type: CancelPlayerBookingResponseDto })
   async cancelMyBooking(
-    @TenantDecorator() tenant: Tenant | undefined,
-    @CurrentUser() user: AuthenticatedUser | undefined,
+    @TenantDecorator() tenant: Tenant,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('matchId', ParseUUIDPipe) matchId: string,
     @Param('bookingId', ParseUUIDPipe) bookingId: string,
   ): Promise<CancelPlayerBookingResponseDto> {
-    if (!tenant) {
-      throw new BadRequestException(
-        'Tenant is required. Use Host header with tenant subdomain (e.g. acfc.localhost:3000).',
-      );
-    }
-    if (!user?.sub) {
-      throw new BadRequestException('Authentication required');
-    }
-
     return this.bookingsService.cancelBookingForPlayer({
       tenantId: tenant.id,
       matchId,
@@ -98,19 +89,10 @@ export class BookingsController {
   @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
   @ApiForbiddenResponse({ description: 'Not a player' })
   async createBooking(
-    @TenantDecorator() tenant: Tenant | undefined,
-    @CurrentUser() user: AuthenticatedUser | undefined,
+    @TenantDecorator() tenant: Tenant,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('matchId', ParseUUIDPipe) matchId: string,
   ): Promise<CreateBookingResponseDto> {
-    if (!tenant) {
-      throw new BadRequestException(
-        'Tenant is required. Use Host header with tenant subdomain (e.g. acfc.localhost:3000).',
-      );
-    }
-    if (!user?.sub) {
-      throw new BadRequestException('Authentication required');
-    }
-
     return this.bookingsService.createBookingForPlayer({
       tenantId: tenant.id,
       matchId,

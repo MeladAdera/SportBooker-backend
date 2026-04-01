@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   Controller,
   Get,
   Param,
@@ -19,6 +18,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { Tenant as TenantDecorator } from '../auth/decorators/tenant.decorator';
 import type { AuthenticatedUser } from '../auth/auth.types';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { TenantRequiredGuard } from '../auth/guards/tenant-required.guard';
 import { UserRole } from '../users/user-role';
 import { BookingsService } from './bookings.service';
 import { BookingDetailResponseDto } from './dto/booking-detail-response.dto';
@@ -26,7 +26,7 @@ import { BookingDetailResponseDto } from './dto/booking-detail-response.dto';
 @ApiTags('Bookings')
 @ApiBearerAuth()
 @Controller('bookings')
-@UseGuards(RolesGuard)
+@UseGuards(TenantRequiredGuard, RolesGuard)
 export class BookingDetailController {
   constructor(private readonly bookingsService: BookingsService) {}
 
@@ -45,15 +45,10 @@ export class BookingDetailController {
   @ApiOkResponse({ type: BookingDetailResponseDto })
   @ApiNotFoundResponse({ description: 'Not found or not allowed' })
   async getBookingDetail(
-    @TenantDecorator() tenant: Tenant | undefined,
+    @TenantDecorator() tenant: Tenant,
     @CurrentUser() user: AuthenticatedUser,
     @Param('bookingId', ParseUUIDPipe) bookingId: string,
   ): Promise<BookingDetailResponseDto> {
-    if (!tenant) {
-      throw new BadRequestException(
-        'Tenant is required. Use Host header with tenant subdomain (e.g. acfc.localhost:3000).',
-      );
-    }
     return this.bookingsService.getBookingDetail({
       tenantId: tenant.id,
       bookingId,

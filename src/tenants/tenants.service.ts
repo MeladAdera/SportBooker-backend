@@ -42,7 +42,6 @@ export class TenantsService {
     }
 
     if (!tenant.is_active) {
-      invalidateTenantCache(tenant.slug);
       return { message: 'Tenant deactivated' };
     }
 
@@ -61,7 +60,6 @@ export class TenantsService {
     }
 
     if (tenant.is_active) {
-      invalidateTenantCache(tenant.slug);
       return { message: 'Tenant activated' };
     }
 
