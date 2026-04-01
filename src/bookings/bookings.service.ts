@@ -17,6 +17,7 @@ import {
 import type { BookingDetailResponseDto } from './dto/booking-detail-response.dto';
 import type { CancelPlayerBookingResponseDto } from './dto/cancel-player-booking-response.dto';
 import type { CreateBookingResponseDto } from './dto/create-booking-response.dto';
+import { UserRole } from '../users/user-role';
 
 const FAILURE_MESSAGES: Record<CreateBookingFailureCode, string> = {
   MATCH_NOT_FOUND: 'Match not found',
@@ -119,10 +120,11 @@ export class BookingsService {
       throw new NotFoundException('Booking not found');
     }
 
+    const actorRole = params.actorRole as UserRole;
     const canViewAll =
-      params.actorRole === 'super_admin' ||
-      params.actorRole === 'tenant_admin' ||
-      params.actorRole === 'tenant_staff' ||
+      actorRole === UserRole.SuperAdmin ||
+      actorRole === UserRole.TenantAdmin ||
+      actorRole === UserRole.TenantStaff ||
       row.user_id === params.actorUserId;
 
     if (!canViewAll) {

@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { EmailService } from '../auth/email.service';
 import type { BookingDetailRow } from './bookings.repository';
+import { UserRole } from '../users/user-role';
 import { BookingsRepository } from './bookings.repository';
 import { BookingsService } from './bookings.service';
 
@@ -299,7 +300,7 @@ describe('BookingsService', () => {
         tenantId,
         bookingId: bookingRow.id,
         actorUserId: userId,
-        actorRole: 'player',
+        actorRole: UserRole.Player,
       });
 
       expect(dto.id).toBe(bookingRow.id);
@@ -317,7 +318,7 @@ describe('BookingsService', () => {
         tenantId,
         bookingId: bookingRow.id,
         actorUserId: 'other-user-uuid',
-        actorRole: 'tenant_admin',
+        actorRole: UserRole.TenantAdmin,
       });
 
       expect(bookingsRepo.findBookingDetailForTenant).toHaveBeenCalledWith({
@@ -334,7 +335,7 @@ describe('BookingsService', () => {
           tenantId,
           bookingId: bookingRow.id,
           actorUserId: userId,
-          actorRole: 'player',
+          actorRole: UserRole.Player,
         }),
       ).rejects.toThrow(NotFoundException);
     });
@@ -349,7 +350,7 @@ describe('BookingsService', () => {
           tenantId,
           bookingId: bookingRow.id,
           actorUserId: 'other-user-uuid',
-          actorRole: 'player',
+          actorRole: UserRole.Player,
         }),
       ).rejects.toThrow(NotFoundException);
     });
