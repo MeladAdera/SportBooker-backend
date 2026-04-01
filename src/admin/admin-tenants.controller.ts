@@ -11,12 +11,12 @@ import {
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
-  ApiBadRequestResponse,
   ApiConflictResponse,
   ApiCreatedResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -97,12 +97,10 @@ export class AdminTenantsController {
   @ApiOperation({
     summary: 'Update tenant settings',
     description:
-      'Platform super admin only. Partial update; omitted fields unchanged. Slug cannot be changed.',
+      'Platform super admin only. Partial update; omitted fields unchanged. Slug is immutable and not in this schema; unknown properties return 422.',
   })
   @ApiOkResponse({ type: TenantResponseDto })
-  @ApiBadRequestResponse({
-    description: 'Invalid body or attempt to change slug',
-  })
+  @ApiResponse({ status: 422, description: 'Validation failed' })
   @ApiNotFoundResponse({ description: 'Tenant not found' })
   async update(
     @Param('id', ParseUUIDPipe) id: string,

@@ -120,14 +120,6 @@ describe('TenantsService', () => {
 
   const tenantId = '550e8400-e29b-41d4-a716-446655440000';
 
-  it('throws BadRequest when update includes slug', async () => {
-    await expect(
-      service.updateTenantForAdmin(tenantId, { slug: 'nope' }),
-    ).rejects.toThrow(BadRequestException);
-    expect(repository.findTenantById).not.toHaveBeenCalled();
-    expect(repository.updateTenantById).not.toHaveBeenCalled();
-  });
-
   it('throws NotFound when updating missing tenant', async () => {
     repository.findTenantById.mockResolvedValue(null);
 

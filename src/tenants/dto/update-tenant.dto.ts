@@ -47,12 +47,4 @@ export class UpdateTenantDto {
   @Min(0)
   @Max(24 * 365)
   cancelCutoffHours?: number;
-
-  @ApiPropertyOptional({
-    description:
-      'Slug cannot be changed after creation; sending this returns 400',
-  })
-  @IsOptional()
-  @IsString()
-  slug?: string;
 }

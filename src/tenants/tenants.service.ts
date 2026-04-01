@@ -77,10 +77,6 @@ export class TenantsService {
     tenantId: string,
     dto: UpdateTenantDto,
   ): Promise<TenantResponseDto> {
-    if (dto.slug !== undefined) {
-      throw new BadRequestException('Tenant slug cannot be changed');
-    }
-
     const existing = await this.tenantsRepository.findTenantById(tenantId);
     if (!existing) {
       throw new NotFoundException(`Tenant "${tenantId}" not found`);
