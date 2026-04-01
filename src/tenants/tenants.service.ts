@@ -46,11 +46,6 @@ export class TenantsService {
       return { message: 'Tenant deactivated' };
     }
 
-    const activeCount = await this.tenantsRepository.countTenantsForAdmin(true);
-    if (activeCount <= 1) {
-      throw new BadRequestException('Cannot deactivate the last active tenant');
-    }
-
     const updated = await this.tenantsRepository.deactivateTenantById(tenantId);
     if (!updated) {
       throw new NotFoundException(`Tenant "${tenantId}" not found`);

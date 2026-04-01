@@ -68,12 +68,9 @@ export class AdminTenantsController {
   @ApiOperation({
     summary: 'Deactivate tenant',
     description:
-      'Platform super admin only. Soft-deactivates tenant (is_active = false); subdomain requests receive 403. Idempotent. Cannot deactivate the last active tenant.',
+      'Platform super admin only. Soft-deactivates tenant (is_active = false); subdomain requests receive 403. Idempotent. If this was the last active tenant, all tenant Host traffic stays 403 until a tenant is re-activated.',
   })
   @ApiOkResponse({ type: TenantDeactivatedResponseDto })
-  @ApiBadRequestResponse({
-    description: 'Would deactivate the only active tenant',
-  })
   @ApiNotFoundResponse({ description: 'Tenant not found' })
   async deactivate(
     @Param('id', ParseUUIDPipe) id: string,

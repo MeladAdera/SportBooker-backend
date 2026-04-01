@@ -168,9 +168,8 @@ describe('TenantsService', () => {
     expect(result.cancelCutoffHours).toBe(0);
   });
 
-  it('deactivates tenant when more than one active', async () => {
+  it('deactivates active tenant', async () => {
     repository.findTenantById.mockResolvedValue({ ...row, is_active: true });
-    repository.countTenantsForAdmin.mockResolvedValue(2);
     repository.deactivateTenantById.mockResolvedValue({
       ...row,
       is_active: false,
@@ -179,7 +178,7 @@ describe('TenantsService', () => {
     const result = await service.deactivateTenantForAdmin(tenantId);
 
     expect(result).toEqual({ message: 'Tenant deactivated' });
-    expect(repository.countTenantsForAdmin).toHaveBeenCalledWith(true);
+    expect(repository.countTenantsForAdmin).not.toHaveBeenCalled();
     expect(repository.deactivateTenantById).toHaveBeenCalledWith(tenantId);
   });
 
@@ -190,16 +189,6 @@ describe('TenantsService', () => {
 
     expect(result).toEqual({ message: 'Tenant deactivated' });
     expect(repository.countTenantsForAdmin).not.toHaveBeenCalled();
-    expect(repository.deactivateTenantById).not.toHaveBeenCalled();
-  });
-
-  it('throws BadRequest when deactivating the last active tenant', async () => {
-    repository.findTenantById.mockResolvedValue({ ...row, is_active: true });
-    repository.countTenantsForAdmin.mockResolvedValue(1);
-
-    await expect(service.deactivateTenantForAdmin(tenantId)).rejects.toThrow(
-      BadRequestException,
-    );
     expect(repository.deactivateTenantById).not.toHaveBeenCalled();
   });
 
