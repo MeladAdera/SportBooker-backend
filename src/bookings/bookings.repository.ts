@@ -592,27 +592,6 @@ export class BookingsRepository extends BaseRepository {
 
     const price = match.price_per_player;
 
-    const { rows: countRows } = await this.query<{ c: string }>(
-      client,
-      `SELECT COUNT(*)::text AS c FROM bookings WHERE match_id = $1 AND status = 'pending'`,
-      [matchId],
-    );
-    const waitlistCount = parseInt(countRows[0]?.c ?? '0', 10);
-    if (waitlistCount === 0) {
-      return { promotedEmail: null, skippedEmails: [] };
-    }
-
-    const { rows: confirmedRows } = await this.query<{ c: string }>(
-      client,
-      `SELECT COUNT(*)::text AS c FROM bookings WHERE match_id = $1 AND status = 'confirmed'`,
-      [matchId],
-    );
-    const confirmedCount = parseInt(confirmedRows[0]?.c ?? '0', 10);
-    const maxP = match.max_players;
-    if (maxP !== null && maxP !== undefined && confirmedCount >= maxP) {
-      return { promotedEmail: null, skippedEmails: [] };
-    }
-
     const { rows: pendingList } = await this.query<{
       id: string;
       user_id: string;
@@ -626,6 +605,20 @@ export class BookingsRepository extends BaseRepository {
        ORDER BY b.created_at ASC`,
       [matchId],
     );
+    if (pendingList.length === 0) {
+      return { promotedEmail: null, skippedEmails: [] };
+    }
+
+    const { rows: confirmedRows } = await this.query<{ c: string }>(
+      client,
+      `SELECT COUNT(*)::text AS c FROM bookings WHERE match_id = $1 AND status = 'confirmed'`,
+      [matchId],
+    );
+    const confirmedCount = parseInt(confirmedRows[0]?.c ?? '0', 10);
+    const maxP = match.max_players;
+    if (maxP !== null && maxP !== undefined && confirmedCount >= maxP) {
+      return { promotedEmail: null, skippedEmails: [] };
+    }
 
     const skippedEmails: string[] = [];
     const maxIterations = pendingList.length;
