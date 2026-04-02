@@ -15,6 +15,7 @@ describe('VenuesService', () => {
     Pick<
       VenuesRepository,
       | 'insertVenue'
+      | 'countActiveVenuesForBrowse'
       | 'findActiveVenuesForBrowse'
       | 'findActiveVenueByIdForTenant'
       | 'patchVenueForTenant'
@@ -64,6 +65,7 @@ describe('VenuesService', () => {
   beforeEach(() => {
     repository = {
       insertVenue: jest.fn(),
+      countActiveVenuesForBrowse: jest.fn(),
       findActiveVenuesForBrowse: jest.fn(),
       findActiveVenueByIdForTenant: jest.fn(),
       patchVenueForTenant: jest.fn(),
@@ -384,37 +386,58 @@ describe('VenuesService', () => {
   });
 
   describe('listForBrowse', () => {
-    it('returns mapped browse items without sportType filter', async () => {
+    it('returns paginated browse items; default page 1, limit 50', async () => {
+      repository.countActiveVenuesForBrowse.mockResolvedValue(1);
       repository.findActiveVenuesForBrowse.mockResolvedValue([browseRow]);
 
       const result = await service.listForBrowse(tenantId, {});
 
-      expect(repository.findActiveVenuesForBrowse).toHaveBeenCalledWith(
+      expect(repository.countActiveVenuesForBrowse).toHaveBeenCalledWith(
         tenantId,
         undefined,
       );
-      expect(result).toEqual([
-        {
-          id: browseRow.id,
-          name: browseRow.name,
-          address: browseRow.address,
-          mapsUrl: browseRow.maps_url,
-          sportTypes: ['football'],
-          isActive: true,
-        },
-      ]);
+      expect(repository.findActiveVenuesForBrowse).toHaveBeenCalledWith(
+        tenantId,
+        undefined,
+        50,
+        0,
+      );
+      expect(result).toEqual({
+        page: 1,
+        limit: 50,
+        total: 1,
+        items: [
+          {
+            id: browseRow.id,
+            name: browseRow.name,
+            address: browseRow.address,
+            mapsUrl: browseRow.maps_url,
+            sportTypes: ['football'],
+            isActive: true,
+          },
+        ],
+      });
     });
 
-    it('passes sportType to repository', async () => {
+    it('passes sportType, page, limit and offset to repository', async () => {
+      repository.countActiveVenuesForBrowse.mockResolvedValue(120);
       repository.findActiveVenuesForBrowse.mockResolvedValue([]);
 
       await service.listForBrowse(tenantId, {
         sportType: VenueSportType.Padel,
+        page: 3,
+        limit: 20,
       });
 
+      expect(repository.countActiveVenuesForBrowse).toHaveBeenCalledWith(
+        tenantId,
+        VenueSportType.Padel,
+      );
       expect(repository.findActiveVenuesForBrowse).toHaveBeenCalledWith(
         tenantId,
         VenueSportType.Padel,
+        20,
+        40,
       );
     });
   });

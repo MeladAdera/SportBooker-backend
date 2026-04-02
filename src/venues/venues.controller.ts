@@ -37,8 +37,8 @@ import { TenantRequiredGuard } from '../auth/guards/tenant-required.guard';
 import { UserRole } from '../users/user-role';
 import { CreateVenueDto } from './dto/create-venue.dto';
 import { ListVenuesQueryDto } from './dto/list-venues-query.dto';
+import { PaginatedVenuesListDto } from './dto/paginated-venues-list.dto';
 import { UpdateVenueDto } from './dto/update-venue.dto';
-import { VenueBrowseItemDto } from './dto/venue-browse-item.dto';
 import { VenueDeactivatedResponseDto } from './dto/venue-deactivated-response.dto';
 import { VenueDetailDto } from './dto/venue-detail.dto';
 import { VenueResponseDto } from './dto/venue-response.dto';
@@ -70,14 +70,14 @@ export class VenuesController {
   @ApiOperation({
     summary: 'List active venues',
     description:
-      'Any authenticated user in the tenant. Returns active venues only; optional sportType filters venues that offer that sport.',
+      'Any authenticated user in the tenant. Paginated active venues; default page 1, limit 50. Optional sportType filters venues that offer that sport.',
   })
-  @ApiOkResponse({ type: VenueBrowseItemDto, isArray: true })
+  @ApiOkResponse({ type: PaginatedVenuesListDto })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
   async list(
     @TenantDecorator() tenant: Tenant,
     @Query() query: ListVenuesQueryDto,
-  ): Promise<VenueBrowseItemDto[]> {
+  ): Promise<PaginatedVenuesListDto> {
     return this.venuesService.listForBrowse(tenant.id, query);
   }
 

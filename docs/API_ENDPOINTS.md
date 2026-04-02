@@ -82,7 +82,7 @@ Controller default roles: `super_admin`, `tenant_admin` — **overridden per han
 
 | Method | Path | Roles | Notes |
 |--------|------|-------|--------|
-| `GET` | `/venues` | *(none — any authenticated)* | List/browse |
+| `GET` | `/venues` | *(none — any authenticated)* | Paginated active venues (`page`, `limit`; default limit 50). Optional `sportType`. |
 | `GET` | `/venues/:id` | *(none)* | Venue detail |
 | `PATCH` | `/venues/:id` | tenant_admin, tenant_staff | Update venue |
 | `POST` | `/venues/:id/deactivate` | tenant_admin | Deactivate venue |

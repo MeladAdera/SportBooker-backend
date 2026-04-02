@@ -94,11 +94,32 @@ export class VenuesRepository extends BaseRepository {
   }
 
   /**
+   * Count active venues for the tenant; optional sportType filters with sport_types @> ARRAY[$sport].
+   */
+  async countActiveVenuesForBrowse(
+    tenantId: string,
+    sportType: VenueSportType | undefined,
+  ): Promise<number> {
+    const { rows } = await this.query<{ count: string }>(
+      this.pool,
+      `SELECT COUNT(*)::text AS count
+      FROM venues
+      WHERE tenant_id = $1
+        AND is_active = true
+        AND ($2::text IS NULL OR sport_types @> ARRAY[$2]::text[])`,
+      [tenantId, sportType ?? null],
+    );
+    return parseInt(rows[0]?.count ?? '0', 10);
+  }
+
+  /**
    * Active venues for the tenant; optional sportType filters with sport_types @> ARRAY[$sport].
    */
   async findActiveVenuesForBrowse(
     tenantId: string,
     sportType: VenueSportType | undefined,
+    limit: number,
+    offset: number,
   ): Promise<VenueBrowseRow[]> {
     const { rows } = await this.query<VenueBrowseRow>(
       this.pool,
@@ -113,8 +134,9 @@ export class VenuesRepository extends BaseRepository {
       WHERE tenant_id = $1
         AND is_active = true
         AND ($2::text IS NULL OR sport_types @> ARRAY[$2]::text[])
-      ORDER BY name ASC`,
-      [tenantId, sportType ?? null],
+      ORDER BY name ASC
+      LIMIT $3 OFFSET $4`,
+      [tenantId, sportType ?? null, limit, offset],
     );
     return rows;
   }

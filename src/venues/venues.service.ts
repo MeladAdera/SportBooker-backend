@@ -7,6 +7,7 @@ import {
 import type { CreateVenueDto } from './dto/create-venue.dto';
 import { parseSportTypesJson } from './parse-sport-types-json';
 import type { ListVenuesQueryDto } from './dto/list-venues-query.dto';
+import type { PaginatedVenuesListDto } from './dto/paginated-venues-list.dto';
 import type { UpdateVenueDto } from './dto/update-venue.dto';
 import type { VenueBrowseItemDto } from './dto/venue-browse-item.dto';
 import type { VenueDetailDto } from './dto/venue-detail.dto';
@@ -18,6 +19,9 @@ import { VenuePictureStorage } from './venue-picture.storage';
 
 const PG_UNIQUE_VIOLATION = '23505';
 
+/** Default page size for GET /venues (matches use 20). */
+const DEFAULT_VENUE_LIST_LIMIT = 50;
+
 @Injectable()
 export class VenuesService {
   constructor(
@@ -28,12 +32,25 @@ export class VenuesService {
   async listForBrowse(
     tenantId: string,
     query: ListVenuesQueryDto,
-  ): Promise<VenueBrowseItemDto[]> {
-    const rows = await this.venuesRepository.findActiveVenuesForBrowse(
-      tenantId,
-      query.sportType,
-    );
-    return rows.map((row) => ({
+  ): Promise<PaginatedVenuesListDto> {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? DEFAULT_VENUE_LIST_LIMIT;
+    const offset = (page - 1) * limit;
+
+    const [total, rows] = await Promise.all([
+      this.venuesRepository.countActiveVenuesForBrowse(
+        tenantId,
+        query.sportType,
+      ),
+      this.venuesRepository.findActiveVenuesForBrowse(
+        tenantId,
+        query.sportType,
+        limit,
+        offset,
+      ),
+    ]);
+
+    const items: VenueBrowseItemDto[] = rows.map((row) => ({
       id: row.id,
       name: row.name,
       address: row.address,
@@ -41,6 +58,8 @@ export class VenuesService {
       sportTypes: row.sport_types as VenueBrowseItemDto['sportTypes'],
       isActive: row.is_active,
     }));
+
+    return { items, page, limit, total };
   }
 
   async getByIdForTenant(
