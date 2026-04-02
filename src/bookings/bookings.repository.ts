@@ -542,6 +542,8 @@ export class BookingsRepository extends BaseRepository {
    * FIFO promote one waitlisted player after a confirmed slot opens.
    * Run in a new transaction after the cancellation commit. Not used when a match is cancelled.
    * Skips entries with insufficient wallet (deduction = DB type `debit`) and continues.
+   * Match must be future and not cancelled/completed/in_progress — aligned with bookable matches
+   * (same idea as createBookingInTransaction: not cancelled + scheduled_at > now()).
    */
   async promoteWaitlistForMatch(params: {
     tenantId: string;
@@ -569,11 +571,13 @@ export class BookingsRepository extends BaseRepository {
        FROM matches m
        INNER JOIN venues v ON v.id = m.venue_id
        WHERE m.id = $1 AND v.tenant_id = $2
+         AND m.status NOT IN ('cancelled', 'completed', 'in_progress')
+         AND m.scheduled_at > now()
        FOR UPDATE OF m`,
       [matchId, tenantId],
     );
     const match = matchRows[0];
-    if (!match || match.status !== 'upcoming') {
+    if (!match) {
       return { promotedEmail: null, skippedEmails: [] };
     }
 
