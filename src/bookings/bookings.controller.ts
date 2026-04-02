@@ -7,6 +7,7 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import {
   ApiBearerAuth,
   ApiBadRequestResponse,
@@ -16,6 +17,7 @@ import {
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiResponse,
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
@@ -40,6 +42,7 @@ export class BookingsController {
 
   @Post(':matchId/bookings/:bookingId/cancel')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Roles(UserRole.Player)
   @ApiOperation({
     summary: 'Cancel my confirmed booking (player)',
@@ -55,6 +58,7 @@ export class BookingsController {
     description: 'Booking not found for this match/tenant',
   })
   @ApiOkResponse({ type: CancelPlayerBookingResponseDto })
+  @ApiResponse({ status: 429, description: 'Too Many Requests' })
   async cancelMyBooking(
     @TenantDecorator() tenant: Tenant,
     @CurrentUser() user: AuthenticatedUser,
@@ -71,6 +75,7 @@ export class BookingsController {
 
   @Post(':matchId/bookings')
   @HttpCode(HttpStatus.CREATED)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Roles(UserRole.Player)
   @ApiOperation({
     summary: 'Book a spot on a match',
@@ -88,6 +93,7 @@ export class BookingsController {
   @ApiConflictResponse({ description: 'Already booked this match' })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
   @ApiForbiddenResponse({ description: 'Not a player' })
+  @ApiResponse({ status: 429, description: 'Too Many Requests' })
   async createBooking(
     @TenantDecorator() tenant: Tenant,
     @CurrentUser() user: AuthenticatedUser,
