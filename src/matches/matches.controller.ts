@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   Body,
   Controller,
   Get,
@@ -28,6 +27,7 @@ import type { Tenant } from '../common/tenant.types';
 import { Tenant as TenantDecorator } from '../auth/decorators/tenant.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { TenantRequiredGuard } from '../auth/guards/tenant-required.guard';
 import { UserRole } from '../users/user-role';
 import { CreateMatchDto } from './dto/create-match.dto';
 import { UpdateMatchDto } from './dto/update-match.dto';
@@ -41,7 +41,7 @@ import { MatchesService } from './matches.service';
 @ApiTags('Matches')
 @ApiBearerAuth()
 @Controller('matches')
-@UseGuards(RolesGuard)
+@UseGuards(TenantRequiredGuard, RolesGuard)
 export class MatchesController {
   constructor(private readonly matchesService: MatchesService) {}
 
@@ -54,14 +54,9 @@ export class MatchesController {
   @ApiOkResponse({ type: PaginatedMatchesListDto })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
   async list(
-    @TenantDecorator() tenant: Tenant | undefined,
+    @TenantDecorator() tenant: Tenant,
     @Query() query: ListMatchesQueryDto,
   ): Promise<PaginatedMatchesListDto> {
-    if (!tenant) {
-      throw new BadRequestException(
-        'Tenant is required. Use Host header with tenant subdomain (e.g. acfc.localhost:3000).',
-      );
-    }
     return this.matchesService.listUpcomingForTenant(tenant.id, query);
   }
 
@@ -75,14 +70,9 @@ export class MatchesController {
   @ApiNotFoundResponse({ description: 'Match not found for this tenant' })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
   async getById(
-    @TenantDecorator() tenant: Tenant | undefined,
+    @TenantDecorator() tenant: Tenant,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<MatchDetailResponseDto> {
-    if (!tenant) {
-      throw new BadRequestException(
-        'Tenant is required. Use Host header with tenant subdomain (e.g. acfc.localhost:3000).',
-      );
-    }
     return this.matchesService.getDetailForTenant(tenant.id, id);
   }
 
@@ -100,14 +90,9 @@ export class MatchesController {
   @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
   @ApiForbiddenResponse({ description: 'Insufficient role' })
   async cancelMatch(
-    @TenantDecorator() tenant: Tenant | undefined,
+    @TenantDecorator() tenant: Tenant,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<CancelMatchResponseDto> {
-    if (!tenant) {
-      throw new BadRequestException(
-        'Tenant is required. Use Host header with tenant subdomain (e.g. acfc.localhost:3000).',
-      );
-    }
     return this.matchesService.cancelMatchForTenant(tenant.id, id);
   }
 
@@ -133,15 +118,10 @@ export class MatchesController {
   @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
   @ApiForbiddenResponse({ description: 'Insufficient role' })
   async update(
-    @TenantDecorator() tenant: Tenant | undefined,
+    @TenantDecorator() tenant: Tenant,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateMatchDto,
   ): Promise<MatchResponseDto> {
-    if (!tenant) {
-      throw new BadRequestException(
-        'Tenant is required. Use Host header with tenant subdomain (e.g. acfc.localhost:3000).',
-      );
-    }
     return this.matchesService.updateForTenant(tenant.id, id, dto);
   }
 
@@ -165,14 +145,9 @@ export class MatchesController {
   @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
   @ApiForbiddenResponse({ description: 'Insufficient role' })
   async create(
-    @TenantDecorator() tenant: Tenant | undefined,
+    @TenantDecorator() tenant: Tenant,
     @Body() dto: CreateMatchDto,
   ): Promise<MatchResponseDto> {
-    if (!tenant) {
-      throw new BadRequestException(
-        'Tenant is required. Use Host header with tenant subdomain (e.g. acfc.localhost:3000).',
-      );
-    }
     return this.matchesService.createForTenant(tenant.id, dto);
   }
 }

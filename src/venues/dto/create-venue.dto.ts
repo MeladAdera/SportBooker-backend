@@ -11,6 +11,7 @@ import {
 } from 'class-validator';
 import { VenueSportType } from '../venue-sport-type';
 
+// Keep field constraints in sync with CreateVenueMultipartDto (pictureUrl max length).
 export class CreateVenueDto {
   @ApiProperty({ example: 'North Court 1' })
   @IsString()

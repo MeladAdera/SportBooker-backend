@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   Body,
   Controller,
   Get,
@@ -34,6 +33,7 @@ import type { Tenant } from '../common/tenant.types';
 import { Tenant as TenantDecorator } from '../auth/decorators/tenant.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { TenantRequiredGuard } from '../auth/guards/tenant-required.guard';
 import { UserRole } from '../users/user-role';
 import { CreateVenueMultipartDto } from './dto/create-venue-multipart.dto';
 import { CreateVenueDto } from './dto/create-venue.dto';
@@ -64,7 +64,7 @@ const venuePictureMulterOptions = {
 @ApiTags('Venues')
 @ApiBearerAuth()
 @Controller('venues')
-@UseGuards(RolesGuard)
+@UseGuards(TenantRequiredGuard, RolesGuard)
 export class VenuesController {
   constructor(private readonly venuesService: VenuesService) {}
 
@@ -77,14 +77,9 @@ export class VenuesController {
   @ApiOkResponse({ type: VenueBrowseItemDto, isArray: true })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
   async list(
-    @TenantDecorator() tenant: Tenant | undefined,
+    @TenantDecorator() tenant: Tenant,
     @Query() query: ListVenuesQueryDto,
   ): Promise<VenueBrowseItemDto[]> {
-    if (!tenant) {
-      throw new BadRequestException(
-        'Tenant is required. Use Host header with tenant subdomain (e.g. acfc.localhost:3000).',
-      );
-    }
     return this.venuesService.listForBrowse(tenant.id, query);
   }
 
@@ -98,14 +93,9 @@ export class VenuesController {
   @ApiNotFoundResponse({ description: 'Venue not found for this tenant' })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
   async getById(
-    @TenantDecorator() tenant: Tenant | undefined,
+    @TenantDecorator() tenant: Tenant,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<VenueDetailDto> {
-    if (!tenant) {
-      throw new BadRequestException(
-        'Tenant is required. Use Host header with tenant subdomain (e.g. acfc.localhost:3000).',
-      );
-    }
     return this.venuesService.getByIdForTenant(tenant.id, id);
   }
 
@@ -121,15 +111,10 @@ export class VenuesController {
   @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
   @ApiForbiddenResponse({ description: 'Insufficient role' })
   async update(
-    @TenantDecorator() tenant: Tenant | undefined,
+    @TenantDecorator() tenant: Tenant,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateVenueDto,
   ): Promise<VenueResponseDto> {
-    if (!tenant) {
-      throw new BadRequestException(
-        'Tenant is required. Use Host header with tenant subdomain (e.g. acfc.localhost:3000).',
-      );
-    }
     return this.venuesService.updateForTenant(tenant.id, id, dto);
   }
 
@@ -152,14 +137,9 @@ export class VenuesController {
     description: 'Insufficient role (tenant admin only)',
   })
   async deactivate(
-    @TenantDecorator() tenant: Tenant | undefined,
+    @TenantDecorator() tenant: Tenant,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<VenueDeactivatedResponseDto> {
-    if (!tenant) {
-      throw new BadRequestException(
-        'Tenant is required. Use Host header with tenant subdomain (e.g. acfc.localhost:3000).',
-      );
-    }
     return this.venuesService.deactivateForTenant(tenant.id, id);
   }
 
@@ -175,14 +155,9 @@ export class VenuesController {
   @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
   @ApiForbiddenResponse({ description: 'Insufficient role' })
   async create(
-    @TenantDecorator() tenant: Tenant | undefined,
+    @TenantDecorator() tenant: Tenant,
     @Body() dto: CreateVenueDto,
   ): Promise<VenueResponseDto> {
-    if (!tenant) {
-      throw new BadRequestException(
-        'Tenant is required. Use Host header with tenant subdomain (e.g. acfc.localhost:3000).',
-      );
-    }
     return this.venuesService.create(tenant.id, dto);
   }
 
@@ -226,15 +201,10 @@ export class VenuesController {
   @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
   @ApiForbiddenResponse({ description: 'Insufficient role' })
   async createWithUpload(
-    @TenantDecorator() tenant: Tenant | undefined,
+    @TenantDecorator() tenant: Tenant,
     @Body() body: CreateVenueMultipartDto,
     @UploadedFile() picture: Express.Multer.File | undefined,
   ): Promise<VenueResponseDto> {
-    if (!tenant) {
-      throw new BadRequestException(
-        'Tenant is required. Use Host header with tenant subdomain (e.g. acfc.localhost:3000).',
-      );
-    }
     const sportTypes = parseSportTypesJson(body.sportTypes);
     const dto: CreateVenueDto = {
       name: body.name,

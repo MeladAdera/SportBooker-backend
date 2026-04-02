@@ -1,8 +1,15 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, IsUrl, Length } from 'class-validator';
+import {
+  IsOptional,
+  IsString,
+  IsUrl,
+  Length,
+  MaxLength,
+} from 'class-validator';
 
 /**
  * Form fields for POST /venues/upload (multipart). File field `picture` is handled by multer, not here.
+ * Keep field constraints in sync with CreateVenueDto (pictureUrl max length, sportTypes length bounds).
  */
 export class CreateVenueMultipartDto {
   @ApiProperty({ example: 'North Court 1' })
@@ -25,6 +32,7 @@ export class CreateVenueMultipartDto {
   })
   @IsOptional()
   @IsUrl({ require_tld: false })
+  @MaxLength(2048)
   pictureUrl?: string;
 
   @ApiProperty({
