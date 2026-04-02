@@ -305,6 +305,7 @@ export class BookingsRepository extends BaseRepository {
 
   /**
    * Atomic cancel: refund confirmed bookings, cancel waitlist, set match cancelled.
+   * Uses bulk UPDATE/INSERT (O(3) queries) instead of per-row loop.
    */
   async cancelMatchForTenant(params: {
     tenantId: string;
@@ -371,26 +372,34 @@ export class BookingsRepository extends BaseRepository {
       [matchId],
     );
 
-    const emailsForMatchCancelled: string[] = [];
-    for (const row of confirmedRows) {
-      emailsForMatchCancelled.push(row.email);
+    const emailsForMatchCancelled = confirmedRows.map((r) => r.email);
 
+    if (confirmedRows.length > 0) {
+      // Bulk-refund wallets (one UPDATE with JOIN from bookings confirmed set).
       await this.query(
         client,
-        `UPDATE users
-         SET wallet_balance = wallet_balance + $3::numeric,
+        `UPDATE users u
+         SET wallet_balance = u.wallet_balance + b.paid_amount,
              updated_at = now()
-         WHERE id = $1 AND tenant_id = $2`,
-        [row.user_id, tenantId, row.paid_amount],
+         FROM bookings b
+         WHERE b.match_id = $1
+           AND b.status = 'confirmed'
+           AND u.id = b.user_id
+           AND u.tenant_id = $2`,
+        [matchId, tenantId],
       );
 
+      // Bulk-insert refund transaction records.
       await this.query(
         client,
         `INSERT INTO wallet_transactions (user_id, amount, type, reference_id)
-         VALUES ($1, $2, 'refund', $3)`,
-        [row.user_id, row.paid_amount, row.id],
+         SELECT b.user_id, b.paid_amount, 'refund'::wallet_tx_type, b.id
+         FROM bookings b
+         WHERE b.match_id = $1 AND b.status = 'confirmed'`,
+        [matchId],
       );
 
+      // Bulk-cancel confirmed bookings (including refunded_at timestamp).
       await this.query(
         client,
         `UPDATE bookings
@@ -398,8 +407,8 @@ export class BookingsRepository extends BaseRepository {
              cancelled_at = now(),
              refunded_at = now(),
              updated_at = now()
-         WHERE id = $1`,
-        [row.id],
+         WHERE match_id = $1 AND status = 'confirmed'`,
+        [matchId],
       );
     }
 
