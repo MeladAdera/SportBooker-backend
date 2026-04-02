@@ -10,6 +10,11 @@ import { UserRole } from '../users/user-role';
 import { BookingsRepository } from './bookings.repository';
 import { BookingsService } from './bookings.service';
 
+/** Let voided async tails (waitlist promotion, emails) finish before assertions. */
+async function flushDeferredWork(): Promise<void> {
+  await new Promise<void>((resolve) => setImmediate(resolve));
+}
+
 describe('BookingsService', () => {
   let service: BookingsService;
   let bookingsRepo: jest.Mocked<
@@ -207,6 +212,7 @@ describe('BookingsService', () => {
         tenantId,
         matchId,
       });
+      await flushDeferredWork();
       expect(emailService.sendBookingCancelledEmail).toHaveBeenCalledWith(
         'player@example.com',
       );
@@ -238,6 +244,7 @@ describe('BookingsService', () => {
         cancelCutoffHours: 24,
       });
 
+      await flushDeferredWork();
       expect(emailService.sendBookingCancelledEmail).toHaveBeenCalled();
       expect(emailService.sendWaitlistPromotedEmail).not.toHaveBeenCalled();
       expect(emailService.sendWaitlistSkippedEmail).not.toHaveBeenCalled();

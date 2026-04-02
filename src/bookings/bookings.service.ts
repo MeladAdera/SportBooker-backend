@@ -98,7 +98,17 @@ export class BookingsService {
         );
       });
 
-    await this.promoteWaitlistAfterSpotOpened(params.tenantId, params.matchId);
+    // Do not await — promotion is a separate transaction; response should return immediately.
+    // TODO: move to a job queue (e.g. SLOT_OPENED) when background workers exist.
+    void this.promoteWaitlistAfterSpotOpened(
+      params.tenantId,
+      params.matchId,
+    ).catch((err: unknown) => {
+      this.logger.error(
+        `promoteWaitlistAfterSpotOpened rejected: ${err instanceof Error ? err.message : String(err)}`,
+        err instanceof Error ? err.stack : undefined,
+      );
+    });
 
     return {
       cancelled: true,
@@ -138,6 +148,7 @@ export class BookingsService {
   /**
    * FIFO waitlist promotion after a confirmed slot opens (player cancel or admin removal).
    * Does not run for match-level cancellation. Separate transaction from the opening operation.
+   * Invoked without await from player cancel so the HTTP response is not blocked.
    */
   async promoteWaitlistAfterSpotOpened(
     tenantId: string,
