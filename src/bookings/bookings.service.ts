@@ -80,6 +80,7 @@ export class BookingsService {
     matchId: string;
     bookingId: string;
     userId: string;
+    cancelCutoffHours: number;
   }): Promise<CancelPlayerBookingResponseDto> {
     const result = await this.bookingsRepository.cancelBookingForPlayer(params);
 

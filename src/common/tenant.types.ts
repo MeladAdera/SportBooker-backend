@@ -6,6 +6,7 @@ export interface Tenant {
   id: string;
   name: string;
   slug: string;
+  cancel_cutoff_hours: number;
   is_active: boolean;
   created_at: Date;
   updated_at: Date;

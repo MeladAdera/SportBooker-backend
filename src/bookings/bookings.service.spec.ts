@@ -195,6 +195,7 @@ describe('BookingsService', () => {
         matchId,
         bookingId: bookingRow.id,
         userId,
+        cancelCutoffHours: 24,
       });
 
       expect(dto).toEqual({
@@ -234,6 +235,7 @@ describe('BookingsService', () => {
         matchId,
         bookingId: bookingRow.id,
         userId,
+        cancelCutoffHours: 24,
       });
 
       expect(emailService.sendBookingCancelledEmail).toHaveBeenCalled();
@@ -253,6 +255,7 @@ describe('BookingsService', () => {
           matchId,
           bookingId: bookingRow.id,
           userId,
+          cancelCutoffHours: 24,
         }),
       ).rejects.toThrow(NotFoundException);
     });
@@ -269,6 +272,7 @@ describe('BookingsService', () => {
           matchId,
           bookingId: bookingRow.id,
           userId,
+          cancelCutoffHours: 24,
         }),
       ).rejects.toThrow(ForbiddenException);
     });
@@ -285,6 +289,7 @@ describe('BookingsService', () => {
           matchId,
           bookingId: bookingRow.id,
           userId,
+          cancelCutoffHours: 24,
         }),
       ).rejects.toThrow(BadRequestException);
     });

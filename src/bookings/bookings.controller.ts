@@ -47,11 +47,11 @@ export class BookingsController {
   @ApiOperation({
     summary: 'Cancel my confirmed booking (player)',
     description:
-      'At least 24 hours before match start. No refund. Waitlist may be promoted after commit; emails sent asynchronously.',
+      "At least tenant's cancel_cutoff_hours before match start. No refund. Waitlist may be promoted after commit; emails sent asynchronously.",
   })
   @ApiBadRequestResponse({
     description:
-      'Not confirmed, already cancelled, match past/cancelled, or inside 24h window',
+      "Not confirmed, already cancelled, match past/cancelled, or inside tenant's cutoff window",
   })
   @ApiForbiddenResponse({ description: 'Not the booking owner' })
   @ApiNotFoundResponse({
@@ -70,6 +70,7 @@ export class BookingsController {
       matchId,
       bookingId,
       userId: user.sub,
+      cancelCutoffHours: tenant.cancel_cutoff_hours,
     });
   }
 
@@ -90,7 +91,10 @@ export class BookingsController {
     description:
       'Cancelled or past match, inactive venue, or insufficient wallet balance',
   })
-  @ApiConflictResponse({ description: 'Already booked this match' })
+  @ApiConflictResponse({
+    description:
+      'Active booking already exists for this match (pending or confirmed). Cancelled bookings do not block rebooking.',
+  })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
   @ApiForbiddenResponse({ description: 'Not a player' })
   @ApiResponse({ status: 429, description: 'Too Many Requests' })

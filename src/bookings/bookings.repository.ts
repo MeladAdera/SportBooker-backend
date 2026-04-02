@@ -198,7 +198,9 @@ export class BookingsRepository extends BaseRepository {
 
     const { rows: existing } = await this.query<{ id: string }>(
       client,
-      `SELECT id FROM bookings WHERE match_id = $1 AND user_id = $2`,
+      `SELECT id FROM bookings
+       WHERE match_id = $1 AND user_id = $2
+         AND status IN ('pending', 'confirmed')`,
       [matchId, userId],
     );
     if (existing[0]) {
@@ -440,6 +442,7 @@ export class BookingsRepository extends BaseRepository {
     matchId: string;
     bookingId: string;
     userId: string;
+    cancelCutoffHours: number;
   }): Promise<CancelPlayerBookingResult> {
     return this.withTransaction(async (client) =>
       this.cancelPlayerBookingInTransaction(client, params),
@@ -453,9 +456,10 @@ export class BookingsRepository extends BaseRepository {
       matchId: string;
       bookingId: string;
       userId: string;
+      cancelCutoffHours: number;
     },
   ): Promise<CancelPlayerBookingResult> {
-    const { tenantId, matchId, bookingId, userId } = params;
+    const { tenantId, matchId, bookingId, userId, cancelCutoffHours } = params;
 
     const { rows: lockRows } = await this.query<{
       bid: string;
@@ -478,14 +482,14 @@ export class BookingsRepository extends BaseRepository {
          m.price_per_player::text AS price_per_player,
          u.email AS user_email,
          (m.scheduled_at > now()) AS is_future,
-         (m.scheduled_at >= now() + interval '24 hours') AS can_cancel
+         (m.scheduled_at >= now() + interval '1 hour' * $4) AS can_cancel
        FROM bookings b
        INNER JOIN matches m ON m.id = b.match_id
        INNER JOIN venues v ON v.id = m.venue_id
        INNER JOIN users u ON u.id = b.user_id
        WHERE b.id = $1 AND b.match_id = $2 AND v.tenant_id = $3
        FOR UPDATE OF b, m`,
-      [bookingId, matchId, tenantId],
+      [bookingId, matchId, tenantId, cancelCutoffHours],
     );
 
     const row = lockRows[0];
