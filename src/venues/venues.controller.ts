@@ -35,7 +35,6 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { TenantRequiredGuard } from '../auth/guards/tenant-required.guard';
 import { UserRole } from '../users/user-role';
-import { CreateVenueMultipartDto } from './dto/create-venue-multipart.dto';
 import { CreateVenueDto } from './dto/create-venue.dto';
 import { ListVenuesQueryDto } from './dto/list-venues-query.dto';
 import { UpdateVenueDto } from './dto/update-venue.dto';
@@ -43,7 +42,6 @@ import { VenueBrowseItemDto } from './dto/venue-browse-item.dto';
 import { VenueDeactivatedResponseDto } from './dto/venue-deactivated-response.dto';
 import { VenueDetailDto } from './dto/venue-detail.dto';
 import { VenueResponseDto } from './dto/venue-response.dto';
-import { parseSportTypesJson } from './parse-sport-types-json';
 import { VenuesService } from './venues.service';
 
 const VENUE_PICTURE_MAX_BYTES = 5 * 1024 * 1024;
@@ -146,73 +144,22 @@ export class VenuesController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @Roles(UserRole.TenantAdmin, UserRole.TenantStaff)
+  @UseInterceptors(FileInterceptor('picture', venuePictureMulterOptions))
+  @ApiConsumes('multipart/form-data')
   @ApiOperation({
-    summary: 'Create a venue (JSON)',
+    summary: 'Create a venue',
     description:
-      'Tenant staff only. Required: name, address, mapsUrl, sportTypes. Optional: pictureUrl (image link). For file upload use POST /venues/upload.',
+      'Tenant staff only. Send as multipart/form-data. Required: name, address, mapsUrl, sportTypes (JSON array string). Provide either `picture` (file) or `pictureUrl` (link) — file takes priority if both sent.',
   })
+  @ApiBody({ type: CreateVenueDto })
   @ApiCreatedResponse({ type: VenueResponseDto })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
   @ApiForbiddenResponse({ description: 'Insufficient role' })
   async create(
     @TenantDecorator() tenant: Tenant,
     @Body() dto: CreateVenueDto,
-  ): Promise<VenueResponseDto> {
-    return this.venuesService.create(tenant.id, dto);
-  }
-
-  @Post('upload')
-  @HttpCode(HttpStatus.CREATED)
-  @Roles(UserRole.TenantAdmin, UserRole.TenantStaff)
-  @UseInterceptors(FileInterceptor('picture', venuePictureMulterOptions))
-  @ApiConsumes('multipart/form-data')
-  @ApiBody({
-    schema: {
-      type: 'object',
-      required: ['name', 'address', 'mapsUrl', 'sportTypes'],
-      properties: {
-        name: { type: 'string', example: 'North Court 1' },
-        address: { type: 'string', example: '1 Stadium Rd' },
-        mapsUrl: { type: 'string', example: 'https://maps.google.com/?q=...' },
-        pictureUrl: {
-          type: 'string',
-          description:
-            'Optional image URL if not sending a file. Omit both for no image.',
-        },
-        sportTypes: {
-          type: 'string',
-          description: 'JSON array, e.g. ["football","padel"]',
-          example: '["football","padel"]',
-        },
-        picture: {
-          type: 'string',
-          format: 'binary',
-          description: 'Optional image file (JPEG, PNG, WebP, GIF), max 5MB',
-        },
-      },
-    },
-  })
-  @ApiOperation({
-    summary: 'Create a venue with optional image file',
-    description:
-      'Same as POST /venues but accepts multipart/form-data. Send optional `picture` file from the device, or `pictureUrl` for a link — not both.',
-  })
-  @ApiCreatedResponse({ type: VenueResponseDto })
-  @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
-  @ApiForbiddenResponse({ description: 'Insufficient role' })
-  async createWithUpload(
-    @TenantDecorator() tenant: Tenant,
-    @Body() body: CreateVenueMultipartDto,
     @UploadedFile() picture: Express.Multer.File | undefined,
   ): Promise<VenueResponseDto> {
-    const sportTypes = parseSportTypesJson(body.sportTypes);
-    const dto: CreateVenueDto = {
-      name: body.name,
-      address: body.address,
-      mapsUrl: body.mapsUrl,
-      pictureUrl: body.pictureUrl,
-      sportTypes,
-    };
     return this.venuesService.create(tenant.id, dto, picture);
   }
 }

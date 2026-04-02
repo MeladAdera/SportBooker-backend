@@ -49,6 +49,18 @@ describe('VenuesService', () => {
     is_active: true,
   };
 
+  const mockFile = {
+    fieldname: 'picture',
+    originalname: 'a.jpg',
+    encoding: '7bit',
+    mimetype: 'image/jpeg',
+    buffer: Buffer.from('x'),
+    size: 1,
+    destination: '',
+    filename: '',
+    path: '',
+  } as Express.Multer.File;
+
   beforeEach(() => {
     repository = {
       insertVenue: jest.fn(),
@@ -68,141 +80,156 @@ describe('VenuesService', () => {
     );
   });
 
-  it('creates a venue and maps response fields', async () => {
-    repository.insertVenue.mockResolvedValue(row);
+  describe('create', () => {
+    it('creates a venue using pictureUrl and maps response fields', async () => {
+      repository.insertVenue.mockResolvedValue(row);
 
-    const result = await service.create(tenantId, {
-      name: '  Court A  ',
-      address: '1 Road',
-      mapsUrl: 'https://maps.example.com/x',
-      pictureUrl: 'https://cdn.example.com/v.jpg',
-      sportTypes: [VenueSportType.Football, VenueSportType.Padel],
+      const result = await service.create(tenantId, {
+        name: '  Court A  ',
+        address: '1 Road',
+        mapsUrl: 'https://maps.example.com/x',
+        pictureUrl: 'https://cdn.example.com/v.jpg',
+        sportTypes: '["football","padel"]',
+      });
+
+      expect(repository.insertVenue).toHaveBeenCalledWith(tenantId, {
+        name: 'Court A',
+        address: '1 Road',
+        mapsUrl: 'https://maps.example.com/x',
+        pictureUrl: 'https://cdn.example.com/v.jpg',
+        sportTypes: [VenueSportType.Football, VenueSportType.Padel],
+      });
+      expect(result).toEqual({
+        id: row.id,
+        tenantId,
+        name: 'Court A',
+        address: '1 Road',
+        mapsUrl: 'https://maps.example.com/x',
+        pictureUrl: 'https://cdn.example.com/v.jpg',
+        sportTypes: ['football', 'padel'],
+        isActive: true,
+        createdAt: '2025-01-01T00:00:00.000Z',
+        updatedAt: '2025-01-02T00:00:00.000Z',
+      });
     });
 
-    expect(repository.insertVenue).toHaveBeenCalledWith(tenantId, {
-      name: 'Court A',
-      address: '1 Road',
-      mapsUrl: 'https://maps.example.com/x',
-      pictureUrl: 'https://cdn.example.com/v.jpg',
-      sportTypes: [VenueSportType.Football, VenueSportType.Padel],
-    });
-    expect(result).toEqual({
-      id: row.id,
-      tenantId,
-      name: 'Court A',
-      address: '1 Road',
-      mapsUrl: 'https://maps.example.com/x',
-      pictureUrl: 'https://cdn.example.com/v.jpg',
-      sportTypes: ['football', 'padel'],
-      isActive: true,
-      createdAt: '2025-01-01T00:00:00.000Z',
-      updatedAt: '2025-01-02T00:00:00.000Z',
-    });
-  });
-
-  it('allows null pictureUrl when address and mapsUrl are provided', async () => {
-    repository.insertVenue.mockResolvedValue({
-      ...row,
-      picture_url: null,
+    it('throws BadRequest when neither pictureUrl nor picture file is provided', async () => {
+      await expect(
+        service.create(tenantId, {
+          name: 'Solo',
+          address: '9 Lane',
+          mapsUrl: 'https://maps.example.com/solo',
+          sportTypes: '["generic"]',
+        }),
+      ).rejects.toThrow(BadRequestException);
+      expect(repository.insertVenue).not.toHaveBeenCalled();
     });
 
-    const result = await service.create(tenantId, {
-      name: 'Solo',
-      address: '9 Lane',
-      mapsUrl: 'https://maps.example.com/solo',
-      sportTypes: [VenueSportType.Generic],
+    it('throws ConflictException on unique venue name per tenant', async () => {
+      repository.insertVenue.mockRejectedValue({ code: '23505' });
+
+      await expect(
+        service.create(tenantId, {
+          name: 'Dup',
+          address: '1 St',
+          mapsUrl: 'https://maps.example.com/dup',
+          pictureUrl: 'https://cdn.example.com/a.jpg',
+          sportTypes: '["football"]',
+        }),
+      ).rejects.toThrow(ConflictException);
     });
 
-    expect(repository.insertVenue).toHaveBeenCalledWith(tenantId, {
-      name: 'Solo',
-      address: '9 Lane',
-      mapsUrl: 'https://maps.example.com/solo',
-      pictureUrl: null,
-      sportTypes: [VenueSportType.Generic],
-    });
-    expect(result.pictureUrl).toBeNull();
-  });
+    it('uses file and ignores pictureUrl when both are provided', async () => {
+      const fileUrl = 'http://localhost:3000/uploads/venues/t/u.jpg';
+      storage.saveVenuePicture.mockResolvedValue(fileUrl);
+      repository.insertVenue.mockResolvedValue({
+        ...row,
+        picture_url: fileUrl,
+      });
 
-  it('throws ConflictException on unique venue name per tenant', async () => {
-    repository.insertVenue.mockRejectedValue({ code: '23505' });
-
-    await expect(
-      service.create(tenantId, {
-        name: 'Dup',
-        address: '1 St',
-        mapsUrl: 'https://maps.example.com/dup',
-        sportTypes: [VenueSportType.Football],
-      }),
-    ).rejects.toThrow(ConflictException);
-  });
-
-  it('throws BadRequest when both pictureUrl and file are provided', async () => {
-    await expect(
-      service.create(
+      await service.create(
         tenantId,
         {
+          name: 'With file',
+          address: '2 St',
+          mapsUrl: 'https://maps.example.com/with-file',
+          pictureUrl: 'https://cdn.example.com/ignored.jpg',
+          sportTypes: '["football"]',
+        },
+        mockFile,
+      );
+
+      expect(storage.saveVenuePicture).toHaveBeenCalled();
+      expect(repository.insertVenue).toHaveBeenCalledWith(
+        tenantId,
+        expect.objectContaining({ pictureUrl: fileUrl }),
+      );
+    });
+
+    it('saves uploaded file and stores returned URL', async () => {
+      const fileUrl = 'http://localhost:3000/uploads/venues/t/u.jpg';
+      storage.saveVenuePicture.mockResolvedValue(fileUrl);
+      repository.insertVenue.mockResolvedValue({
+        ...row,
+        picture_url: fileUrl,
+      });
+
+      await service.create(
+        tenantId,
+        {
+          name: 'With file',
+          address: '2 St',
+          mapsUrl: 'https://maps.example.com/with-file',
+          sportTypes: '["football"]',
+        },
+        mockFile,
+      );
+
+      expect(storage.saveVenuePicture).toHaveBeenCalled();
+      expect(repository.insertVenue).toHaveBeenCalledWith(
+        tenantId,
+        expect.objectContaining({ pictureUrl: fileUrl }),
+      );
+    });
+
+    it('throws BadRequest for invalid sportTypes JSON', async () => {
+      await expect(
+        service.create(tenantId, {
           name: 'X',
           address: '1 St',
           mapsUrl: 'https://maps.example.com/x',
           pictureUrl: 'https://cdn.example.com/a.jpg',
-          sportTypes: [VenueSportType.Football],
-        },
-        {
-          fieldname: 'picture',
-          originalname: 'a.jpg',
-          encoding: '7bit',
-          mimetype: 'image/jpeg',
-          buffer: Buffer.from(''),
-          size: 0,
-          stream: undefined as unknown as NodeJS.ReadableStream,
-          destination: '',
-          filename: '',
-          path: '',
-        } as Express.Multer.File,
-      ),
-    ).rejects.toThrow(BadRequestException);
-    expect(storage.saveVenuePicture).not.toHaveBeenCalled();
-    expect(repository.insertVenue).not.toHaveBeenCalled();
-  });
-
-  it('saves uploaded file and stores returned URL', async () => {
-    storage.saveVenuePicture.mockResolvedValue(
-      'http://localhost:3000/uploads/venues/t/u.jpg',
-    );
-    repository.insertVenue.mockResolvedValue({
-      ...row,
-      picture_url: 'http://localhost:3000/uploads/venues/t/u.jpg',
+          sportTypes: 'not-json',
+        }),
+      ).rejects.toThrow(BadRequestException);
+      expect(repository.insertVenue).not.toHaveBeenCalled();
     });
 
-    await service.create(
-      tenantId,
-      {
-        name: 'With file',
-        address: '2 St',
-        mapsUrl: 'https://maps.example.com/with-file',
-        sportTypes: [VenueSportType.Football],
-      },
-      {
-        fieldname: 'picture',
-        originalname: 'a.jpg',
-        encoding: '7bit',
-        mimetype: 'image/jpeg',
-        buffer: Buffer.from('x'),
-        size: 1,
-        stream: undefined as unknown as NodeJS.ReadableStream,
-        destination: '',
-        filename: '',
-        path: '',
-      } as Express.Multer.File,
-    );
+    it('throws BadRequest for unknown sport type', async () => {
+      await expect(
+        service.create(tenantId, {
+          name: 'X',
+          address: '1 St',
+          mapsUrl: 'https://maps.example.com/x',
+          pictureUrl: 'https://cdn.example.com/a.jpg',
+          sportTypes: '["unknown_sport"]',
+        }),
+      ).rejects.toThrow(BadRequestException);
+      expect(repository.insertVenue).not.toHaveBeenCalled();
+    });
 
-    expect(storage.saveVenuePicture).toHaveBeenCalled();
-    expect(repository.insertVenue).toHaveBeenCalledWith(
-      tenantId,
-      expect.objectContaining({
-        pictureUrl: 'http://localhost:3000/uploads/venues/t/u.jpg',
-      }),
-    );
+    it('throws BadRequest for empty sportTypes array', async () => {
+      await expect(
+        service.create(tenantId, {
+          name: 'X',
+          address: '1 St',
+          mapsUrl: 'https://maps.example.com/x',
+          pictureUrl: 'https://cdn.example.com/a.jpg',
+          sportTypes: '[]',
+        }),
+      ).rejects.toThrow(BadRequestException);
+      expect(repository.insertVenue).not.toHaveBeenCalled();
+    });
   });
 
   describe('getByIdForTenant', () => {

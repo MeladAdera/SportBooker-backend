@@ -1,17 +1,12 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
-  ArrayMinSize,
-  IsArray,
-  IsEnum,
   IsOptional,
   IsString,
   IsUrl,
   Length,
   MaxLength,
 } from 'class-validator';
-import { VenueSportType } from '../venue-sport-type';
 
-// Keep field constraints in sync with CreateVenueMultipartDto (pictureUrl max length).
 export class CreateVenueDto {
   @ApiProperty({ example: 'North Court 1' })
   @IsString()
@@ -30,7 +25,7 @@ export class CreateVenueDto {
   @ApiPropertyOptional({
     example: 'https://cdn.example.com/venues/abc.jpg',
     description:
-      'Optional image URL (link). To upload a file from the device instead, use POST /venues/upload with multipart/form-data.',
+      'Optional image URL. Omit if uploading a file via the `picture` field.',
   })
   @IsOptional()
   @IsUrl({ require_tld: false })
@@ -38,12 +33,18 @@ export class CreateVenueDto {
   pictureUrl?: string;
 
   @ApiProperty({
-    enum: VenueSportType,
-    isArray: true,
-    example: [VenueSportType.Football, VenueSportType.Padel],
+    description: 'JSON array string, e.g. ["football","padel"]',
+    example: '["football","padel"]',
   })
-  @IsArray()
-  @ArrayMinSize(1)
-  @IsEnum(VenueSportType, { each: true })
-  sportTypes!: VenueSportType[];
+  @IsString()
+  @Length(2, 500)
+  sportTypes!: string;
+
+  @ApiPropertyOptional({
+    type: 'string',
+    format: 'binary',
+    description:
+      'Optional image file (JPEG, PNG, WebP, GIF), max 5 MB. Takes priority over pictureUrl.',
+  })
+  picture?: unknown;
 }

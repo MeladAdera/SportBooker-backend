@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import type { CreateVenueDto } from './dto/create-venue.dto';
+import { parseSportTypesJson } from './parse-sport-types-json';
 import type { ListVenuesQueryDto } from './dto/list-venues-query.dto';
 import type { UpdateVenueDto } from './dto/update-venue.dto';
 import type { VenueBrowseItemDto } from './dto/venue-browse-item.dto';
@@ -191,29 +192,30 @@ export class VenuesService {
     dto: CreateVenueDto,
     pictureFile?: Express.Multer.File,
   ): Promise<VenueResponseDto> {
+    const sportTypes = parseSportTypesJson(dto.sportTypes);
     const trimmedPictureUrl = dto.pictureUrl?.trim();
-    if (pictureFile && trimmedPictureUrl) {
+
+    let pictureUrl: string | null = null;
+    if (pictureFile) {
+      pictureUrl = await this.venuePictureStorage.saveVenuePicture(
+        tenantId,
+        pictureFile,
+      );
+    } else if (trimmedPictureUrl && trimmedPictureUrl.length > 0) {
+      pictureUrl = trimmedPictureUrl;
+    } else {
       throw new BadRequestException(
-        'Provide either a picture file (multipart) or pictureUrl, not both',
+        'Either a picture file or pictureUrl must be provided',
       );
     }
+
     try {
-      let pictureUrl: string | null =
-        trimmedPictureUrl && trimmedPictureUrl.length > 0
-          ? trimmedPictureUrl
-          : null;
-      if (pictureFile) {
-        pictureUrl = await this.venuePictureStorage.saveVenuePicture(
-          tenantId,
-          pictureFile,
-        );
-      }
       const row = await this.venuesRepository.insertVenue(tenantId, {
         name: dto.name.trim(),
         address: dto.address.trim(),
         mapsUrl: dto.mapsUrl,
         pictureUrl,
-        sportTypes: dto.sportTypes,
+        sportTypes,
       });
       return this.toResponseDto(row);
     } catch (err: unknown) {

@@ -86,8 +86,7 @@ Controller default roles: `super_admin`, `tenant_admin` — **overridden per han
 | `GET` | `/venues/:id` | *(none)* | Venue detail |
 | `PATCH` | `/venues/:id` | tenant_admin, tenant_staff | Update venue |
 | `POST` | `/venues/:id/deactivate` | tenant_admin | Deactivate venue |
-| `POST` | `/venues` | tenant_admin, tenant_staff | Create (JSON) |
-| `POST` | `/venues/upload` | tenant_admin, tenant_staff | Create (multipart + optional image) |
+| `POST` | `/venues` | tenant_admin, tenant_staff | Create venue (multipart/form-data; `picture` file or `pictureUrl` required) |
 
 ---
 
