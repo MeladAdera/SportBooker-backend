@@ -21,7 +21,7 @@ describe('VenuesService', () => {
       | 'patchVenueForTenant'
       | 'findVenueRowByIdForTenant'
       | 'countBlockingMatchesForVenue'
-      | 'deactivateVenueForTenant'
+      | 'deactivateVenueForTenantIfNoBlockingMatches'
       | 'activateVenueForTenant'
     >
   >;
@@ -72,7 +72,7 @@ describe('VenuesService', () => {
       patchVenueForTenant: jest.fn(),
       findVenueRowByIdForTenant: jest.fn(),
       countBlockingMatchesForVenue: jest.fn(),
-      deactivateVenueForTenant: jest.fn(),
+      deactivateVenueForTenantIfNoBlockingMatches: jest.fn(),
       activateVenueForTenant: jest.fn(),
     };
     storage = {
@@ -283,6 +283,9 @@ describe('VenuesService', () => {
     const venueId = row.id;
 
     it('throws NotFound when venue not in tenant', async () => {
+      repository.deactivateVenueForTenantIfNoBlockingMatches.mockResolvedValue(
+        null,
+      );
       repository.findVenueRowByIdForTenant.mockResolvedValue(null);
 
       await expect(
@@ -291,6 +294,9 @@ describe('VenuesService', () => {
     });
 
     it('returns already inactive without counting matches', async () => {
+      repository.deactivateVenueForTenantIfNoBlockingMatches.mockResolvedValue(
+        null,
+      );
       repository.findVenueRowByIdForTenant.mockResolvedValue({
         ...row,
         is_active: false,
@@ -304,10 +310,12 @@ describe('VenuesService', () => {
         alreadyInactive: true,
       });
       expect(repository.countBlockingMatchesForVenue).not.toHaveBeenCalled();
-      expect(repository.deactivateVenueForTenant).not.toHaveBeenCalled();
     });
 
     it('throws Conflict when blocking matches exist', async () => {
+      repository.deactivateVenueForTenantIfNoBlockingMatches.mockResolvedValue(
+        null,
+      );
       repository.findVenueRowByIdForTenant.mockResolvedValue(row);
       repository.countBlockingMatchesForVenue.mockResolvedValue(3);
 
@@ -315,13 +323,13 @@ describe('VenuesService', () => {
         service.deactivateForTenant(tenantId, venueId),
       ).rejects.toThrow(ConflictException);
 
-      expect(repository.deactivateVenueForTenant).not.toHaveBeenCalled();
+      expect(
+        repository.deactivateVenueForTenantIfNoBlockingMatches,
+      ).toHaveBeenCalledTimes(1);
     });
 
-    it('deactivates when no blocking matches', async () => {
-      repository.findVenueRowByIdForTenant.mockResolvedValue(row);
-      repository.countBlockingMatchesForVenue.mockResolvedValue(0);
-      repository.deactivateVenueForTenant.mockResolvedValue({
+    it('deactivates when atomic update succeeds on first try', async () => {
+      repository.deactivateVenueForTenantIfNoBlockingMatches.mockResolvedValue({
         ...row,
         is_active: false,
       });
@@ -332,10 +340,29 @@ describe('VenuesService', () => {
         message: 'Venue deactivated',
         venueId: row.id,
       });
-      expect(repository.deactivateVenueForTenant).toHaveBeenCalledWith(
-        tenantId,
-        venueId,
-      );
+      expect(
+        repository.deactivateVenueForTenantIfNoBlockingMatches,
+      ).toHaveBeenCalledWith(tenantId, venueId);
+      expect(repository.findVenueRowByIdForTenant).not.toHaveBeenCalled();
+      expect(repository.countBlockingMatchesForVenue).not.toHaveBeenCalled();
+    });
+
+    it('retries atomic deactivate when first fails but count is zero', async () => {
+      repository.deactivateVenueForTenantIfNoBlockingMatches
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ ...row, is_active: false });
+      repository.findVenueRowByIdForTenant.mockResolvedValue(row);
+      repository.countBlockingMatchesForVenue.mockResolvedValue(0);
+
+      const result = await service.deactivateForTenant(tenantId, venueId);
+
+      expect(result).toEqual({
+        message: 'Venue deactivated',
+        venueId: row.id,
+      });
+      expect(
+        repository.deactivateVenueForTenantIfNoBlockingMatches,
+      ).toHaveBeenCalledTimes(2);
     });
   });
 

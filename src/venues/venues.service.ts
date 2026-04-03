@@ -119,7 +119,19 @@ export class VenuesService {
     tenantId: string,
     venueId: string,
   ): Promise<VenueDeactivatedResponseDto> {
-    const existing = await this.venuesRepository.findVenueRowByIdForTenant(
+    let row =
+      await this.venuesRepository.deactivateVenueForTenantIfNoBlockingMatches(
+        tenantId,
+        venueId,
+      );
+    if (row) {
+      return {
+        message: 'Venue deactivated',
+        venueId: row.id,
+      };
+    }
+
+    let existing = await this.venuesRepository.findVenueRowByIdForTenant(
       venueId,
       tenantId,
     );
@@ -133,7 +145,8 @@ export class VenuesService {
         alreadyInactive: true,
       };
     }
-    const blocking =
+
+    let blocking =
       await this.venuesRepository.countBlockingMatchesForVenue(venueId);
     if (blocking > 0) {
       throw new ConflictException({
@@ -141,17 +154,47 @@ export class VenuesService {
         affectedMatches: blocking,
       });
     }
-    const row = await this.venuesRepository.deactivateVenueForTenant(
-      tenantId,
+
+    row =
+      await this.venuesRepository.deactivateVenueForTenantIfNoBlockingMatches(
+        tenantId,
+        venueId,
+      );
+    if (row) {
+      return {
+        message: 'Venue deactivated',
+        venueId: row.id,
+      };
+    }
+
+    existing = await this.venuesRepository.findVenueRowByIdForTenant(
       venueId,
+      tenantId,
     );
-    if (!row) {
+    if (!existing) {
       throw new NotFoundException('Venue not found');
     }
-    return {
-      message: 'Venue deactivated',
-      venueId: row.id,
-    };
+    if (!existing.is_active) {
+      return {
+        message: 'Venue was already inactive',
+        venueId: existing.id,
+        alreadyInactive: true,
+      };
+    }
+
+    blocking =
+      await this.venuesRepository.countBlockingMatchesForVenue(venueId);
+    if (blocking > 0) {
+      throw new ConflictException({
+        message: `Cannot deactivate venue with ${blocking} upcoming or ongoing match(es)`,
+        affectedMatches: blocking,
+      });
+    }
+
+    throw new ConflictException({
+      message: 'Cannot deactivate venue; please retry',
+      affectedMatches: 0,
+    });
   }
 
   async activateForTenant(

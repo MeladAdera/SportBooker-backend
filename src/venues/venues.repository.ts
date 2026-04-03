@@ -193,7 +193,8 @@ export class VenuesRepository extends BaseRepository {
   }
 
   /**
-   * Matches that block venue deactivation: in progress, or scheduled and not yet started (upcoming).
+   * Predicate for matches that block venue deactivation — keep in sync with
+   * {@link deactivateVenueForTenantIfNoBlockingMatches} NOT EXISTS subquery.
    */
   async countBlockingMatchesForVenue(venueId: string): Promise<number> {
     const { rows } = await this.query<{ count: string }>(
@@ -213,18 +214,34 @@ export class VenuesRepository extends BaseRepository {
     return parseInt(rows[0]?.count ?? '0', 10);
   }
 
-  /** Sets is_active = true; returns null if venue missing, wrong tenant, or already active. */
-  async activateVenueForTenant(
+  /**
+   * Deactivates only if there are no blocking matches (same rule as
+   * {@link countBlockingMatchesForVenue}). Single atomic UPDATE — no race between
+   * count and deactivate.
+   */
+  async deactivateVenueForTenantIfNoBlockingMatches(
     tenantId: string,
     venueId: string,
   ): Promise<VenueRow | null> {
     const { rows } = await this.query<VenueRow>(
       this.pool,
       `UPDATE venues
-      SET is_active = true, updated_at = now()
+      SET is_active = false, updated_at = now()
       WHERE id = $1
         AND tenant_id = $2
-        AND is_active = false
+        AND is_active = true
+        AND NOT EXISTS (
+          SELECT 1
+          FROM matches m
+          WHERE m.venue_id = venues.id
+            AND (
+              m.status = 'in_progress'
+              OR (
+                m.status IN ('scheduled', 'upcoming')
+                AND m.scheduled_at >= now()
+              )
+            )
+        )
       RETURNING
         id,
         tenant_id,
@@ -241,18 +258,18 @@ export class VenuesRepository extends BaseRepository {
     return rows[0] ?? null;
   }
 
-  /** Sets is_active = false; returns null if venue missing or wrong tenant. */
-  async deactivateVenueForTenant(
+  /** Sets is_active = true; returns null if venue missing, wrong tenant, or already active. */
+  async activateVenueForTenant(
     tenantId: string,
     venueId: string,
   ): Promise<VenueRow | null> {
     const { rows } = await this.query<VenueRow>(
       this.pool,
       `UPDATE venues
-      SET is_active = false, updated_at = now()
+      SET is_active = true, updated_at = now()
       WHERE id = $1
         AND tenant_id = $2
-        AND is_active = true
+        AND is_active = false
       RETURNING
         id,
         tenant_id,
