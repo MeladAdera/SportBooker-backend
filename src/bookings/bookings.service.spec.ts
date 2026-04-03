@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { EmailService } from '../auth/email.service';
+import { BookingPosition } from './booking-position';
 import type { BookingDetailRow } from './bookings.repository';
 import { UserRole } from '../users/user-role';
 import { BookingsRepository } from './bookings.repository';
@@ -46,6 +47,7 @@ describe('BookingsService', () => {
     user_id: userId,
     status: 'confirmed',
     paid_amount: '15.50',
+    position: BookingPosition.FieldPlayer,
     created_at: new Date('2026-06-01T12:00:00.000Z'),
     updated_at: new Date('2026-06-01T12:00:00.000Z'),
   };
@@ -56,6 +58,7 @@ describe('BookingsService', () => {
     user_id: userId,
     status: 'confirmed',
     paid_amount: '15.50',
+    position: BookingPosition.FieldPlayer,
     cancelled_at: null,
     refunded_at: null,
     created_at: new Date('2026-06-01T12:00:00.000Z'),
@@ -117,10 +120,40 @@ describe('BookingsService', () => {
 
     expect(dto.id).toBe(bookingRow.id);
     expect(dto.status).toBe('confirmed');
+    expect(dto.position).toBe(BookingPosition.FieldPlayer);
     expect(dto.remainingSpots).toBe(5);
+    expect(bookingsRepo.createBookingForMatch).toHaveBeenCalledWith({
+      tenantId,
+      matchId,
+      userId,
+      position: BookingPosition.FieldPlayer,
+    });
     expect(emailService.sendBookingConfirmedEmail).toHaveBeenCalledWith(
       'p@example.com',
     );
+  });
+
+  it('passes goalkeeper position to repository', async () => {
+    bookingsRepo.createBookingForMatch.mockResolvedValue({
+      success: true,
+      booking: { ...bookingRow, position: BookingPosition.Goalkeeper },
+      remainingSpots: 3,
+      emailForConfirmation: 'gk@example.com',
+    });
+
+    await service.createBookingForPlayer({
+      tenantId,
+      matchId,
+      userId,
+      position: BookingPosition.Goalkeeper,
+    });
+
+    expect(bookingsRepo.createBookingForMatch).toHaveBeenCalledWith({
+      tenantId,
+      matchId,
+      userId,
+      position: BookingPosition.Goalkeeper,
+    });
   });
 
   it('does not send email for waitlist (pending)', async () => {

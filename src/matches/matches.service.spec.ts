@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { EmailService } from '../auth/email.service';
+import { BookingPosition } from '../bookings/booking-position';
 import { BookingsRepository } from '../bookings/bookings.repository';
 import { VenueSportType } from '../venues/venue-sport-type';
 import { MatchesRepository } from './matches.repository';
@@ -147,6 +148,7 @@ describe('MatchesService', () => {
         {
           userId: playerId,
           name: 'Alex',
+          position: BookingPosition.FieldPlayer,
           photoUrl: 'https://cdn.example.com/p.jpg',
         },
       ],
@@ -163,6 +165,7 @@ describe('MatchesService', () => {
     expect(result.roster[0]).toEqual({
       userId: playerId,
       name: 'Alex',
+      position: BookingPosition.FieldPlayer,
       photoUrl: 'https://cdn.example.com/p.jpg',
     });
   });

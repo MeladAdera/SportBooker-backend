@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import type { Pool, PoolClient } from 'pg';
 import { BaseRepository } from '../database/base.repository';
 import { DB_POOL } from '../database/database.constants';
+import { BookingPosition, MAX_GOALKEEPERS_PER_MATCH } from './booking-position';
 
 export type BookingRow = {
   id: string;
@@ -9,6 +10,7 @@ export type BookingRow = {
   user_id: string;
   status: string;
   paid_amount: string;
+  position: string;
   created_at: Date;
   updated_at: Date;
 };
@@ -43,6 +45,7 @@ export type BookingDetailRow = {
   price_per_player: string;
   match_status: string;
   max_players: number | null;
+  position: string;
   match_created_at: Date;
   match_updated_at: Date;
   venue_id: string;
@@ -137,6 +140,7 @@ export class BookingsRepository extends BaseRepository {
     tenantId: string;
     matchId: string;
     userId: string;
+    position: BookingPosition;
   }): Promise<CreateBookingResult> {
     return this.withTransaction(async (client) =>
       this.createBookingInTransaction(client, params),
@@ -145,9 +149,14 @@ export class BookingsRepository extends BaseRepository {
 
   private async createBookingInTransaction(
     client: PoolClient,
-    params: { tenantId: string; matchId: string; userId: string },
+    params: {
+      tenantId: string;
+      matchId: string;
+      userId: string;
+      position: BookingPosition;
+    },
   ): Promise<CreateBookingResult> {
-    const { tenantId, matchId, userId } = params;
+    const { tenantId, matchId, userId, position } = params;
 
     const { rows: matchRows } = await this.query<MatchLockRow>(
       client,
@@ -215,21 +224,40 @@ export class BookingsRepository extends BaseRepository {
       [matchId],
     );
     const confirmedCount = parseInt(countRows[0]?.count ?? '0', 10);
+
+    const { rows: gkRows } = await this.query<{ count: string }>(
+      client,
+      `SELECT COUNT(*)::text AS count
+       FROM bookings
+       WHERE match_id = $1
+         AND status = 'confirmed'
+         AND position = 'goalkeeper'::booking_position`,
+      [matchId],
+    );
+    const confirmedGkCount = parseInt(gkRows[0]?.count ?? '0', 10);
+
     const maxPlayers = match.max_players;
     const isFull =
       maxPlayers !== null &&
       maxPlayers !== undefined &&
       confirmedCount >= maxPlayers;
 
+    const goalkeeperSlotsFull = confirmedGkCount >= MAX_GOALKEEPERS_PER_MATCH;
+    const wantsGoalkeeper = position === BookingPosition.Goalkeeper;
+    /** GK slots taken but match still has outfield capacity — join waitlist as GK. */
+    const mustWaitlistForGoalkeeper =
+      wantsGoalkeeper && goalkeeperSlotsFull && !isFull;
+
     const price = match.price_per_player;
 
     try {
-      if (isFull) {
+      if (isFull || mustWaitlistForGoalkeeper) {
         const booking = await this.insertBooking(client, {
           matchId,
           userId,
           status: 'pending',
           paidAmount: '0',
+          position,
         });
         const remainingSpots = this.computeRemainingSpots(
           maxPlayers,
@@ -263,6 +291,7 @@ export class BookingsRepository extends BaseRepository {
         userId,
         status: 'confirmed',
         paidAmount: price,
+        position,
       });
 
       await this.query(
@@ -596,9 +625,10 @@ export class BookingsRepository extends BaseRepository {
       id: string;
       user_id: string;
       email: string;
+      position: string;
     }>(
       client,
-      `SELECT b.id, b.user_id, u.email
+      `SELECT b.id, b.user_id, u.email, b.position::text AS position
        FROM bookings b
        INNER JOIN users u ON u.id = b.user_id
        WHERE b.match_id = $1 AND b.status = 'pending'
@@ -638,6 +668,33 @@ export class BookingsRepository extends BaseRepository {
         [candidate.id, matchId],
       );
       if (!locked[0]) {
+        continue;
+      }
+
+      const { rows: capRows } = await this.query<{
+        total: string;
+        gk: string;
+      }>(
+        client,
+        `SELECT
+           COUNT(*)::text AS total,
+           COUNT(*) FILTER (WHERE b.position = 'goalkeeper'::booking_position)::text AS gk
+         FROM bookings b
+         WHERE b.match_id = $1 AND b.status = 'confirmed'`,
+        [matchId],
+      );
+      const confirmedTotal = parseInt(capRows[0]?.total ?? '0', 10);
+      const confirmedGk = parseInt(capRows[0]?.gk ?? '0', 10);
+      const maxCap = match.max_players;
+
+      if (maxCap !== null && maxCap !== undefined && confirmedTotal >= maxCap) {
+        continue;
+      }
+      const role = candidate.position as BookingPosition;
+      if (
+        role === BookingPosition.Goalkeeper &&
+        confirmedGk >= MAX_GOALKEEPERS_PER_MATCH
+      ) {
         continue;
       }
 
@@ -705,21 +762,29 @@ export class BookingsRepository extends BaseRepository {
       userId: string;
       status: string;
       paidAmount: string;
+      position: BookingPosition;
     },
   ): Promise<BookingRow> {
     const { rows } = await this.query<BookingRow>(
       client,
-      `INSERT INTO bookings (match_id, user_id, status, paid_amount)
-       VALUES ($1, $2, $3::booking_status, $4)
+      `INSERT INTO bookings (match_id, user_id, status, paid_amount, position)
+       VALUES ($1, $2, $3::booking_status, $4, $5::booking_position)
        RETURNING
          id,
          match_id,
          user_id,
          status,
          paid_amount,
+         position::text AS position,
          created_at,
          updated_at`,
-      [params.matchId, params.userId, params.status, params.paidAmount],
+      [
+        params.matchId,
+        params.userId,
+        params.status,
+        params.paidAmount,
+        params.position,
+      ],
     );
     const row = rows[0];
     if (!row) {
@@ -802,6 +867,7 @@ export class BookingsRepository extends BaseRepository {
          b.user_id,
          b.status::text AS status,
          b.paid_amount::text AS paid_amount,
+         b.position::text AS position,
          b.cancelled_at,
          b.refunded_at,
          b.created_at,

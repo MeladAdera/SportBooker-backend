@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { EmailService } from '../auth/email.service';
+import { BookingPosition } from '../bookings/booking-position';
 import { BookingsRepository } from '../bookings/bookings.repository';
 import type { CreateMatchDto } from './dto/create-match.dto';
 import type { CancelMatchResponseDto } from './dto/cancel-match-response.dto';
@@ -313,11 +314,14 @@ export class MatchesService {
       const r = item as {
         userId?: string;
         name?: string;
+        position?: string;
         photoUrl?: string | null;
       };
       return {
         userId: String(r.userId ?? ''),
         name: String(r.name ?? ''),
+        position: (r.position ??
+          BookingPosition.FieldPlayer) as BookingPosition,
         photoUrl: r.photoUrl ?? null,
       };
     });

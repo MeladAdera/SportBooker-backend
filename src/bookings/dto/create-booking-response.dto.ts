@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { BookingPosition } from '../booking-position';
 
 export class CreateBookingResponseDto {
   @ApiProperty({ format: 'uuid' })
@@ -18,6 +19,9 @@ export class CreateBookingResponseDto {
     example: '15.50',
   })
   paidAmount!: string;
+
+  @ApiProperty({ enum: BookingPosition, enumName: 'BookingPosition' })
+  position!: BookingPosition;
 
   @ApiProperty({ type: String, format: 'date-time' })
   createdAt!: string;

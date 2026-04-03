@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { BookingPosition } from '../booking-position';
 import { BookingDetailMatchDto } from './booking-detail-match.dto';
 import { BookingDetailVenueDto } from './booking-detail-venue.dto';
 
@@ -18,6 +19,9 @@ export class BookingDetailResponseDto {
 
   @ApiProperty({ example: '15.50' })
   paidAmount!: string;
+
+  @ApiProperty({ enum: BookingPosition, enumName: 'BookingPosition' })
+  position!: BookingPosition;
 
   @ApiPropertyOptional({
     nullable: true,

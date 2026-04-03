@@ -135,7 +135,8 @@ export class MatchesRepository extends BaseRepository {
               json_build_object(
                 'userId', u.id::text,
                 'name', u.name,
-                'photoUrl', u.photo_url
+                'photoUrl', u.photo_url,
+                'position', b.position::text
               )
               ORDER BY u.name
             )

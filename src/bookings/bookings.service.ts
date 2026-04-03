@@ -18,6 +18,7 @@ import type { BookingDetailResponseDto } from './dto/booking-detail-response.dto
 import type { CancelPlayerBookingResponseDto } from './dto/cancel-player-booking-response.dto';
 import type { CreateBookingResponseDto } from './dto/create-booking-response.dto';
 import { UserRole } from '../users/user-role';
+import { BookingPosition } from './booking-position';
 
 const FAILURE_MESSAGES: Record<CreateBookingFailureCode, string> = {
   MATCH_NOT_FOUND: 'Match not found',
@@ -53,8 +54,12 @@ export class BookingsService {
     tenantId: string;
     matchId: string;
     userId: string;
+    position?: BookingPosition;
   }): Promise<CreateBookingResponseDto> {
-    const result = await this.bookingsRepository.createBookingForMatch(params);
+    const result = await this.bookingsRepository.createBookingForMatch({
+      ...params,
+      position: params.position ?? BookingPosition.FieldPlayer,
+    });
 
     if (!result.success) {
       throw this.mapFailure(result.code);
@@ -220,6 +225,7 @@ export class BookingsService {
       user_id: string;
       status: string;
       paid_amount: string;
+      position: string;
       created_at: Date;
     },
     remainingSpots: number | null,
@@ -230,6 +236,7 @@ export class BookingsService {
       userId: booking.user_id,
       status: booking.status,
       paidAmount: booking.paid_amount,
+      position: booking.position as BookingPosition,
       createdAt: booking.created_at.toISOString(),
       remainingSpots,
     };
@@ -242,6 +249,7 @@ export class BookingsService {
       userId: row.user_id,
       status: row.status,
       paidAmount: row.paid_amount,
+      position: row.position as BookingPosition,
       cancelledAt: row.cancelled_at ? row.cancelled_at.toISOString() : null,
       refundedAt: row.refunded_at ? row.refunded_at.toISOString() : null,
       createdAt: row.created_at.toISOString(),

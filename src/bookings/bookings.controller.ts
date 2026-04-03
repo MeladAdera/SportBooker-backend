@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   HttpCode,
   HttpStatus,
@@ -11,6 +12,7 @@ import { Throttle } from '@nestjs/throttler';
 import {
   ApiBearerAuth,
   ApiBadRequestResponse,
+  ApiBody,
   ApiConflictResponse,
   ApiCreatedResponse,
   ApiForbiddenResponse,
@@ -31,6 +33,7 @@ import { TenantRequiredGuard } from '../auth/guards/tenant-required.guard';
 import { UserRole } from '../users/user-role';
 import { BookingsService } from './bookings.service';
 import { CancelPlayerBookingResponseDto } from './dto/cancel-player-booking-response.dto';
+import { CreateBookingDto } from './dto/create-booking.dto';
 import { CreateBookingResponseDto } from './dto/create-booking-response.dto';
 
 @ApiTags('Bookings')
@@ -81,8 +84,9 @@ export class BookingsController {
   @ApiOperation({
     summary: 'Book a spot on a match',
     description:
-      'Player only. Confirms and debits wallet when spots remain; otherwise joins waitlist (pending). Atomic.',
+      'Player only. Confirms and debits wallet when spots remain; otherwise joins waitlist (pending). Atomic. At most two confirmed goalkeepers per match; requesting goalkeeper when both slots are taken joins the waitlist as goalkeeper.',
   })
+  @ApiBody({ type: CreateBookingDto, required: false })
   @ApiCreatedResponse({ type: CreateBookingResponseDto })
   @ApiNotFoundResponse({
     description: 'Match or user not found for this tenant',
@@ -102,11 +106,13 @@ export class BookingsController {
     @TenantDecorator() tenant: Tenant,
     @CurrentUser() user: AuthenticatedUser,
     @Param('matchId', ParseUUIDPipe) matchId: string,
+    @Body() dto: CreateBookingDto,
   ): Promise<CreateBookingResponseDto> {
     return this.bookingsService.createBookingForPlayer({
       tenantId: tenant.id,
       matchId,
       userId: user.sub,
+      position: dto.position,
     });
   }
 }
