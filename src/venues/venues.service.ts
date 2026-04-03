@@ -11,6 +11,7 @@ import type { PaginatedVenuesListDto } from './dto/paginated-venues-list.dto';
 import type { UpdateVenueDto } from './dto/update-venue.dto';
 import type { VenueBrowseItemDto } from './dto/venue-browse-item.dto';
 import type { VenueDetailDto } from './dto/venue-detail.dto';
+import type { VenueActivatedResponseDto } from './dto/venue-activated-response.dto';
 import type { VenueDeactivatedResponseDto } from './dto/venue-deactivated-response.dto';
 import type { VenueResponseDto } from './dto/venue-response.dto';
 import type { VenueSportType } from './venue-sport-type';
@@ -153,14 +154,44 @@ export class VenuesService {
     };
   }
 
+  async activateForTenant(
+    tenantId: string,
+    venueId: string,
+  ): Promise<VenueActivatedResponseDto> {
+    const existing = await this.venuesRepository.findVenueRowByIdForTenant(
+      venueId,
+      tenantId,
+    );
+    if (!existing) {
+      throw new NotFoundException('Venue not found');
+    }
+    if (existing.is_active) {
+      return {
+        message: 'Venue was already active',
+        venueId: existing.id,
+        alreadyActive: true,
+      };
+    }
+    const row = await this.venuesRepository.activateVenueForTenant(
+      tenantId,
+      venueId,
+    );
+    if (!row) {
+      throw new NotFoundException('Venue not found');
+    }
+    return {
+      message: 'Venue activated',
+      venueId: row.id,
+    };
+  }
+
   private hasPatchFields(dto: UpdateVenueDto): boolean {
     return (
       dto.name !== undefined ||
       dto.address !== undefined ||
       dto.mapsUrl !== undefined ||
       dto.pictureUrl !== undefined ||
-      dto.sportTypes !== undefined ||
-      dto.isActive !== undefined
+      dto.sportTypes !== undefined
     );
   }
 
@@ -170,7 +201,6 @@ export class VenuesService {
     mapsUrl?: string;
     pictureUrl?: string | null;
     sportTypes?: VenueSportType[];
-    isActive?: boolean;
   } {
     const patch: {
       name?: string;
@@ -178,7 +208,6 @@ export class VenuesService {
       mapsUrl?: string;
       pictureUrl?: string | null;
       sportTypes?: VenueSportType[];
-      isActive?: boolean;
     } = {};
     if (dto.name !== undefined) {
       patch.name = dto.name.trim();
@@ -199,9 +228,6 @@ export class VenuesService {
     }
     if (dto.sportTypes !== undefined) {
       patch.sportTypes = dto.sportTypes;
-    }
-    if (dto.isActive !== undefined) {
-      patch.isActive = dto.isActive;
     }
     return patch;
   }

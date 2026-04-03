@@ -22,6 +22,7 @@ describe('VenuesService', () => {
       | 'findVenueRowByIdForTenant'
       | 'countBlockingMatchesForVenue'
       | 'deactivateVenueForTenant'
+      | 'activateVenueForTenant'
     >
   >;
   let storage: jest.Mocked<Pick<VenuePictureStorage, 'saveVenuePicture'>>;
@@ -72,6 +73,7 @@ describe('VenuesService', () => {
       findVenueRowByIdForTenant: jest.fn(),
       countBlockingMatchesForVenue: jest.fn(),
       deactivateVenueForTenant: jest.fn(),
+      activateVenueForTenant: jest.fn(),
     };
     storage = {
       saveVenuePicture: jest.fn(),
@@ -331,6 +333,53 @@ describe('VenuesService', () => {
         venueId: row.id,
       });
       expect(repository.deactivateVenueForTenant).toHaveBeenCalledWith(
+        tenantId,
+        venueId,
+      );
+    });
+  });
+
+  describe('activateForTenant', () => {
+    const venueId = row.id;
+
+    it('throws NotFound when venue not in tenant', async () => {
+      repository.findVenueRowByIdForTenant.mockResolvedValue(null);
+
+      await expect(
+        service.activateForTenant(tenantId, venueId),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('returns already active without calling activateVenueForTenant', async () => {
+      repository.findVenueRowByIdForTenant.mockResolvedValue(row);
+
+      const result = await service.activateForTenant(tenantId, venueId);
+
+      expect(result).toMatchObject({
+        message: 'Venue was already active',
+        venueId,
+        alreadyActive: true,
+      });
+      expect(repository.activateVenueForTenant).not.toHaveBeenCalled();
+    });
+
+    it('activates when venue is inactive', async () => {
+      repository.findVenueRowByIdForTenant.mockResolvedValue({
+        ...row,
+        is_active: false,
+      });
+      repository.activateVenueForTenant.mockResolvedValue({
+        ...row,
+        is_active: true,
+      });
+
+      const result = await service.activateForTenant(tenantId, venueId);
+
+      expect(result).toEqual({
+        message: 'Venue activated',
+        venueId: row.id,
+      });
+      expect(repository.activateVenueForTenant).toHaveBeenCalledWith(
         tenantId,
         venueId,
       );

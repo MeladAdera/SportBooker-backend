@@ -84,8 +84,9 @@ Controller default roles: `super_admin`, `tenant_admin` — **overridden per han
 |--------|------|-------|--------|
 | `GET` | `/venues` | *(none — any authenticated)* | Paginated active venues (`page`, `limit`; default limit 50). Optional `sportType`. |
 | `GET` | `/venues/:id` | *(none)* | Venue detail |
-| `PATCH` | `/venues/:id` | tenant_admin, tenant_staff | Update venue |
-| `POST` | `/venues/:id/deactivate` | tenant_admin | Deactivate venue |
+| `PATCH` | `/venues/:id` | tenant_admin, tenant_staff | Partial update (does not toggle `is_active`; use activate/deactivate) |
+| `POST` | `/venues/:id/deactivate` | tenant_admin | Deactivate venue (409 if upcoming/ongoing matches) |
+| `POST` | `/venues/:id/activate` | tenant_admin | Activate a deactivated venue |
 | `POST` | `/venues` | tenant_admin, tenant_staff | Create venue (multipart/form-data; `picture` file or `pictureUrl` required) |
 
 ---

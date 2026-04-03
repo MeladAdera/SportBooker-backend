@@ -2,7 +2,6 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
   ArrayMinSize,
   IsArray,
-  IsBoolean,
   IsEnum,
   IsOptional,
   IsString,
@@ -48,9 +47,4 @@ export class UpdateVenueDto {
   @ArrayMinSize(1)
   @IsEnum(VenueSportType, { each: true })
   sportTypes?: VenueSportType[];
-
-  @ApiPropertyOptional({ description: 'Soft-disable or re-enable the venue' })
-  @IsOptional()
-  @IsBoolean()
-  isActive?: boolean;
 }

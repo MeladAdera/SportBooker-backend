@@ -213,6 +213,34 @@ export class VenuesRepository extends BaseRepository {
     return parseInt(rows[0]?.count ?? '0', 10);
   }
 
+  /** Sets is_active = true; returns null if venue missing, wrong tenant, or already active. */
+  async activateVenueForTenant(
+    tenantId: string,
+    venueId: string,
+  ): Promise<VenueRow | null> {
+    const { rows } = await this.query<VenueRow>(
+      this.pool,
+      `UPDATE venues
+      SET is_active = true, updated_at = now()
+      WHERE id = $1
+        AND tenant_id = $2
+        AND is_active = false
+      RETURNING
+        id,
+        tenant_id,
+        name,
+        address,
+        maps_url,
+        picture_url,
+        sport_types,
+        is_active,
+        created_at,
+        updated_at`,
+      [venueId, tenantId],
+    );
+    return rows[0] ?? null;
+  }
+
   /** Sets is_active = false; returns null if venue missing or wrong tenant. */
   async deactivateVenueForTenant(
     tenantId: string,
@@ -253,7 +281,6 @@ export class VenuesRepository extends BaseRepository {
       mapsUrl?: string;
       pictureUrl?: string | null;
       sportTypes?: VenueSportType[];
-      isActive?: boolean;
     },
   ): Promise<VenueRow | null> {
     const sets: string[] = [];
@@ -279,10 +306,6 @@ export class VenuesRepository extends BaseRepository {
     if (patch.sportTypes !== undefined) {
       sets.push(`sport_types = $${idx++}::text[]`);
       values.push(patch.sportTypes);
-    }
-    if (patch.isActive !== undefined) {
-      sets.push(`is_active = $${idx++}`);
-      values.push(patch.isActive);
     }
 
     sets.push(`updated_at = now()`);

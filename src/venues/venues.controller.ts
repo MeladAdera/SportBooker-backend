@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -14,9 +15,9 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import type { Express } from 'express';
 import { memoryStorage } from 'multer';
 import {
+  ApiBadRequestResponse,
   ApiBearerAuth,
   ApiBody,
   ApiConflictResponse,
@@ -39,6 +40,7 @@ import { CreateVenueDto } from './dto/create-venue.dto';
 import { ListVenuesQueryDto } from './dto/list-venues-query.dto';
 import { PaginatedVenuesListDto } from './dto/paginated-venues-list.dto';
 import { UpdateVenueDto } from './dto/update-venue.dto';
+import { VenueActivatedResponseDto } from './dto/venue-activated-response.dto';
 import { VenueDeactivatedResponseDto } from './dto/venue-deactivated-response.dto';
 import { VenueDetailDto } from './dto/venue-detail.dto';
 import { VenueResponseDto } from './dto/venue-response.dto';
@@ -55,7 +57,14 @@ const venuePictureMulterOptions = {
     cb: (e: Error | null, accept: boolean) => void,
   ): void => {
     const ok = /^image\/(jpeg|png|webp|gif)$/.test(file.mimetype);
-    cb(null, ok);
+    if (!ok) {
+      cb(
+        new BadRequestException('Picture must be JPEG, PNG, WebP, or GIF'),
+        false,
+      );
+      return;
+    }
+    cb(null, true);
   },
 };
 
@@ -102,7 +111,7 @@ export class VenuesController {
   @ApiOperation({
     summary: 'Update a venue (partial)',
     description:
-      'Tenant staff only. Send only fields to change; `is_active` can be toggled. Venue must belong to this tenant.',
+      'Tenant staff only. Send only fields to change (name, address, mapsUrl, pictureUrl, sportTypes). Does not change activation — use POST /venues/:id/deactivate or POST /venues/:id/activate. Venue must belong to this tenant.',
   })
   @ApiOkResponse({ type: VenueResponseDto })
   @ApiNotFoundResponse({ description: 'Venue not found for this tenant' })
@@ -141,6 +150,27 @@ export class VenuesController {
     return this.venuesService.deactivateForTenant(tenant.id, id);
   }
 
+  @Post(':id/activate')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.TenantAdmin)
+  @ApiOperation({
+    summary: 'Activate a venue',
+    description:
+      'Tenant admin only. Sets is_active to true (re-enables a previously deactivated venue). Idempotent when already active.',
+  })
+  @ApiOkResponse({ type: VenueActivatedResponseDto })
+  @ApiNotFoundResponse({ description: 'Venue not found for this tenant' })
+  @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
+  @ApiForbiddenResponse({
+    description: 'Insufficient role (tenant admin only)',
+  })
+  async activate(
+    @TenantDecorator() tenant: Tenant,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<VenueActivatedResponseDto> {
+    return this.venuesService.activateForTenant(tenant.id, id);
+  }
+
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @Roles(UserRole.TenantAdmin, UserRole.TenantStaff)
@@ -153,6 +183,10 @@ export class VenuesController {
   })
   @ApiBody({ type: CreateVenueDto })
   @ApiCreatedResponse({ type: VenueResponseDto })
+  @ApiBadRequestResponse({
+    description:
+      'Invalid picture file (e.g. wrong MIME type) or validation failure',
+  })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
   @ApiForbiddenResponse({ description: 'Insufficient role' })
   async create(
