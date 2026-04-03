@@ -18,24 +18,22 @@ export type VenueRow = {
 };
 
 /** Row for GET /venues browse (active venues only, limited columns). */
-export type VenueBrowseRow = {
-  id: string;
-  name: string;
-  address: string;
-  maps_url: string;
-  sport_types: string[];
-  is_active: boolean;
+export type VenueBrowseRow = Pick<
+  VenueRow,
+  'id' | 'name' | 'sport_types' | 'is_active'
+> & {
+  /** Browse queries only return venues with NOT NULL address/maps_url (schema). */
+  address: NonNullable<VenueRow['address']>;
+  maps_url: NonNullable<VenueRow['maps_url']>;
 };
 
 /** Row for GET /venues/:id (active venue in tenant, includes picture). */
-export type VenueDetailRow = {
-  id: string;
-  name: string;
-  address: string;
-  maps_url: string;
-  sport_types: string[];
-  is_active: boolean;
-  picture_url: string | null;
+export type VenueDetailRow = Pick<
+  VenueRow,
+  'id' | 'name' | 'sport_types' | 'is_active' | 'picture_url'
+> & {
+  address: NonNullable<VenueRow['address']>;
+  maps_url: NonNullable<VenueRow['maps_url']>;
 };
 
 @Injectable()
