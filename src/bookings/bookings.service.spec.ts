@@ -7,6 +7,7 @@ import {
 import { EmailService } from '../auth/email.service';
 import { BookingPosition } from './booking-position';
 import type { BookingDetailRow } from './bookings.repository';
+import { WAITLIST_PREPAID_NOTICE } from './waitlist-notice';
 import { UserRole } from '../users/user-role';
 import { BookingsRepository } from './bookings.repository';
 import { BookingsService } from './bookings.service';
@@ -110,6 +111,7 @@ describe('BookingsService', () => {
       booking: bookingRow,
       remainingSpots: 5,
       emailForConfirmation: 'p@example.com',
+      waitlistNotice: null,
     });
 
     const dto = await service.createBookingForPlayer({
@@ -121,6 +123,7 @@ describe('BookingsService', () => {
     expect(dto.id).toBe(bookingRow.id);
     expect(dto.status).toBe('confirmed');
     expect(dto.position).toBe(BookingPosition.FieldPlayer);
+    expect(dto.waitlistNotice).toBeNull();
     expect(dto.remainingSpots).toBe(5);
     expect(bookingsRepo.createBookingForMatch).toHaveBeenCalledWith({
       tenantId,
@@ -139,6 +142,7 @@ describe('BookingsService', () => {
       booking: { ...bookingRow, position: BookingPosition.Goalkeeper },
       remainingSpots: 3,
       emailForConfirmation: 'gk@example.com',
+      waitlistNotice: null,
     });
 
     await service.createBookingForPlayer({
@@ -156,17 +160,28 @@ describe('BookingsService', () => {
     });
   });
 
-  it('does not send email for waitlist (pending)', async () => {
+  it('does not send email for waitlist (pending); returns prepaid notice', async () => {
     bookingsRepo.createBookingForMatch.mockResolvedValue({
       success: true,
-      booking: { ...bookingRow, status: 'pending', paid_amount: '0' },
+      booking: {
+        ...bookingRow,
+        status: 'pending',
+        paid_amount: '15.50',
+      },
       remainingSpots: 0,
       emailForConfirmation: null,
+      waitlistNotice: WAITLIST_PREPAID_NOTICE,
     });
 
-    await service.createBookingForPlayer({ tenantId, matchId, userId });
+    const dto = await service.createBookingForPlayer({
+      tenantId,
+      matchId,
+      userId,
+    });
 
     expect(emailService.sendBookingConfirmedEmail).not.toHaveBeenCalled();
+    expect(dto.waitlistNotice).toBe(WAITLIST_PREPAID_NOTICE);
+    expect(dto.paidAmount).toBe('15.50');
   });
 
   it('throws NotFound when match not found', async () => {
@@ -222,6 +237,7 @@ describe('BookingsService', () => {
         cancelledAt,
         refundAmount: '0.00',
         playerEmail: 'player@example.com',
+        shouldPromoteWaitlist: true,
       });
       bookingsRepo.promoteWaitlistForMatch.mockResolvedValue({
         promotedEmail: 'promoted@example.com',
@@ -257,12 +273,35 @@ describe('BookingsService', () => {
       );
     });
 
+    it('does not run waitlist promotion when cancelling prepaid waitlist', async () => {
+      bookingsRepo.cancelBookingForPlayer.mockResolvedValue({
+        success: true,
+        cancelledAt,
+        refundAmount: '15.50',
+        playerEmail: 'wl@example.com',
+        shouldPromoteWaitlist: false,
+      });
+
+      const dto = await service.cancelBookingForPlayer({
+        tenantId,
+        matchId,
+        bookingId: bookingRow.id,
+        userId,
+        cancelCutoffHours: 24,
+      });
+
+      expect(dto.refundAmount).toBe('15.50');
+      await flushDeferredWork();
+      expect(bookingsRepo.promoteWaitlistForMatch).not.toHaveBeenCalled();
+    });
+
     it('does not send waitlist emails when promotion finds no one', async () => {
       bookingsRepo.cancelBookingForPlayer.mockResolvedValue({
         success: true,
         cancelledAt,
         refundAmount: '0.00',
         playerEmail: 'player@example.com',
+        shouldPromoteWaitlist: true,
       });
       bookingsRepo.promoteWaitlistForMatch.mockResolvedValue({
         promotedEmail: null,

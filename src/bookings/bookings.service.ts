@@ -65,7 +65,8 @@ export class BookingsService {
       throw this.mapFailure(result.code);
     }
 
-    const { booking, remainingSpots, emailForConfirmation } = result;
+    const { booking, remainingSpots, emailForConfirmation, waitlistNotice } =
+      result;
 
     if (emailForConfirmation) {
       void this.emailService
@@ -77,7 +78,7 @@ export class BookingsService {
         });
     }
 
-    return this.toDto(booking, remainingSpots);
+    return this.toDto(booking, remainingSpots, waitlistNotice);
   }
 
   async cancelBookingForPlayer(params: {
@@ -93,7 +94,7 @@ export class BookingsService {
       throw this.mapCancelPlayerFailure(result.code);
     }
 
-    const { cancelledAt, playerEmail } = result;
+    const { cancelledAt, playerEmail, shouldPromoteWaitlist } = result;
 
     void this.emailService
       .sendBookingCancelledEmail(playerEmail)
@@ -103,17 +104,19 @@ export class BookingsService {
         );
       });
 
-    // Do not await — promotion is a separate transaction; response should return immediately.
-    // TODO: move to a job queue (e.g. SLOT_OPENED) when background workers exist.
-    void this.promoteWaitlistAfterSpotOpened(
-      params.tenantId,
-      params.matchId,
-    ).catch((err: unknown) => {
-      this.logger.error(
-        `promoteWaitlistAfterSpotOpened rejected: ${err instanceof Error ? err.message : String(err)}`,
-        err instanceof Error ? err.stack : undefined,
-      );
-    });
+    if (shouldPromoteWaitlist) {
+      // Do not await — promotion is a separate transaction; response should return immediately.
+      // TODO: move to a job queue (e.g. SLOT_OPENED) when background workers exist.
+      void this.promoteWaitlistAfterSpotOpened(
+        params.tenantId,
+        params.matchId,
+      ).catch((err: unknown) => {
+        this.logger.error(
+          `promoteWaitlistAfterSpotOpened rejected: ${err instanceof Error ? err.message : String(err)}`,
+          err instanceof Error ? err.stack : undefined,
+        );
+      });
+    }
 
     return {
       cancelled: true,
@@ -229,6 +232,7 @@ export class BookingsService {
       created_at: Date;
     },
     remainingSpots: number | null,
+    waitlistNotice: string | null,
   ): CreateBookingResponseDto {
     return {
       id: booking.id,
@@ -239,6 +243,8 @@ export class BookingsService {
       position: booking.position as BookingPosition,
       createdAt: booking.created_at.toISOString(),
       remainingSpots,
+      waitlistNotice:
+        booking.status === 'pending' ? (waitlistNotice ?? null) : null,
     };
   }
 

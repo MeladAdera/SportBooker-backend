@@ -3,6 +3,7 @@ import type { Pool, PoolClient } from 'pg';
 import { BaseRepository } from '../database/base.repository';
 import { DB_POOL } from '../database/database.constants';
 import { BookingPosition, MAX_GOALKEEPERS_PER_MATCH } from './booking-position';
+import { WAITLIST_PREPAID_NOTICE } from './waitlist-notice';
 
 export type BookingRow = {
   id: string;
@@ -75,6 +76,8 @@ export type CreateBookingResult =
       remainingSpots: number | null;
       /** When status is confirmed — send email to this address after commit */
       emailForConfirmation: string | null;
+      /** When status is pending (waitlist): prepaid notice for API consumers */
+      waitlistNotice: string | null;
     }
   | { success: false; code: CreateBookingFailureCode };
 
@@ -103,9 +106,11 @@ export type CancelPlayerBookingResult =
   | {
       success: true;
       cancelledAt: Date;
-      /** Always "0.00" — player self-cancel does not refund */
-      refundAmount: '0.00';
+      /** Full refund for prepaid waitlist; "0.00" for confirmed (no refund) or legacy unpaid waitlist */
+      refundAmount: string;
       playerEmail: string;
+      /** True when a confirmed spot was freed (run waitlist promotion). False for waitlist cancel. */
+      shouldPromoteWaitlist: boolean;
     }
   | { success: false; code: CancelPlayerBookingFailureCode };
 
@@ -252,13 +257,36 @@ export class BookingsRepository extends BaseRepository {
 
     try {
       if (isFull || mustWaitlistForGoalkeeper) {
+        const { rows: prepaid } = await this.query<{ wallet_balance: string }>(
+          client,
+          `UPDATE users
+           SET wallet_balance = wallet_balance - $3::numeric,
+               updated_at = now()
+           WHERE id = $1
+             AND tenant_id = $2
+             AND wallet_balance >= $3::numeric
+           RETURNING wallet_balance`,
+          [userId, tenantId, price],
+        );
+        if (!prepaid[0]) {
+          return { success: false, code: 'INSUFFICIENT_FUNDS' };
+        }
+
         const booking = await this.insertBooking(client, {
           matchId,
           userId,
           status: 'pending',
-          paidAmount: '0',
+          paidAmount: price,
           position,
         });
+
+        await this.query(
+          client,
+          `INSERT INTO wallet_transactions (user_id, amount, type, reference_id)
+           VALUES ($1, $2, 'debit', $3)`,
+          [userId, price, booking.id],
+        );
+
         const remainingSpots = this.computeRemainingSpots(
           maxPlayers,
           confirmedCount,
@@ -268,6 +296,7 @@ export class BookingsRepository extends BaseRepository {
           booking,
           remainingSpots,
           emailForConfirmation: null,
+          waitlistNotice: WAITLIST_PREPAID_NOTICE,
         };
       }
 
@@ -319,6 +348,7 @@ export class BookingsRepository extends BaseRepository {
         booking,
         remainingSpots,
         emailForConfirmation: user.email,
+        waitlistNotice: null,
       };
     } catch (err: unknown) {
       const code =
@@ -381,7 +411,7 @@ export class BookingsRepository extends BaseRepository {
       client,
       `SELECT COALESCE(SUM(paid_amount), 0)::text AS total
        FROM bookings
-       WHERE match_id = $1 AND status = 'confirmed'`,
+       WHERE match_id = $1 AND status IN ('confirmed', 'pending')`,
       [matchId],
     );
     const refundedAmount = sumRows[0]?.total ?? '0';
@@ -441,11 +471,38 @@ export class BookingsRepository extends BaseRepository {
       );
     }
 
+    await this.query(
+      client,
+      `UPDATE users u
+       SET wallet_balance = u.wallet_balance + b.paid_amount,
+           updated_at = now()
+       FROM bookings b
+       WHERE b.match_id = $1
+         AND b.status = 'pending'
+         AND b.paid_amount > 0
+         AND u.id = b.user_id
+         AND u.tenant_id = $2`,
+      [matchId, tenantId],
+    );
+
+    await this.query(
+      client,
+      `INSERT INTO wallet_transactions (user_id, amount, type, reference_id)
+       SELECT b.user_id, b.paid_amount, 'refund'::wallet_tx_type, b.id
+       FROM bookings b
+       WHERE b.match_id = $1 AND b.status = 'pending' AND b.paid_amount > 0`,
+      [matchId],
+    );
+
     const pendingResult = await this.query(
       client,
       `UPDATE bookings
        SET status = 'cancelled'::booking_status,
            cancelled_at = now(),
+           refunded_at = CASE
+             WHEN paid_amount > 0 THEN now()
+             ELSE refunded_at
+           END,
            updated_at = now()
        WHERE match_id = $1 AND status = 'pending'`,
       [matchId],
@@ -503,6 +560,7 @@ export class BookingsRepository extends BaseRepository {
       bid: string;
       b_user_id: string;
       b_status: string;
+      b_paid_amount: string;
       match_status: string;
       scheduled_at: Date;
       price_per_player: string;
@@ -515,6 +573,7 @@ export class BookingsRepository extends BaseRepository {
          b.id AS bid,
          b.user_id AS b_user_id,
          b.status AS b_status,
+         b.paid_amount::text AS b_paid_amount,
          m.status AS match_status,
          m.scheduled_at,
          m.price_per_player::text AS price_per_player,
@@ -540,11 +599,78 @@ export class BookingsRepository extends BaseRepository {
     if (row.b_status === 'cancelled') {
       return { success: false, code: 'ALREADY_CANCELLED' };
     }
-    if (row.b_status !== 'confirmed') {
-      return { success: false, code: 'NOT_CONFIRMED' };
-    }
     if (row.match_status === 'cancelled') {
       return { success: false, code: 'MATCH_CANCELLED' };
+    }
+
+    if (row.b_status === 'pending') {
+      if (!row.is_future) {
+        return { success: false, code: 'MATCH_PAST' };
+      }
+      const prepaid = parseFloat(row.b_paid_amount ?? '0') > 0;
+      if (prepaid) {
+        await this.query(
+          client,
+          `UPDATE users
+           SET wallet_balance = wallet_balance + $3::numeric,
+               updated_at = now()
+           WHERE id = $1 AND tenant_id = $2`,
+          [userId, tenantId, row.b_paid_amount],
+        );
+        await this.query(
+          client,
+          `INSERT INTO wallet_transactions (user_id, amount, type, reference_id)
+           VALUES ($1, $2, 'refund', $3)`,
+          [userId, row.b_paid_amount, bookingId],
+        );
+        const { rows: updatedRows } = await this.query<{ cancelled_at: Date }>(
+          client,
+          `UPDATE bookings
+           SET status = 'cancelled'::booking_status,
+               cancelled_at = now(),
+               refunded_at = now(),
+               updated_at = now()
+           WHERE id = $1
+           RETURNING cancelled_at`,
+          [bookingId],
+        );
+        const cancelledAt = updatedRows[0]?.cancelled_at;
+        if (!cancelledAt) {
+          throw new Error('cancelPlayerBooking: expected cancelled_at');
+        }
+        return {
+          success: true,
+          cancelledAt,
+          refundAmount: row.b_paid_amount,
+          playerEmail: row.user_email,
+          shouldPromoteWaitlist: false,
+        };
+      }
+      const { rows: updatedRows } = await this.query<{ cancelled_at: Date }>(
+        client,
+        `UPDATE bookings
+         SET status = 'cancelled'::booking_status,
+             cancelled_at = now(),
+             updated_at = now()
+         WHERE id = $1
+         RETURNING cancelled_at`,
+        [bookingId],
+      );
+      const cancelledAt = updatedRows[0]?.cancelled_at;
+      if (!cancelledAt) {
+        throw new Error('cancelPlayerBooking: expected cancelled_at');
+      }
+      return {
+        success: true,
+        cancelledAt,
+        refundAmount: '0.00',
+        playerEmail: row.user_email,
+        shouldPromoteWaitlist: false,
+      };
+    }
+
+    if (row.b_status !== 'confirmed') {
+      return { success: false, code: 'NOT_CONFIRMED' };
     }
     if (!row.is_future) {
       return { success: false, code: 'MATCH_PAST' };
@@ -573,6 +699,7 @@ export class BookingsRepository extends BaseRepository {
       cancelledAt,
       refundAmount: '0.00',
       playerEmail: row.user_email,
+      shouldPromoteWaitlist: true,
     };
   }
 
@@ -626,9 +753,11 @@ export class BookingsRepository extends BaseRepository {
       user_id: string;
       email: string;
       position: string;
+      paid_amount: string;
     }>(
       client,
-      `SELECT b.id, b.user_id, u.email, b.position::text AS position
+      `SELECT b.id, b.user_id, u.email, b.position::text AS position,
+              b.paid_amount::text AS paid_amount
        FROM bookings b
        INNER JOIN users u ON u.id = b.user_id
        WHERE b.match_id = $1 AND b.status = 'pending'
@@ -704,37 +833,50 @@ export class BookingsRepository extends BaseRepository {
         [candidate.user_id, tenantId],
       );
 
-      const { rows: debited } = await this.query<{ wallet_balance: string }>(
-        client,
-        `UPDATE users
-         SET wallet_balance = wallet_balance - $3::numeric,
-             updated_at = now()
-         WHERE id = $1
-           AND tenant_id = $2
-           AND wallet_balance >= $3::numeric
-         RETURNING wallet_balance`,
-        [candidate.user_id, tenantId, price],
-      );
-      if (!debited[0]) {
-        skippedEmails.push(candidate.email);
-        continue;
-      }
+      const prepaidWaitlist = parseFloat(candidate.paid_amount) > 0;
 
-      await this.query(
-        client,
-        `UPDATE bookings
-         SET status = 'confirmed'::booking_status,
-             paid_amount = $2::numeric,
-             updated_at = now()
-         WHERE id = $1`,
-        [candidate.id, price],
-      );
-      await this.query(
-        client,
-        `INSERT INTO wallet_transactions (user_id, amount, type, reference_id)
-         VALUES ($1, $2, 'debit', $3)`,
-        [candidate.user_id, price, candidate.id],
-      );
+      if (!prepaidWaitlist) {
+        const { rows: debited } = await this.query<{ wallet_balance: string }>(
+          client,
+          `UPDATE users
+           SET wallet_balance = wallet_balance - $3::numeric,
+               updated_at = now()
+           WHERE id = $1
+             AND tenant_id = $2
+             AND wallet_balance >= $3::numeric
+           RETURNING wallet_balance`,
+          [candidate.user_id, tenantId, price],
+        );
+        if (!debited[0]) {
+          skippedEmails.push(candidate.email);
+          continue;
+        }
+
+        await this.query(
+          client,
+          `UPDATE bookings
+           SET status = 'confirmed'::booking_status,
+               paid_amount = $2::numeric,
+               updated_at = now()
+           WHERE id = $1`,
+          [candidate.id, price],
+        );
+        await this.query(
+          client,
+          `INSERT INTO wallet_transactions (user_id, amount, type, reference_id)
+           VALUES ($1, $2, 'debit', $3)`,
+          [candidate.user_id, price, candidate.id],
+        );
+      } else {
+        await this.query(
+          client,
+          `UPDATE bookings
+           SET status = 'confirmed'::booking_status,
+               updated_at = now()
+           WHERE id = $1`,
+          [candidate.id],
+        );
+      }
 
       return {
         promotedEmail: candidate.email,

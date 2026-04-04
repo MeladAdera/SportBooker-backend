@@ -50,7 +50,7 @@ export class BookingsController {
   @ApiOperation({
     summary: 'Cancel my confirmed booking (player)',
     description:
-      "At least tenant's cancel_cutoff_hours before match start. No refund. Waitlist may be promoted after commit; emails sent asynchronously.",
+      "Confirmed: at least tenant's cancel_cutoff_hours before match start; no refund. Prepaid waitlist: full refund. Waitlist promotion runs only after cancelling a confirmed spot.",
   })
   @ApiBadRequestResponse({
     description:
@@ -84,7 +84,7 @@ export class BookingsController {
   @ApiOperation({
     summary: 'Book a spot on a match',
     description:
-      'Player only. Confirms and debits wallet when spots remain; otherwise joins waitlist (pending). Atomic. At most two confirmed goalkeepers per match; requesting goalkeeper when both slots are taken joins the waitlist as goalkeeper.',
+      'Player only. Confirms and debits wallet when spots remain; otherwise joins waitlist (pending) with the same charge — refunded if you cancel waitlist or never get promoted. Atomic. At most two confirmed goalkeepers per match; requesting goalkeeper when both slots are taken joins the waitlist as goalkeeper.',
   })
   @ApiBody({ type: CreateBookingDto, required: false })
   @ApiCreatedResponse({ type: CreateBookingResponseDto })

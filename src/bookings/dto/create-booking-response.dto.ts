@@ -15,7 +15,8 @@ export class CreateBookingResponseDto {
   status!: string;
 
   @ApiProperty({
-    description: 'Amount charged (0 for waitlist)',
+    description:
+      'Amount charged (match price when confirmed or prepaid waitlist; legacy unpaid waitlist was 0)',
     example: '15.50',
   })
   paidAmount!: string;
@@ -33,4 +34,11 @@ export class CreateBookingResponseDto {
     example: 5,
   })
   remainingSpots!: number | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'When status is pending (waitlist): explains prepaid charge and refund policy',
+  })
+  waitlistNotice!: string | null;
 }
