@@ -1,6 +1,6 @@
 # Sportbooker — Complete Business Domain Guide
 
-> **What this project is:** A multi-tenant sports booking platform. Each tenant is a sports club or organiser. Players book spots in matches, pay from an internal wallet, and can join a waitlist. Tenant staff manage venues and matches. A platform-level super admin manages all tenants.
+> **What this project is:** A multi-tenant sports booking SaaS platform. Each tenant is a sports club or organiser. Players book spots in matches, pay from an internal wallet, and can join a waitlist. A platform admin manages all tenants. Each tenant has a super admin who owns their space. Tenant admins and staff manage venues, matches, and players day-to-day.
 
 ---
 
@@ -12,10 +12,11 @@
 4. [Roles and Permissions](#4-roles-and-permissions)
 5. [Entity Reference](#5-entity-reference)
 6. [Role Lifecycles](#6-role-lifecycles)
-   - [Super Admin](#61-super-admin-lifecycle)
-   - [Tenant Admin](#62-tenant-admin-lifecycle)
-   - [Tenant Staff](#63-tenant-staff-lifecycle)
-   - [Player](#64-player-lifecycle)
+   - [Platform Admin](#61-platform-admin-lifecycle)
+   - [Super Admin](#62-super-admin-lifecycle)
+   - [Tenant Admin](#63-tenant-admin-lifecycle)
+   - [Tenant Staff](#64-tenant-staff-lifecycle)
+   - [Player](#65-player-lifecycle)
 7. [Core Domain Workflows](#7-core-domain-workflows)
    - [Tenant Onboarding](#71-tenant-onboarding)
    - [Venue Lifecycle](#72-venue-lifecycle)
@@ -33,7 +34,7 @@
 
 ## 1. The Business in One Paragraph
 
-Sportbooker is a **white-label SaaS platform** for sports clubs and organizers (called **tenants**). Each tenant gets their own subdomain (e.g., `acfc.sportbooker.com`). Inside their tenant space, they create **venues** (football pitches, padel courts, etc.), schedule **matches**, and let **players** book spots. Players pay from an internal **wallet**. When a match is full, players join a **waitlist** — they are still charged immediately but get a refund if they never get in. When a confirmed player cancels, the first eligible waitlisted player is automatically promoted. A platform-level **super admin** creates and manages all tenants.
+Sportbooker is a **white-label SaaS platform** for sports clubs and organizers (called **tenants**). Each tenant gets their own subdomain (e.g., `acfc.sportbooker.com`). Inside their tenant space, they create **venues** (football pitches, padel courts, etc.), schedule **matches**, and let **players** book spots. Players pay from an internal **wallet**. When a match is full, players join a **waitlist** — they are still charged immediately but get a refund if they never get in. When a confirmed player cancels, the first eligible waitlisted player is automatically promoted. A **platform admin** creates tenants and their initial **super admin**. The super admin is the top-level authority within their tenant and can manage tenant settings. Tenant admins and staff handle the operational work.
 
 ---
 
@@ -52,6 +53,7 @@ Sportbooker is a **white-label SaaS platform** for sports clubs and organizers (
 | **Position** | Each booking has a position: `field_player` or `goalkeeper`. Maximum 2 confirmed goalkeepers per match. |
 | **Soft Delete** | Users are not hard-deleted. They get a `deleted_at` timestamp and `is_active = false`. They cannot log in but their data (bookings, transactions) is preserved. |
 | **FIFO Promotion** | When a confirmed spot opens up, the oldest (first-created) eligible pending booking is promoted automatically. |
+| **Platform Tenant** | A special system tenant (slug: `platform`, `is_active = true`) that owns the `platform_admin` user. It has no subdomain-accessible content — it exists only to satisfy the `tenant_id NOT NULL` constraint on the users table. |
 
 ---
 
@@ -82,6 +84,8 @@ These routes work without a tenant Host header:
 
 A JWT issued for tenant A contains `tenantId: A`. The `TenantUserMatchGuard` (global guard) checks that the `tenantId` in the JWT matches the tenant resolved from the Host header. This prevents using a token from one tenant against another tenant's API.
 
+The `platform_admin` JWT carries the `platform` tenant's ID. Since `admin/tenants*` routes are excluded from `TenantMiddleware`, `req.tenant` is always `undefined` on those routes, causing `TenantUserMatchGuard` to skip the check — so the platform admin is never blocked by tenant mismatch.
+
 ### Tenant data isolation
 
 Every user, venue, match, and booking is scoped by `tenant_id`. There is no cross-tenant data access in any query.
@@ -90,45 +94,54 @@ Every user, venue, match, and booking is scoped by `tenant_id`. There is no cros
 
 ## 4. Roles and Permissions
 
-There are four active roles. They form a strict privilege hierarchy:
+There are five roles. They form a strict privilege hierarchy:
 
 ```
-super_admin (4)
-    └── tenant_admin (3)
-            └── tenant_staff (2)
-                    └── player (1)
+platform_admin (5)   ← platform-level, manages all tenants
+    └── super_admin (4)   ← tenant-scoped, top authority within one tenant
+            └── tenant_admin (3)
+                    └── tenant_staff (2)
+                            └── player (1)
 ```
 
 ### Permission Matrix
 
-| Action | super_admin | tenant_admin | tenant_staff | player |
-|--------|:-----------:|:------------:|:------------:|:------:|
-| Manage tenants (CRUD, activate/deactivate) | ✅ | ❌ | ❌ | ❌ |
-| List all users in tenant | ✅ | ✅ | ✅ | ❌ |
-| List deleted users (`includeDeleted`) | ✅ | ✅ | ❌ | ❌ |
-| View own profile | ✅ | ✅ | ✅ | ✅ |
-| Update own profile | ✅ | ✅ | ✅ | ✅ |
-| Assign/change user roles | ✅ | ✅ (except super_admin users) | ❌ | ❌ |
-| Delete own account | ❌ | ❌ | ❌ | ✅ |
-| Create venues | ✅ | ✅ | ✅ | ❌ |
-| Update venues | ✅ | ✅ | ✅ | ❌ |
-| Deactivate venues | ✅ | ✅ | ❌ | ❌ |
-| Activate venues | ✅ | ✅ | ✅ | ❌ |
-| Create matches | ✅ | ✅ | ✅ | ❌ |
-| Update matches | ✅ | ✅ | ✅ | ❌ |
-| Cancel matches | ✅ | ✅ | ❌ | ❌ |
-| Create bookings | ❌ | ❌ | ❌ | ✅ |
-| Cancel own booking | ❌ | ❌ | ❌ | ✅ |
-| View own bookings | ❌ | ❌ | ❌ | ✅ |
-| View own wallet | ❌ | ❌ | ❌ | ✅ |
+| Action | platform_admin | super_admin | tenant_admin | tenant_staff | player |
+|--------|:--------------:|:-----------:|:------------:|:------------:|:------:|
+| Create tenant (+ initial super_admin) | ✅ | ❌ | ❌ | ❌ | ❌ |
+| List / view all tenants | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Update any tenant (PATCH /admin/tenants/:id) | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Activate / deactivate any tenant | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Update own tenant settings (PATCH /tenant/settings) | ❌ | ✅ | ❌ | ❌ | ❌ |
+| View own tenant settings (GET /tenant/settings) | ❌ | ✅ | ❌ | ❌ | ❌ |
+| List all users in tenant | ❌ | ✅ | ✅ | ✅ | ❌ |
+| List deleted users (`includeDeleted`) | ❌ | ✅ | ✅ | ❌ | ❌ |
+| View own profile | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Update own profile | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Assign / change user roles | ❌ | ✅ | ✅ (cannot touch super_admin/platform_admin) | ❌ | ❌ |
+| Delete own account | ❌ | ❌ | ❌ | ❌ | ✅ |
+| Create venues | ❌ | ✅ | ✅ | ✅ | ❌ |
+| Update venues | ❌ | ✅ | ✅ | ✅ | ❌ |
+| Deactivate venues | ❌ | ✅ | ✅ | ❌ | ❌ |
+| Activate venues | ❌ | ✅ | ✅ | ✅ | ❌ |
+| Create matches | ❌ | ✅ | ✅ | ✅ | ❌ |
+| Update matches | ❌ | ✅ | ✅ | ✅ | ❌ |
+| Cancel matches | ❌ | ✅ | ✅ | ❌ | ❌ |
+| Create bookings | ❌ | ❌ | ❌ | ❌ | ✅ |
+| Cancel own booking | ❌ | ❌ | ❌ | ❌ | ✅ |
+| View own bookings | ❌ | ❌ | ❌ | ❌ | ✅ |
+| View own wallet | ❌ | ❌ | ❌ | ❌ | ✅ |
 
 ### Role Assignment Rules
 
-- Only `super_admin`, `tenant_admin` can call `PATCH /users/:id/role`.
-- Assignable roles are limited to: `tenant_admin`, `tenant_staff`, `player`. You can never assign `super_admin` through the API.
+- `PATCH /users/:id/role` can be called by `super_admin` and `tenant_admin` only.
+- Assignable roles via this endpoint: `tenant_admin`, `tenant_staff`, `player`. Neither `super_admin` nor `platform_admin` can be assigned through the role-change API.
+- `super_admin` is created atomically by `platform_admin` at tenant creation time (`POST /admin/tenants`).
+- `platform_admin` is seeded directly into the database.
 - A user cannot demote themselves (self-assignment to a lower role is blocked).
-- `tenant_admin` cannot modify users who are `super_admin`.
-- Super admin users are **never returned** in the tenant user list (the SQL filters them out).
+- `tenant_admin` cannot modify users with `super_admin` or `platform_admin` roles.
+- `super_admin` cannot modify users with `platform_admin` role.
+- `platform_admin` users are excluded from all tenant user lists (`GET /users`). `super_admin` users now appear in tenant user lists.
 
 ---
 
@@ -147,15 +160,17 @@ super_admin (4)
 | `cancel_cutoff_hours` | integer | Default: 24. Minimum hours before match start a player can cancel a confirmed booking. |
 | `created_at`, `updated_at` | timestamp | — |
 
+**Reserved slugs** (cannot be used by real tenants): `api`, `admin`, `www`, `mail`, `static`, `app`, `dashboard`, `health`, `platform`.
+
 ### `users`
 
 | Column | Type | Notes |
 |--------|------|-------|
 | `id` | UUID | PK |
-| `tenant_id` | UUID | FK → tenants; unique per tenant per email |
+| `tenant_id` | UUID | FK → tenants; every user belongs to a tenant (including `platform_admin`, who belongs to the `platform` system tenant) |
 | `email` | text | Unique per `(tenant_id, email)` |
 | `password_hash` | text | bcrypt |
-| `role` | `user_role` enum | `super_admin`, `tenant_admin`, `tenant_staff`, `player` |
+| `role` | `user_role` enum | `platform_admin`, `super_admin`, `tenant_admin`, `tenant_staff`, `player` |
 | `name` | text | Display name |
 | `phone` | text | Optional |
 | `photo_url` | text | Optional |
@@ -234,53 +249,93 @@ Single-use reset tokens. `used_at` marks consumption. Linked to user. `POST /aut
 
 ## 6. Role Lifecycles
 
-### 6.1 Super Admin Lifecycle
+### 6.1 Platform Admin Lifecycle
 
-The super admin is a platform operator. They exist outside any tenant but can operate within tenant-scoped routes.
+The platform admin is the sole operator of the entire SaaS platform. They exist in the `platform` system tenant (a permanent, always-active special tenant that never serves any real subdomain). There is one platform admin, created via DB seed.
 
 ```
-[Created manually in seed / DB]
+[Created via DB seed — lives in 'platform' system tenant]
         │
         ▼
     Logs in via POST /auth/login
-    (on any tenant Host, or directly)
+    Host: platform.<APP_DOMAIN>
+    JWT: { role: 'platform_admin', tenantId: <platform_tenant_id> }
         │
         ▼
-    Manages tenants via /admin/tenants
-    ┌─────────────────────────────────────────┐
-    │  Create tenant (POST /admin/tenants)    │
-    │  View all tenants (GET /admin/tenants)  │
-    │  View single tenant (GET ./:id)         │
-    │  Update tenant (PATCH ./:id)            │
-    │  Deactivate tenant (POST ./:id/deactivate) │
-    │  Activate tenant (POST ./:id/activate)  │
-    └─────────────────────────────────────────┘
+    Manages all tenants via /admin/tenants (no tenant Host needed):
+    ┌─────────────────────────────────────────────────────────────┐
+    │  List all tenants   (GET /admin/tenants)                    │
+    │  Get single tenant  (GET /admin/tenants/:id)                │
+    │  Create tenant      (POST /admin/tenants)                   │
+    │    └─ Atomic: creates tenant + super_admin in one TX        │
+    │  Update tenant      (PATCH /admin/tenants/:id)              │
+    │  Deactivate tenant  (POST /admin/tenants/:id/deactivate)    │
+    │  Activate tenant    (POST /admin/tenants/:id/activate)      │
+    └─────────────────────────────────────────────────────────────┘
         │
         ▼
-    Can also use all tenant-scoped routes
-    (with a valid tenant Host)
-    ┌─────────────────────────────────────────┐
-    │  Full user management                   │
-    │  Full venue management                  │
-    │  Full match management                  │
-    │  (Cannot book — booking is player-only) │
-    └─────────────────────────────────────────┘
-        │
-        ▼
-    Never listed in GET /users results
-    (SQL filters out super_admin rows)
+    Cannot access any tenant-scoped routes
+    (no venue, match, user management within tenants)
 ```
 
 **Key constraints:**
-- Cannot be assigned to any user through the API (not in `ASSIGNABLE_ROLE_VALUES`).
-- Their user rows are hidden from tenant user lists.
-- Full privileges on all admin and tenant routes.
+- Cannot be assigned via the API — seeded only.
+- Cannot access tenant-scoped routes (venues, matches, users, bookings).
+- JWT's `tenantId` is the `platform` tenant ID; `TenantUserMatchGuard` skips on `admin/tenants` routes (no `req.tenant`).
+- Excluded from all tenant user lists.
 
 ---
 
-### 6.2 Tenant Admin Lifecycle
+### 6.2 Super Admin Lifecycle
 
-The tenant admin is the primary operator of a tenant. They configure the space and manage staff and players.
+The super admin is the **top authority within a single tenant**. They are created atomically when the platform admin creates a tenant. One per tenant (by convention — no DB constraint prevents multiple).
+
+```
+[Created atomically by platform_admin via POST /admin/tenants]
+        │
+        ▼
+    Logs in via POST /auth/login
+    Host: <tenant-slug>.<APP_DOMAIN>
+    JWT: { role: 'super_admin', tenantId: <tenant_id> }
+        │
+        ▼
+    Manages own tenant settings:
+    ┌─────────────────────────────────────────────────────────────┐
+    │  View tenant settings  (GET /tenant/settings)               │
+    │  Update tenant settings (PATCH /tenant/settings)            │
+    │    Allowed fields: name, logoUrl, timezone, cancelCutoffHours│
+    │    NOT allowed: is_active (platform_admin only)             │
+    └─────────────────────────────────────────────────────────────┘
+        │
+        ▼
+    Full tenant operations (same as tenant_admin + destructive):
+    ┌─────────────────────────────────────────────────────────────┐
+    │  Venues: create, update, activate, deactivate               │
+    │  Matches: create, update, cancel                            │
+    │  Users: list (including deleted), view, assign roles        │
+    │    └─ Cannot demote self                                    │
+    │    └─ Cannot touch platform_admin users                     │
+    │  Own profile: view, update                                  │
+    └─────────────────────────────────────────────────────────────┘
+        │
+        ▼
+    Appears in GET /users results for their tenant
+    (unlike platform_admin, super_admin is visible in tenant lists)
+```
+
+**Key constraints:**
+- Scoped to a single tenant — cannot operate across tenants.
+- Cannot activate/deactivate tenants (platform_admin exclusive).
+- Cannot be assigned via `PATCH /users/:id/role` (not in `ASSIGNABLE_ROLE_VALUES`).
+- Cannot be demoted by `tenant_admin`.
+- Cannot book matches (booking is player-only).
+- Cannot delete their own account (player-only).
+
+---
+
+### 6.3 Tenant Admin Lifecycle
+
+The tenant admin is the primary operational manager of a tenant, created by the super admin.
 
 ```
 [Registered as player → role assigned to tenant_admin by super_admin]
@@ -316,8 +371,8 @@ OR
     │  List users (GET /users) — includes deleted         │
     │  View user (GET /users/:id)                         │
     │  Assign roles (PATCH /users/:id/role)               │
-    │    └─ Cannot modify super_admin users               │
-    │    └─ Cannot assign super_admin role                │
+    │    └─ Cannot modify super_admin or platform_admin   │
+    │    └─ Cannot assign super_admin or platform_admin   │
     │    └─ Cannot demote self                            │
     └─────────────────────────────────────────────────────┘
         │
@@ -327,13 +382,12 @@ OR
 
 **Key constraints:**
 - Cannot delete their own account (only `player` can via `DELETE /users/me`).
-- Cannot modify super_admin users.
-- Cannot assign the `super_admin` role.
-- Full venue and match management including destructive actions (deactivate, cancel).
+- Cannot modify `super_admin` or `platform_admin` users.
+- Cannot update tenant settings (super_admin exclusive via `/tenant/settings`).
 
 ---
 
-### 6.3 Tenant Staff Lifecycle
+### 6.4 Tenant Staff Lifecycle
 
 Staff are operational employees — they manage day-to-day venue and match operations but without destructive powers.
 
@@ -377,7 +431,7 @@ Staff are operational employees — they manage day-to-day venue and match opera
 
 ---
 
-### 6.4 Player Lifecycle
+### 6.5 Player Lifecycle
 
 The player is the end customer — the person who books and pays for spots in matches.
 
@@ -436,22 +490,13 @@ The player is the end customer — the person who books and pays for spots in ma
     └────────────────────────────────────────────────┘
         │
         ▼
-    Match day
-    ┌────────────────────────────────────────────────┐
-    │  Confirmed → plays the match                   │
-    │  Pending → may have been promoted by now       │
-    │  If still pending at match time → no refund    │
-    │    needed (already refunded logic TBD, see §8) │
-    └────────────────────────────────────────────────┘
-        │
-        ▼
     Can view own history: GET /users/me/bookings
     Can view own wallet: GET /users/me/wallet
         │
         ▼
     Can delete own account: DELETE /users/me
     ┌────────────────────────────────────────────────┐
-    │  BLOCKED if player has confirmed bookings       │
+    │  BLOCKED if player has confirmed bookings      │
     │  in upcoming matches                           │
     │  Otherwise: soft delete + revoke tokens        │
     └────────────────────────────────────────────────┘
@@ -470,8 +515,11 @@ The player is the end customer — the person who books and pays for spots in ma
 ### 7.1 Tenant Onboarding
 
 ```
-super_admin → POST /admin/tenants
-    body: { name, slug, timezone?, logo_url?, cancel_cutoff_hours? }
+platform_admin → POST /admin/tenants
+    body: {
+      tenant: { name, slug, timezone?, logoUrl?, cancelCutoffHours? },
+      superAdmin: { name, email, password }
+    }
         │
         ▼
     Validation:
@@ -479,24 +527,21 @@ super_admin → POST /admin/tenants
     - slug unique in DB
         │
         ▼
-    Tenant created: is_active = true
-    Default timezone: Asia/Dubai
-    Default cancel_cutoff_hours: 24
+    Atomic transaction:
+    ├── INSERT into tenants (is_active = true)
+    └── INSERT into users (role = 'super_admin', tenant_id = new tenant id)
         │
         ▼
     Subdomain now resolves: slug.APP_DOMAIN
         │
         ▼
-    Tenant admin account created (manually or seeded)
+    Super admin logs in on slug.APP_DOMAIN
         │
         ▼
-    Tenant admin logs in on slug.APP_DOMAIN
-        │
-        ▼
-    Creates venues → creates matches → invites players
+    Creates venues → creates matches → assigns tenant admins → invites players
 ```
 
-**Deactivating a tenant:**
+**Deactivating a tenant (platform_admin only):**
 - `POST /admin/tenants/:id/deactivate`
 - All subsequent requests to that tenant's Host → `403`
 - Existing data (users, venues, bookings) is preserved in DB
@@ -514,7 +559,7 @@ super_admin → POST /admin/tenants
 │     │                                                │          │
 │     │                    ┌──────────────────────────┘          │
 │     │                    ▼                                      │
-│     │            DEACTIVATE (admin only)                        │
+│     │            DEACTIVATE (super_admin or tenant_admin)       │
 │     │            └─ Blocked if upcoming/in-progress matches     │
 │     │               (returns 409 with match count)              │
 │     │                    │                                      │
@@ -523,7 +568,7 @@ super_admin → POST /admin/tenants
 │     │              └─ New bookings blocked (venue inactive)     │
 │     │                    │                                      │
 │     │                    ▼                                      │
-│     │              ACTIVATE (admin or staff)                    │
+│     │              ACTIVATE (super_admin, tenant_admin, staff)  │
 │     └──────────────────► is_active=true                         │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -564,7 +609,7 @@ super_admin → POST /admin/tenants
 - `max_players` cannot be set below the current confirmed booking count.
 - All create-time checks (overlap, future date) are re-applied on update (excluding self).
 
-**Cancel match (tenant_admin only):**
+**Cancel match (super_admin or tenant_admin):**
 
 ```
 POST /matches/:id/cancel
@@ -595,7 +640,7 @@ POST /matches/:id/cancel
   (async, after commit)
 ```
 
-**Browse matches (public, tenant-scoped):**
+**Browse matches (any authenticated user, tenant-scoped):**
 - Only `status = 'upcoming'` matches are returned.
 - Only matches at active venues.
 - Filterable by: `sportType`, `venueId`, `date` (UTC calendar date), `available` (spots remaining > 0).
@@ -784,7 +829,7 @@ body: { email, password, name, phone? }
   Return: { accessToken, refreshToken, user }
 
 LOGIN:
-POST /auth/login (tenant Host required)
+POST /auth/login (tenant Host required for all roles)
 body: { email, password }
         │
         ▼
@@ -793,7 +838,10 @@ body: { email, password }
   Verify password (bcrypt)
   Issue JWT: { sub: userId, role, tenantId }
   Issue opaque refresh token (stored hashed in refresh_tokens)
-  Return: { accessToken, refreshToken, user }
+  Return: { accessToken, refreshToken, expiresIn }
+
+  platform_admin logs in via Host: platform.<APP_DOMAIN>
+  super_admin logs in via Host: <slug>.<APP_DOMAIN>
 
 REFRESH:
 POST /auth/refresh (no tenant Host needed)
@@ -836,13 +884,14 @@ POST /auth/logout (JWT required)
 ### 7.7 User Account Lifecycle
 
 ```
-[Self-register] OR [Seeded]
+[Self-register (→ player)] OR [Created atomically with tenant (→ super_admin)] OR [Seeded]
         │
         ▼
     is_active=true, deleted_at=null
         │
-        ├─── Role can be changed by tenant_admin / super_admin
+        ├─── Role can be changed by super_admin / tenant_admin
         │    (PATCH /users/:id/role)
+        │    Assignable: tenant_admin, tenant_staff, player only
         │
         ├─── Profile can be updated by self
         │    (PATCH /users/me)
@@ -859,7 +908,7 @@ POST /auth/logout (JWT required)
                All refresh tokens revoked
              → Cannot log in
              → Appears in user list only with includeDeleted=true
-               (tenant_admin+ only)
+               (super_admin or tenant_admin only)
              → Historical bookings / wallet data preserved in DB
 ```
 
@@ -869,7 +918,7 @@ POST /auth/logout (JWT required)
 
 | Rule | Where enforced | Error |
 |------|---------------|-------|
-| Tenant slug not reserved | `TenantsService` constants | 409 |
+| Tenant slug not reserved | `TenantsService` constants | 400 |
 | Inactive tenant | `TenantMiddleware` | 403 |
 | JWT tenant mismatch | `TenantUserMatchGuard` | 403 |
 | User must be active + not deleted to log in | `AuthService` | 401 |
@@ -884,10 +933,12 @@ POST /auth/logout (JWT required)
 | Max 2 confirmed goalkeepers | `BookingsRepository` | → waitlist (not hard reject) |
 | `max_players` cannot decrease below confirmed count | `MatchesService` | 422 |
 | Cannot update cancelled match | `MatchesService` | 422 |
-| Cannot assign `super_admin` role via API | `UsersService` | 403 |
-| Cannot demote self | `UsersService` | 403 |
-| `tenant_admin` cannot modify `super_admin` users | `UsersService` | 403 |
+| Cannot assign `super_admin` or `platform_admin` role via tenant API | `UsersService` + `AssignRoleDto` | 403 / 422 |
+| Cannot demote self | `UsersService` | 400 |
+| `tenant_admin` cannot modify `super_admin` or `platform_admin` users | `UsersService` | 403 |
+| `super_admin` cannot modify `platform_admin` users | `UsersService` | 403 |
 | Venue `sport_types` restricted to 4 values | DB CHECK constraint | 422 |
+| `platform` slug reserved | `RESERVED_SLUGS` constant | 400 |
 
 ---
 
@@ -939,12 +990,13 @@ Only `upcoming` matches appear in `GET /matches` (browse). Other statuses visibl
 
 ### `user_role`
 
-| Value | Rank | Notes |
-|-------|------|-------|
-| `super_admin` | 4 | Platform operator; not assignable via API |
-| `tenant_admin` | 3 | Full tenant management |
-| `tenant_staff` | 2 | Operational management (no destructive actions) |
-| `player` | 1 | End customer; default on register |
+| Value | Rank | Scope | Notes |
+|-------|------|-------|-------|
+| `platform_admin` | 5 | Platform | Manages all tenants; lives in `platform` system tenant; not assignable via API |
+| `super_admin` | 4 | Tenant-scoped | Top authority within one tenant; created atomically with tenant by platform_admin; not assignable via tenant role API |
+| `tenant_admin` | 3 | Tenant-scoped | Full tenant management except tenant settings |
+| `tenant_staff` | 2 | Tenant-scoped | Operational management (no destructive actions) |
+| `player` | 1 | Tenant-scoped | End customer; default on registration |
 
 ---
 
@@ -956,41 +1008,44 @@ All routes below are tenant-scoped (require correct Host header) unless marked *
 |--------|------|-------|-------|
 | GET | `/` | public | Health check |
 | **Auth** | | | |
-| POST | `/auth/register` | public | Creates player |
-| POST | `/auth/login` | public | Returns JWT + refresh token |
+| POST | `/auth/register` | public | Creates player; tenant Host required |
+| POST | `/auth/login` | public | Returns JWT + refresh token; all roles login via their tenant Host |
 | POST | `/auth/forgot-password` | public | Anti-enumeration; always 200 |
-| POST | `/auth/reset-password` | public | Consumes token |
+| POST | `/auth/reset-password` | public | [PLATFORM] no Host needed; consumes token |
 | POST | `/auth/refresh` | public | [PLATFORM] no Host needed |
 | POST | `/auth/logout` | authenticated | Revokes refresh tokens |
 | **Admin (Platform)** [PLATFORM] | | | |
-| GET | `/admin/tenants` | super_admin | List all tenants |
-| POST | `/admin/tenants` | super_admin | Create tenant |
-| GET | `/admin/tenants/:id` | super_admin | Get tenant |
-| PATCH | `/admin/tenants/:id` | super_admin | Update tenant |
-| POST | `/admin/tenants/:id/deactivate` | super_admin | Deactivate |
-| POST | `/admin/tenants/:id/activate` | super_admin | Activate |
+| GET | `/admin/tenants` | platform_admin | List all tenants |
+| POST | `/admin/tenants` | platform_admin | Create tenant + super_admin atomically |
+| GET | `/admin/tenants/:id` | platform_admin | Get tenant |
+| PATCH | `/admin/tenants/:id` | platform_admin | Update tenant (including is_active management) |
+| POST | `/admin/tenants/:id/deactivate` | platform_admin | Deactivate |
+| POST | `/admin/tenants/:id/activate` | platform_admin | Activate |
+| **Tenant Settings** | | | |
+| GET | `/tenant/settings` | super_admin | View own tenant config |
+| PATCH | `/tenant/settings` | super_admin | Update own tenant (name, logo, timezone, cutoff; NOT is_active) |
 | **Users** | | | |
-| GET | `/users` | admin, staff | List tenant users |
+| GET | `/users` | super_admin, admin, staff | List tenant users (platform_admin excluded from results) |
 | GET | `/users/me` | any | Own profile |
 | PATCH | `/users/me` | any | Update own profile |
 | DELETE | `/users/me` | player | Soft delete (if no upcoming bookings) |
-| GET | `/users/me/bookings` | player | Own booking history |
-| GET | `/users/me/wallet` | player | Own wallet + transactions |
-| GET | `/users/:id` | admin, staff | View any user |
-| PATCH | `/users/:id/role` | admin | Change user role |
+| GET | `/users/me/bookings` | any | Own booking history |
+| GET | `/users/me/wallet` | any | Own wallet + transactions |
+| GET | `/users/:id` | super_admin, admin, staff | View any user in tenant |
+| PATCH | `/users/:id/role` | super_admin, admin | Change user role (assignable: tenant_admin, tenant_staff, player only) |
 | **Venues** | | | |
-| GET | `/venues` | public | Browse active venues |
-| GET | `/venues/:id` | any | Venue detail |
-| POST | `/venues` | admin, staff | Create venue (multipart) |
-| PATCH | `/venues/:id` | admin, staff | Update venue |
-| POST | `/venues/:id/activate` | admin, staff | Activate |
-| POST | `/venues/:id/deactivate` | admin | Deactivate (blocked if matches) |
+| GET | `/venues` | any authenticated | Browse active venues |
+| GET | `/venues/:id` | any authenticated | Venue detail |
+| POST | `/venues` | super_admin, admin, staff | Create venue (multipart) |
+| PATCH | `/venues/:id` | super_admin, admin, staff | Update venue |
+| POST | `/venues/:id/activate` | super_admin, admin, staff | Activate |
+| POST | `/venues/:id/deactivate` | super_admin, admin | Deactivate (blocked if matches) |
 | **Matches** | | | |
-| GET | `/matches` | public | Browse upcoming matches |
-| GET | `/matches/:id` | any | Match detail + roster |
-| POST | `/matches` | admin, staff | Create match |
-| PATCH | `/matches/:id` | admin, staff | Update match |
-| POST | `/matches/:id/cancel` | admin | Cancel match + refund all |
+| GET | `/matches` | any authenticated | Browse upcoming matches |
+| GET | `/matches/:id` | any authenticated | Match detail + roster |
+| POST | `/matches` | super_admin, admin, staff | Create match |
+| PATCH | `/matches/:id` | super_admin, admin, staff | Update match |
+| POST | `/matches/:id/cancel` | super_admin, admin | Cancel match + refund all |
 | **Bookings** | | | |
 | POST | `/matches/:matchId/bookings` | player | Book or join waitlist |
 | POST | `/matches/:matchId/bookings/:id/cancel` | player | Cancel own booking |
@@ -1020,4 +1075,4 @@ The `wallet_transactions` table supports `topup` and `credit` types. The wallet 
 
 ---
 
-*Last updated: 2026-04-04 | Status: PRE-PRODUCTION*
+*Last updated: 2026-04-05 | Status: PRE-PRODUCTION*
