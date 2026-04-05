@@ -40,12 +40,12 @@ import { UsersService } from './users.service';
 @ApiBearerAuth()
 @Controller('users')
 @UseGuards(RolesGuard)
-@Roles('super_admin', 'tenant_admin')
+@Roles(UserRole.SuperAdmin, UserRole.TenantAdmin)
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Get()
-  @Roles(UserRole.TenantAdmin, UserRole.TenantStaff)
+  @Roles(UserRole.SuperAdmin, UserRole.TenantAdmin, UserRole.TenantStaff)
   @ApiOperation({
     summary: 'List users in the current tenant',
     description:
@@ -232,7 +232,7 @@ export class UsersController {
   }
 
   @Get(':userId')
-  @Roles(UserRole.TenantAdmin, UserRole.TenantStaff)
+  @Roles(UserRole.SuperAdmin, UserRole.TenantAdmin, UserRole.TenantStaff)
   @ApiOperation({
     summary: 'Get a user in the current tenant by id',
     description:

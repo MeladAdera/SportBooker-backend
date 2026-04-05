@@ -11,4 +11,5 @@ export const RESERVED_SLUGS = [
   'app',
   'dashboard',
   'health',
+  'platform',
 ] as const;

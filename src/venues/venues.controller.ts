@@ -107,7 +107,7 @@ export class VenuesController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.TenantAdmin, UserRole.TenantStaff)
+  @Roles(UserRole.SuperAdmin, UserRole.TenantAdmin, UserRole.TenantStaff)
   @ApiOperation({
     summary: 'Update a venue (partial)',
     description:
@@ -127,7 +127,7 @@ export class VenuesController {
 
   @Post(':id/deactivate')
   @HttpCode(HttpStatus.OK)
-  @Roles(UserRole.TenantAdmin)
+  @Roles(UserRole.SuperAdmin, UserRole.TenantAdmin)
   @ApiOperation({
     summary: 'Deactivate a venue',
     description:
@@ -152,7 +152,7 @@ export class VenuesController {
 
   @Post(':id/activate')
   @HttpCode(HttpStatus.OK)
-  @Roles(UserRole.TenantAdmin)
+  @Roles(UserRole.SuperAdmin, UserRole.TenantAdmin)
   @ApiOperation({
     summary: 'Activate a venue',
     description:
@@ -173,7 +173,7 @@ export class VenuesController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @Roles(UserRole.TenantAdmin, UserRole.TenantStaff)
+  @Roles(UserRole.SuperAdmin, UserRole.TenantAdmin, UserRole.TenantStaff)
   @UseInterceptors(FileInterceptor('picture', venuePictureMulterOptions))
   @ApiConsumes('multipart/form-data')
   @ApiOperation({

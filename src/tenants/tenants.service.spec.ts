@@ -3,9 +3,17 @@ import {
   ConflictException,
   NotFoundException,
 } from '@nestjs/common';
+import type { PoolClient } from 'pg';
 import { RESERVED_SLUGS } from '../common/constants/reserved-slugs';
+import { UsersRepository } from '../users/users.repository';
 import { TenantsRepository } from './tenants.repository';
 import { TenantsService } from './tenants.service';
+
+const defaultSuperAdmin = {
+  name: 'Super Admin',
+  email: 'super@example.com',
+  password: 'Password123!',
+};
 
 describe('TenantsService', () => {
   let service: TenantsService;
@@ -13,6 +21,8 @@ describe('TenantsService', () => {
     Pick<
       TenantsRepository,
       | 'insertTenant'
+      | 'insertTenantWithinTransaction'
+      | 'withTransaction'
       | 'findTenantById'
       | 'updateTenantById'
       | 'deactivateTenantById'
@@ -20,6 +30,9 @@ describe('TenantsService', () => {
       | 'findTenantsForAdmin'
       | 'countTenantsForAdmin'
     >
+  >;
+  let usersRepository: jest.Mocked<
+    Pick<UsersRepository, 'insertSuperAdminWithinTransaction'>
   >;
 
   const row = {
@@ -46,8 +59,22 @@ describe('TenantsService', () => {
   };
 
   beforeEach(() => {
+    usersRepository = {
+      insertSuperAdminWithinTransaction: jest.fn().mockResolvedValue({
+        id: 'u1',
+        name: defaultSuperAdmin.name,
+        email: defaultSuperAdmin.email,
+        role: 'super_admin',
+        created_at: new Date(),
+      }),
+    };
     repository = {
       insertTenant: jest.fn(),
+      insertTenantWithinTransaction: jest.fn(),
+      withTransaction: jest.fn(
+        async (fn: (client: PoolClient) => Promise<unknown>) =>
+          fn({} as PoolClient),
+      ) as jest.Mocked<TenantsRepository>['withTransaction'],
       findTenantById: jest.fn(),
       updateTenantById: jest.fn(),
       deactivateTenantById: jest.fn(),
@@ -55,7 +82,10 @@ describe('TenantsService', () => {
       findTenantsForAdmin: jest.fn(),
       countTenantsForAdmin: jest.fn(),
     };
-    service = new TenantsService(repository as unknown as TenantsRepository);
+    service = new TenantsService(
+      repository as unknown as TenantsRepository,
+      usersRepository as unknown as UsersRepository,
+    );
   });
 
   it('lists tenants with default page and limit', async () => {
@@ -251,38 +281,63 @@ describe('TenantsService', () => {
         service.createTenant({
           name: 'X',
           slug,
+          superAdmin: defaultSuperAdmin,
         }),
       ).rejects.toThrow(BadRequestException);
-      expect(repository.insertTenant).not.toHaveBeenCalled();
+      expect(repository.withTransaction).not.toHaveBeenCalled();
     },
   );
 
   it('throws Conflict when slug unique constraint fails', async () => {
-    repository.insertTenant.mockRejectedValue({ code: '23505' });
+    repository.insertTenantWithinTransaction = jest
+      .fn()
+      .mockRejectedValue({ code: '23505' });
 
     await expect(
       service.createTenant({
         name: 'X',
         slug: 'taken-slug',
+        superAdmin: defaultSuperAdmin,
       }),
     ).rejects.toThrow(ConflictException);
   });
 
   it('creates tenant with defaults', async () => {
-    repository.insertTenant.mockResolvedValue(row);
+    repository.insertTenantWithinTransaction = jest.fn().mockResolvedValue(row);
 
     const result = await service.createTenant({
       name: 'New Co',
       slug: 'new-co',
+      superAdmin: defaultSuperAdmin,
     });
 
-    expect(repository.insertTenant).toHaveBeenCalledWith({
-      name: 'New Co',
-      slug: 'new-co',
-      logoUrl: null,
-      timezone: 'Asia/Dubai',
-      cancelCutoffHours: 24,
-    });
+    expect(repository.insertTenantWithinTransaction).toHaveBeenCalledWith(
+      {},
+      {
+        name: 'New Co',
+        slug: 'new-co',
+        logoUrl: null,
+        timezone: 'Asia/Dubai',
+        cancelCutoffHours: 24,
+      },
+    );
+    expect(
+      usersRepository.insertSuperAdminWithinTransaction,
+    ).toHaveBeenCalledWith(
+      {},
+      expect.objectContaining({
+        tenantId: 't1',
+        name: defaultSuperAdmin.name,
+        email: defaultSuperAdmin.email,
+      }),
+    );
+    expect(
+      (
+        usersRepository.insertSuperAdminWithinTransaction.mock.calls[0][1] as {
+          passwordHash: string;
+        }
+      ).passwordHash,
+    ).toMatch(/^\$2[aby]\$/);
     expect(result).toMatchObject({
       id: 't1',
       name: 'New Co',
@@ -295,7 +350,7 @@ describe('TenantsService', () => {
   });
 
   it('passes optional fields to repository', async () => {
-    repository.insertTenant.mockResolvedValue({
+    repository.insertTenantWithinTransaction = jest.fn().mockResolvedValue({
       ...row,
       logo_url: 'https://x.com/l.png',
       timezone: 'Europe/London',
@@ -308,14 +363,18 @@ describe('TenantsService', () => {
       logoUrl: 'https://x.com/l.png',
       timezone: 'Europe/London',
       cancelCutoffHours: 48,
+      superAdmin: defaultSuperAdmin,
     });
 
-    expect(repository.insertTenant).toHaveBeenCalledWith({
-      name: 'New Co',
-      slug: 'new-co',
-      logoUrl: 'https://x.com/l.png',
-      timezone: 'Europe/London',
-      cancelCutoffHours: 48,
-    });
+    expect(repository.insertTenantWithinTransaction).toHaveBeenCalledWith(
+      {},
+      {
+        name: 'New Co',
+        slug: 'new-co',
+        logoUrl: 'https://x.com/l.png',
+        timezone: 'Europe/London',
+        cancelCutoffHours: 48,
+      },
+    );
   });
 });

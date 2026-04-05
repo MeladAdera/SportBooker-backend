@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { Pool } from 'pg';
-import { BaseRepository } from '../database/base.repository';
+import { BaseRepository, type DbExecutor } from '../database/base.repository';
 import { DB_POOL } from '../database/database.constants';
 
 export type TenantRow = {
@@ -91,8 +91,21 @@ export class TenantsRepository extends BaseRepository {
     timezone: string;
     cancelCutoffHours: number;
   }): Promise<TenantRow> {
+    return this.insertTenantWithinTransaction(this.pool, params);
+  }
+
+  async insertTenantWithinTransaction(
+    executor: DbExecutor,
+    params: {
+      name: string;
+      slug: string;
+      logoUrl: string | null;
+      timezone: string;
+      cancelCutoffHours: number;
+    },
+  ): Promise<TenantRow> {
     const { rows } = await this.query<TenantRow>(
-      this.pool,
+      executor,
       `INSERT INTO tenants (
          name, slug, is_active, timezone, logo_url, cancel_cutoff_hours, created_at, updated_at
        )

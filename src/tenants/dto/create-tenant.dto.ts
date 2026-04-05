@@ -1,15 +1,46 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  IsEmail,
   IsInt,
   IsOptional,
   IsString,
+  IsStrongPassword,
   IsUrl,
   Length,
   Matches,
   Max,
   Min,
+  ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { IsIanaTimeZone } from '../decorators/is-iana-timezone.decorator';
+
+export class CreateSuperAdminDto {
+  @ApiProperty({ example: 'John Smith' })
+  @IsString()
+  @Length(1, 255)
+  name!: string;
+
+  @ApiProperty({ example: 'john@acfc.com' })
+  @IsEmail()
+  email!: string;
+
+  @ApiProperty({ example: 'Password123!' })
+  @IsStrongPassword(
+    {
+      minLength: 8,
+      minLowercase: 1,
+      minUppercase: 1,
+      minNumbers: 1,
+      minSymbols: 0,
+    },
+    {
+      message:
+        'password must be at least 8 characters with uppercase, lowercase, and a number',
+    },
+  )
+  password!: string;
+}
 
 export class CreateTenantDto {
   @ApiProperty({ example: 'Arena Sports LLC' })
@@ -51,4 +82,12 @@ export class CreateTenantDto {
   @Min(0)
   @Max(24 * 365)
   cancelCutoffHours?: number;
+
+  @ApiProperty({
+    type: CreateSuperAdminDto,
+    description: 'Initial super admin for this tenant',
+  })
+  @ValidateNested()
+  @Type(() => CreateSuperAdminDto)
+  superAdmin!: CreateSuperAdminDto;
 }

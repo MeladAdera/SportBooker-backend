@@ -78,7 +78,7 @@ export class MatchesController {
 
   @Post(':id/cancel')
   @HttpCode(HttpStatus.OK)
-  @Roles(UserRole.TenantAdmin)
+  @Roles(UserRole.SuperAdmin, UserRole.TenantAdmin)
   @ApiOperation({
     summary: 'Cancel a match and refund confirmed players',
     description:
@@ -97,7 +97,7 @@ export class MatchesController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.TenantAdmin, UserRole.TenantStaff)
+  @Roles(UserRole.SuperAdmin, UserRole.TenantAdmin, UserRole.TenantStaff)
   @ApiOperation({
     summary: 'Update a match (partial)',
     description:
@@ -127,7 +127,7 @@ export class MatchesController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @Roles(UserRole.TenantAdmin, UserRole.TenantStaff)
+  @Roles(UserRole.SuperAdmin, UserRole.TenantAdmin, UserRole.TenantStaff)
   @ApiOperation({
     summary: 'Create a match',
     description:

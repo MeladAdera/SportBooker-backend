@@ -273,6 +273,33 @@ export class UsersRepository extends BaseRepository {
     return row;
   }
 
+  /**
+   * Inserts a super_admin user within an existing transaction.
+   * Used by TenantsService.createTenant to atomically create the initial super_admin.
+   */
+  async insertSuperAdminWithinTransaction(
+    executor: DbExecutor,
+    params: {
+      tenantId: string;
+      name: string;
+      email: string;
+      passwordHash: string;
+    },
+  ): Promise<RegisteredUserRow> {
+    const { rows } = await this.query<RegisteredUserRow>(
+      executor,
+      `INSERT INTO users (tenant_id, name, email, password_hash, role)
+       VALUES ($1, $2, $3, $4, 'super_admin')
+       RETURNING id, name, email, role, created_at`,
+      [params.tenantId, params.name, params.email, params.passwordHash],
+    );
+    const row = rows[0];
+    if (!row) {
+      throw new Error('Insert super_admin returned no row');
+    }
+    return row;
+  }
+
   async findForLogin(
     tenantId: string,
     email: string,
@@ -372,7 +399,7 @@ export class UsersRepository extends BaseRepository {
 
     parts.push(`tenant_id = $${n++}`);
     values.push(params.tenantId);
-    parts.push(`role <> 'super_admin'::user_role`);
+    parts.push(`role <> 'platform_admin'::user_role`);
     if (!params.includeDeleted) {
       parts.push('deleted_at IS NULL');
     }

@@ -21,6 +21,7 @@ import {
 } from '@nestjs/swagger';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { UserRole } from '../users/user-role';
 import { CreateTenantDto } from '../tenants/dto/create-tenant.dto';
 import { ListTenantsQueryDto } from '../tenants/dto/list-tenants-query.dto';
 import { PaginatedTenantsListDto } from '../tenants/dto/paginated-tenants-list.dto';
@@ -34,7 +35,7 @@ import { TenantsService } from '../tenants/tenants.service';
 @ApiBearerAuth()
 @Controller('admin/tenants')
 @UseGuards(RolesGuard)
-@Roles('super_admin')
+@Roles(UserRole.PlatformAdmin)
 export class AdminTenantsController {
   constructor(private readonly tenantsService: TenantsService) {}
 

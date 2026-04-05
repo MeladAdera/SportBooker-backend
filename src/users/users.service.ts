@@ -73,9 +73,18 @@ export class UsersService {
       throw new NotFoundException('User not found in this tenant');
     }
 
-    if (actorRole === 'tenant_admin' && target.role === 'super_admin') {
+    if (
+      actorRole === 'tenant_admin' &&
+      (target.role === 'super_admin' || target.role === 'platform_admin')
+    ) {
       throw new ForbiddenException(
-        'Cannot change role for users with super_admin role',
+        'Cannot change role for users with super_admin or platform_admin role',
+      );
+    }
+
+    if (actorRole === 'super_admin' && target.role === 'platform_admin') {
+      throw new ForbiddenException(
+        'Cannot change role for users with platform_admin role',
       );
     }
 
@@ -107,11 +116,19 @@ export class UsersService {
     query: ListTenantUsersQueryDto;
   }): Promise<PaginatedTenantUsersDto> {
     const { tenantId, actorRole, query } = params;
-    if (actorRole !== 'tenant_admin' && actorRole !== 'tenant_staff') {
+    if (
+      actorRole !== 'super_admin' &&
+      actorRole !== 'tenant_admin' &&
+      actorRole !== 'tenant_staff'
+    ) {
       throw new ForbiddenException('Insufficient role');
     }
     const includeDeleted = query.includeDeleted === true;
-    if (includeDeleted && actorRole !== 'tenant_admin') {
+    if (
+      includeDeleted &&
+      actorRole !== 'super_admin' &&
+      actorRole !== 'tenant_admin'
+    ) {
       throw new ForbiddenException(
         'Only tenant admins can include deleted users',
       );
@@ -150,7 +167,11 @@ export class UsersService {
     targetUserId: string;
   }): Promise<TenantUserDetailDto> {
     const { tenantId, actorRole, targetUserId } = params;
-    if (actorRole !== 'tenant_admin' && actorRole !== 'tenant_staff') {
+    if (
+      actorRole !== 'super_admin' &&
+      actorRole !== 'tenant_admin' &&
+      actorRole !== 'tenant_staff'
+    ) {
       throw new ForbiddenException('Insufficient role');
     }
     const row = await this.usersRepository.findTenantUserDetailById(

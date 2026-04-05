@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import * as bcrypt from 'bcrypt';
 import type { AdminTenantListItemDto } from './dto/admin-tenant-list-item.dto';
 import type { CreateTenantDto } from './dto/create-tenant.dto';
 import type { ListTenantsQueryDto } from './dto/list-tenants-query.dto';
@@ -18,12 +19,17 @@ import {
 import { invalidateTenantCache } from '../tenant/tenant.middleware';
 import type { TenantAdminListRow, TenantRow } from './tenants.repository';
 import { TenantsRepository } from './tenants.repository';
+import { UsersRepository } from '../users/users.repository';
 
 const PG_UNIQUE_VIOLATION = '23505';
+const BCRYPT_ROUNDS = 12;
 
 @Injectable()
 export class TenantsService {
-  constructor(private readonly tenantsRepository: TenantsRepository) {}
+  constructor(
+    private readonly tenantsRepository: TenantsRepository,
+    private readonly usersRepository: UsersRepository,
+  ) {}
 
   async getTenantByIdForAdmin(tenantId: string): Promise<TenantResponseDto> {
     const row = await this.tenantsRepository.findTenantById(tenantId);
@@ -148,19 +154,37 @@ export class TenantsService {
     const cancelCutoffHours =
       dto.cancelCutoffHours ?? DEFAULT_CANCEL_CUTOFF_HOURS;
 
+    const passwordHash = await bcrypt.hash(
+      dto.superAdmin.password,
+      BCRYPT_ROUNDS,
+    );
+
     try {
-      const row = await this.tenantsRepository.insertTenant({
-        name: dto.name,
-        slug,
-        logoUrl: dto.logoUrl ?? null,
-        timezone,
-        cancelCutoffHours,
+      return await this.tenantsRepository.withTransaction(async (client) => {
+        const tenantRow =
+          await this.tenantsRepository.insertTenantWithinTransaction(client, {
+            name: dto.name,
+            slug,
+            logoUrl: dto.logoUrl ?? null,
+            timezone,
+            cancelCutoffHours,
+          });
+
+        await this.usersRepository.insertSuperAdminWithinTransaction(client, {
+          tenantId: tenantRow.id,
+          name: dto.superAdmin.name,
+          email: dto.superAdmin.email,
+          passwordHash,
+        });
+
+        return this.toResponseDto(tenantRow);
       });
-      return this.toResponseDto(row);
     } catch (err: unknown) {
       const pgErr = err as { code?: string };
       if (pgErr?.code === PG_UNIQUE_VIOLATION) {
-        throw new ConflictException(`Tenant slug "${slug}" is already in use`);
+        throw new ConflictException(
+          `Tenant slug "${slug}" is already in use, or the super admin email already exists in this tenant`,
+        );
       }
       throw err;
     }
