@@ -58,8 +58,9 @@ npm run seed      # Load seed data (run after migrate)
 
 All seed users share the same password: **Password123!** (bcrypt, 12 rounds).
 
-| Tenant slug | Role         | Email                    |
-|-------------|--------------|--------------------------|
+| Tenant slug | Role            | Email                       |
+|-------------|-----------------|-----------------------------|
+| platform    | platform_admin  | platform-admin@platform.test |
 | acfc        | super_admin  | super-admin@acfc.test    |
 | acfc        | tenant_admin | admin@acfc.test         |
 | acfc        | tenant_staff | staff@acfc.test          |
@@ -70,6 +71,8 @@ All seed users share the same password: **Password123!** (bcrypt, 12 rounds).
 | downtown    | player       | player@downtown.test    |
 
 Access the app via subdomain: `acfc.localhost:3000` or `downtown.localhost:3000` (with `APP_DOMAIN=localhost:3000`).
+
+**Platform admin** (`platform-admin@platform.test`) must log in with Host **`platform.localhost:3000`** (not bare `localhost`). Login is scoped to the tenant resolved from the subdomain; using `localhost:3000` alone returns 400 (missing subdomain).
 
 **Full study & test guide:** [docs/PROJECT_GUIDE.md](docs/PROJECT_GUIDE.md) — features, testing, architecture.
 
