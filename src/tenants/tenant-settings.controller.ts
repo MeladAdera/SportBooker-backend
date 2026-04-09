@@ -11,11 +11,11 @@ import {
   ApiBearerAuth,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
-  ApiOkResponse,
   ApiOperation,
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
+import { ApiWrappedOkResponse } from '../common/decorators/api-wrapped-response.decorator';
 import type { Tenant } from '../common/tenant.types';
 import { Tenant as TenantDecorator } from '../auth/decorators/tenant.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -40,7 +40,7 @@ export class TenantSettingsController {
     description:
       'Super admin only. Returns full configuration for the tenant resolved from the request Host header.',
   })
-  @ApiOkResponse({ type: TenantResponseDto })
+  @ApiWrappedOkResponse({ type: TenantResponseDto })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
   @ApiForbiddenResponse({ description: 'Super admin only' })
   @ApiNotFoundResponse({ description: 'Tenant not found' })
@@ -57,7 +57,7 @@ export class TenantSettingsController {
     description:
       'Super admin only. Partial update of the tenant resolved from the request Host header. Updatable fields: name, logoUrl, timezone, cancelCutoffHours. is_active is managed exclusively by platform_admin.',
   })
-  @ApiOkResponse({ type: TenantResponseDto })
+  @ApiWrappedOkResponse({ type: TenantResponseDto })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
   @ApiForbiddenResponse({ description: 'Super admin only' })
   @ApiNotFoundResponse({ description: 'Tenant not found' })

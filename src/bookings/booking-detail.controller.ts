@@ -8,10 +8,10 @@ import {
 import {
   ApiBearerAuth,
   ApiNotFoundResponse,
-  ApiOkResponse,
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
+import { ApiWrappedOkResponse } from '../common/decorators/api-wrapped-response.decorator';
 import type { Tenant } from '../common/tenant.types';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -42,7 +42,7 @@ export class BookingDetailController {
     description:
       'Player: own booking only. Tenant admin/staff: any booking in the tenant. Includes match and venue snapshots.',
   })
-  @ApiOkResponse({ type: BookingDetailResponseDto })
+  @ApiWrappedOkResponse({ type: BookingDetailResponseDto })
   @ApiNotFoundResponse({ description: 'Not found or not allowed' })
   async getBookingDetail(
     @TenantDecorator() tenant: Tenant,

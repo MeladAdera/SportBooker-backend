@@ -12,13 +12,15 @@ import {
 import {
   ApiBearerAuth,
   ApiConflictResponse,
-  ApiCreatedResponse,
   ApiNotFoundResponse,
-  ApiOkResponse,
   ApiOperation,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import {
+  ApiWrappedCreatedResponse,
+  ApiWrappedOkResponse,
+} from '../common/decorators/api-wrapped-response.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { UserRole } from '../users/user-role';
@@ -45,7 +47,7 @@ export class AdminTenantsController {
     description:
       'Platform super admin only. Paginated directory ordered by created_at descending.',
   })
-  @ApiOkResponse({ type: PaginatedTenantsListDto })
+  @ApiWrappedOkResponse({ type: PaginatedTenantsListDto })
   async list(
     @Query() query: ListTenantsQueryDto,
   ): Promise<PaginatedTenantsListDto> {
@@ -58,7 +60,7 @@ export class AdminTenantsController {
     description:
       'Platform super admin only. Returns full tenant configuration including logo and cutoff settings.',
   })
-  @ApiOkResponse({ type: TenantResponseDto })
+  @ApiWrappedOkResponse({ type: TenantResponseDto })
   @ApiNotFoundResponse({ description: 'Tenant not found' })
   async getById(
     @Param('id', ParseUUIDPipe) id: string,
@@ -72,7 +74,7 @@ export class AdminTenantsController {
     description:
       'Platform super admin only. Soft-deactivates tenant (is_active = false); subdomain requests receive 403. Idempotent. If this was the last active tenant, all tenant Host traffic stays 403 until a tenant is re-activated.',
   })
-  @ApiOkResponse({ type: TenantDeactivatedResponseDto })
+  @ApiWrappedOkResponse({ type: TenantDeactivatedResponseDto })
   @ApiNotFoundResponse({ description: 'Tenant not found' })
   async deactivate(
     @Param('id', ParseUUIDPipe) id: string,
@@ -86,7 +88,7 @@ export class AdminTenantsController {
     description:
       'Platform super admin only. Sets is_active = true; subdomain traffic works again after tenant middleware cache refresh. Idempotent.',
   })
-  @ApiOkResponse({ type: TenantActivatedResponseDto })
+  @ApiWrappedOkResponse({ type: TenantActivatedResponseDto })
   @ApiNotFoundResponse({ description: 'Tenant not found' })
   async activate(
     @Param('id', ParseUUIDPipe) id: string,
@@ -100,7 +102,7 @@ export class AdminTenantsController {
     description:
       'Platform super admin only. Partial update; omitted fields unchanged. Slug is immutable and not in this schema; unknown properties return 422.',
   })
-  @ApiOkResponse({ type: TenantResponseDto })
+  @ApiWrappedOkResponse({ type: TenantResponseDto })
   @ApiResponse({ status: 422, description: 'Validation failed' })
   @ApiNotFoundResponse({ description: 'Tenant not found' })
   async update(
@@ -116,7 +118,7 @@ export class AdminTenantsController {
     description:
       'Platform super admin only. Creates a new active tenant with default timezone Asia/Dubai and cancel cutoff 24h unless overridden.',
   })
-  @ApiCreatedResponse({
+  @ApiWrappedCreatedResponse({
     description: 'Tenant created',
     type: TenantResponseDto,
   })

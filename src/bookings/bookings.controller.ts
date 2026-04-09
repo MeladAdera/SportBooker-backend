@@ -14,15 +14,17 @@ import {
   ApiBadRequestResponse,
   ApiBody,
   ApiConflictResponse,
-  ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
-  ApiOkResponse,
   ApiOperation,
   ApiResponse,
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
+import {
+  ApiWrappedCreatedResponse,
+  ApiWrappedOkResponse,
+} from '../common/decorators/api-wrapped-response.decorator';
 import type { Tenant } from '../common/tenant.types';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -60,7 +62,7 @@ export class BookingsController {
   @ApiNotFoundResponse({
     description: 'Booking not found for this match/tenant',
   })
-  @ApiOkResponse({ type: CancelPlayerBookingResponseDto })
+  @ApiWrappedOkResponse({ type: CancelPlayerBookingResponseDto })
   @ApiResponse({ status: 429, description: 'Too Many Requests' })
   async cancelMyBooking(
     @TenantDecorator() tenant: Tenant,
@@ -87,7 +89,7 @@ export class BookingsController {
       'Player only. Confirms and debits wallet when spots remain; otherwise joins waitlist (pending) with the same charge — refunded if you cancel waitlist or never get promoted. Atomic. At most two confirmed goalkeepers per match; requesting goalkeeper when both slots are taken joins the waitlist as goalkeeper.',
   })
   @ApiBody({ type: CreateBookingDto, required: false })
-  @ApiCreatedResponse({ type: CreateBookingResponseDto })
+  @ApiWrappedCreatedResponse({ type: CreateBookingResponseDto })
   @ApiNotFoundResponse({
     description: 'Match or user not found for this tenant',
   })

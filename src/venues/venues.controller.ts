@@ -22,14 +22,16 @@ import {
   ApiBody,
   ApiConflictResponse,
   ApiConsumes,
-  ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
-  ApiOkResponse,
   ApiOperation,
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
+import {
+  ApiWrappedCreatedResponse,
+  ApiWrappedOkResponse,
+} from '../common/decorators/api-wrapped-response.decorator';
 import type { Tenant } from '../common/tenant.types';
 import { Tenant as TenantDecorator } from '../auth/decorators/tenant.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -81,7 +83,7 @@ export class VenuesController {
     description:
       'Any authenticated user in the tenant. Paginated active venues; default page 1, limit 50. Optional sportType filters venues that offer that sport.',
   })
-  @ApiOkResponse({ type: PaginatedVenuesListDto })
+  @ApiWrappedOkResponse({ type: PaginatedVenuesListDto })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
   async list(
     @TenantDecorator() tenant: Tenant,
@@ -96,7 +98,7 @@ export class VenuesController {
     description:
       'Any authenticated user. Returns one active venue for this tenant; 404 if missing, inactive, or not in this tenant.',
   })
-  @ApiOkResponse({ type: VenueDetailDto })
+  @ApiWrappedOkResponse({ type: VenueDetailDto })
   @ApiNotFoundResponse({ description: 'Venue not found for this tenant' })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
   async getById(
@@ -113,7 +115,7 @@ export class VenuesController {
     description:
       'Tenant staff only. Send only fields to change (name, address, mapsUrl, pictureUrl, sportTypes). Does not change activation — use POST /venues/:id/deactivate or POST /venues/:id/activate. Venue must belong to this tenant.',
   })
-  @ApiOkResponse({ type: VenueResponseDto })
+  @ApiWrappedOkResponse({ type: VenueResponseDto })
   @ApiNotFoundResponse({ description: 'Venue not found for this tenant' })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
   @ApiForbiddenResponse({ description: 'Insufficient role' })
@@ -133,7 +135,7 @@ export class VenuesController {
     description:
       'Tenant admin only. Sets is_active to false (no hard delete). Blocked with 409 if the venue has scheduled (upcoming) or in-progress matches.',
   })
-  @ApiOkResponse({ type: VenueDeactivatedResponseDto })
+  @ApiWrappedOkResponse({ type: VenueDeactivatedResponseDto })
   @ApiNotFoundResponse({ description: 'Venue not found for this tenant' })
   @ApiConflictResponse({
     description:
@@ -158,7 +160,7 @@ export class VenuesController {
     description:
       'Tenant admin only. Sets is_active to true (re-enables a previously deactivated venue). Idempotent when already active.',
   })
-  @ApiOkResponse({ type: VenueActivatedResponseDto })
+  @ApiWrappedOkResponse({ type: VenueActivatedResponseDto })
   @ApiNotFoundResponse({ description: 'Venue not found for this tenant' })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
   @ApiForbiddenResponse({
@@ -182,7 +184,7 @@ export class VenuesController {
       'Tenant staff only. Send as multipart/form-data. Required: name, address, mapsUrl, sportTypes (JSON array string). Provide either `picture` (file) or `pictureUrl` (link) — file takes priority if both sent.',
   })
   @ApiBody({ type: CreateVenueDto })
-  @ApiCreatedResponse({ type: VenueResponseDto })
+  @ApiWrappedCreatedResponse({ type: VenueResponseDto })
   @ApiBadRequestResponse({
     description:
       'Invalid picture file (e.g. wrong MIME type) or validation failure',

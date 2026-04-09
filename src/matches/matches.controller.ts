@@ -15,14 +15,16 @@ import {
   ApiBearerAuth,
   ApiBadRequestResponse,
   ApiConflictResponse,
-  ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
-  ApiOkResponse,
   ApiOperation,
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
+import {
+  ApiWrappedCreatedResponse,
+  ApiWrappedOkResponse,
+} from '../common/decorators/api-wrapped-response.decorator';
 import type { Tenant } from '../common/tenant.types';
 import { Tenant as TenantDecorator } from '../auth/decorators/tenant.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -51,7 +53,7 @@ export class MatchesController {
     description:
       'Any authenticated user in the tenant. Returns status upcoming only, ordered by scheduled time. Filters: sportType, venueId, date (UTC calendar day), available (spots left).',
   })
-  @ApiOkResponse({ type: PaginatedMatchesListDto })
+  @ApiWrappedOkResponse({ type: PaginatedMatchesListDto })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
   async list(
     @TenantDecorator() tenant: Tenant,
@@ -66,7 +68,7 @@ export class MatchesController {
     description:
       'Any authenticated user in the tenant. Includes confirmed player roster only (pending / waitlist excluded).',
   })
-  @ApiOkResponse({ type: MatchDetailResponseDto })
+  @ApiWrappedOkResponse({ type: MatchDetailResponseDto })
   @ApiNotFoundResponse({ description: 'Match not found for this tenant' })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
   async getById(
@@ -84,7 +86,7 @@ export class MatchesController {
     description:
       'Tenant admin only. Refunds paid_amount to wallets, records refund transactions, cancels all bookings. Emails sent after commit.',
   })
-  @ApiOkResponse({ type: CancelMatchResponseDto })
+  @ApiWrappedOkResponse({ type: CancelMatchResponseDto })
   @ApiNotFoundResponse({ description: 'Match not found for this tenant' })
   @ApiBadRequestResponse({ description: 'Match is already cancelled' })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
@@ -103,7 +105,7 @@ export class MatchesController {
     description:
       'Tenant staff only. Cannot update cancelled matches. Capacity cannot drop below confirmed bookings.',
   })
-  @ApiOkResponse({ type: MatchResponseDto })
+  @ApiWrappedOkResponse({ type: MatchResponseDto })
   @ApiNotFoundResponse({
     description: 'Match or venue not found for this tenant',
   })
@@ -133,7 +135,7 @@ export class MatchesController {
     description:
       'Tenant staff only. Venue must belong to this tenant and be active. scheduledAt is stored in UTC.',
   })
-  @ApiCreatedResponse({ type: MatchResponseDto })
+  @ApiWrappedCreatedResponse({ type: MatchResponseDto })
   @ApiNotFoundResponse({ description: 'Venue not found for this tenant' })
   @ApiConflictResponse({
     description:

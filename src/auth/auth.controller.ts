@@ -8,6 +8,10 @@ import {
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiWrappedCreatedResponse,
+  ApiWrappedOkResponse,
+} from '../common/decorators/api-wrapped-response.decorator';
 import { Tenant } from '../common/tenant.types';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { Public } from './decorators/public.decorator';
@@ -32,8 +36,7 @@ export class AuthController {
   @Public()
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @HttpCode(HttpStatus.CREATED)
-  @ApiResponse({
-    status: 201,
+  @ApiWrappedCreatedResponse({
     description: 'User registered',
     type: RegisterResponseDto,
   })
@@ -63,8 +66,7 @@ export class AuthController {
   @Post('login')
   @Public()
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
-  @ApiResponse({
-    status: 200,
+  @ApiWrappedOkResponse({
     description: 'Login successful',
     type: LoginResponseDto,
   })
@@ -91,10 +93,10 @@ export class AuthController {
   @Post('forgot-password')
   @Public()
   @Throttle({ default: { limit: 3, ttl: 60_000 } })
-  @ApiResponse({
-    status: 200,
+  @ApiWrappedOkResponse({
     description:
       'If email exists, reset link sent. Always 200 (anti-enumeration).',
+    schema: { type: 'object', properties: { message: { type: 'string' } } },
   })
   @ApiResponse({ status: 400, description: 'Missing or invalid subdomain' })
   @ApiResponse({ status: 403, description: 'Tenant is inactive' })
@@ -121,10 +123,9 @@ export class AuthController {
 
   @Post('reset-password')
   @Public()
-  @ApiResponse({
-    status: 200,
+  @ApiWrappedOkResponse({
     description: 'Password reset successfully',
-    schema: { properties: { message: { type: 'string' } } },
+    schema: { type: 'object', properties: { message: { type: 'string' } } },
   })
   @ApiResponse({ status: 400, description: 'Invalid or expired token' })
   @ApiResponse({ status: 422, description: 'Validation failed' })
@@ -136,8 +137,7 @@ export class AuthController {
 
   @Post('refresh')
   @Public()
-  @ApiResponse({
-    status: 200,
+  @ApiWrappedOkResponse({
     description: 'New tokens issued',
     type: RefreshResponseDto,
   })
@@ -148,10 +148,9 @@ export class AuthController {
   }
 
   @Post('logout')
-  @ApiResponse({
-    status: 200,
+  @ApiWrappedOkResponse({
     description: 'Logged out successfully',
-    schema: { properties: { message: { type: 'string' } } },
+    schema: { type: 'object', properties: { message: { type: 'string' } } },
   })
   @ApiResponse({ status: 401, description: 'Missing or invalid access token' })
   async logout(

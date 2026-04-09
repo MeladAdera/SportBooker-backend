@@ -17,6 +17,7 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { ApiWrappedOkResponse } from '../common/decorators/api-wrapped-response.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -51,8 +52,7 @@ export class UsersController {
     description:
       'Tenant admin or staff. Filter by role (player, tenant_staff, tenant_admin), isActive. Soft-deleted users excluded unless includeDeleted=true (tenant_admin only). super_admin users are never listed.',
   })
-  @ApiResponse({
-    status: 200,
+  @ApiWrappedOkResponse({
     description: 'Paginated tenant users',
     type: PaginatedTenantUsersDto,
   })
@@ -82,8 +82,7 @@ export class UsersController {
     description:
       'Returns the authenticated user’s profile for this tenant (from JWT). Soft-deleted users receive 401.',
   })
-  @ApiResponse({
-    status: 200,
+  @ApiWrappedOkResponse({
     description: 'Profile',
     type: MyProfileResponseDto,
   })
@@ -112,8 +111,7 @@ export class UsersController {
     description:
       'Paginated booking history for this tenant. Filter by status (waitlisted = pending waitlist) or upcoming matches only. Ordered by match time, newest first.',
   })
-  @ApiResponse({
-    status: 200,
+  @ApiWrappedOkResponse({
     description: 'Bookings',
     type: PaginatedMyBookingsDto,
   })
@@ -144,8 +142,7 @@ export class UsersController {
     description:
       'Balance from users.wallet_balance. Transactions paginated, newest first. Types: topup, deduction, refund, credit (DB debit→deduction).',
   })
-  @ApiResponse({
-    status: 200,
+  @ApiWrappedOkResponse({
     description: 'Balance and transactions',
     type: MyWalletResponseDto,
   })
@@ -176,8 +173,7 @@ export class UsersController {
     description:
       'Optional name, phone, and photoUrl. Other fields are ignored (whitelist). Returns the updated profile.',
   })
-  @ApiResponse({
-    status: 200,
+  @ApiWrappedOkResponse({
     description: 'Updated profile',
     type: MyProfileResponseDto,
   })
@@ -205,8 +201,7 @@ export class UsersController {
     description:
       'Sets deleted_at and is_active=false, removes refresh tokens. Blocked if you have confirmed bookings for future matches.',
   })
-  @ApiResponse({
-    status: 200,
+  @ApiWrappedOkResponse({
     description: 'Account soft-deleted',
     type: AccountDeletedResponseDto,
   })
@@ -238,8 +233,7 @@ export class UsersController {
     description:
       'Tenant admin or staff. Target must belong to this tenant (404 otherwise). Returns profile fields and wallet balance; never includes password hash. Soft-deleted users are not found (404).',
   })
-  @ApiResponse({
-    status: 200,
+  @ApiWrappedOkResponse({
     description: 'User detail',
     type: TenantUserDetailDto,
   })
@@ -261,8 +255,7 @@ export class UsersController {
     description:
       'Requires super_admin or tenant_admin. Target user must belong to the same tenant. tenant_admin cannot change users with super_admin role.',
   })
-  @ApiResponse({
-    status: 200,
+  @ApiWrappedOkResponse({
     description: 'Updated user',
     type: UserResponseDto,
   })
