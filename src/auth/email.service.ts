@@ -29,7 +29,7 @@ export class EmailService {
     fallbackLabel: string,
     fallbackDetail?: string,
   ): Promise<void> {
-    if (this.enabled) {
+    if (this.enabled && true) {
       await sgMail.send(msg);
     } else {
       console.warn(
