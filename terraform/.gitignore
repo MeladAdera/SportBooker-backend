@@ -4,3 +4,4 @@
 *.tfvars
 !terraform.tfvars.example
 .terraform.lock.hcl
+*.pem

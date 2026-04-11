@@ -33,6 +33,16 @@ output "github_actions_role_arn" {
   value       = aws_iam_role.github_actions.arn
 }
 
+output "bastion_public_ip" {
+  description = "Bastion public IP — use for SSH tunnel"
+  value       = aws_instance.bastion.public_ip
+}
+
+output "bastion_ssh_command" {
+  description = "Ready-to-run SSH tunnel command"
+  value       = "ssh -i terraform/bastion.pem -N -L 5432:${aws_db_instance.main.address}:5432 ec2-user@${aws_instance.bastion.public_ip}"
+}
+
 output "cloudwatch_log_group" {
   description = "CloudWatch log group for ECS"
   value       = aws_cloudwatch_log_group.ecs.name

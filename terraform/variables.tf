@@ -121,6 +121,11 @@ variable "github_repo" {
   type        = string
 }
 
+variable "bastion_allowed_cidr" {
+  description = "Your public IP in CIDR notation (e.g. 1.2.3.4/32). Only this IP can SSH to the bastion."
+  type        = string
+}
+
 variable "github_branch" {
   description = "Branch that can deploy (for OIDC trust policy)"
   type        = string
