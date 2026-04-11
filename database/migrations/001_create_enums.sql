@@ -33,13 +33,9 @@ $$;
 
 DO $$
 BEGIN
-  CREATE TYPE match_status AS ENUM (
-    'scheduled',
-    'upcoming',
-    'in_progress',
-    'completed',
-    'cancelled'
-  );
+  -- Only 'scheduled' and 'cancelled' are stored in the DB.
+  -- 'upcoming', 'in_progress', 'completed' are computed at query time from scheduled_at + duration_mins.
+  CREATE TYPE match_status AS ENUM ('scheduled', 'cancelled');
 EXCEPTION
   WHEN duplicate_object THEN NULL;
 END

@@ -48,6 +48,18 @@ export type MatchBrowseRow = {
   spots_remaining: number;
 };
 
+/**
+ * Computes the effective match status from stored data + current time.
+ * Only 'scheduled' and 'cancelled' are stored; the rest are derived.
+ */
+const COMPUTED_STATUS_SQL = `
+  CASE
+    WHEN m.status = 'cancelled' THEN 'cancelled'
+    WHEN now() < m.scheduled_at THEN 'upcoming'
+    WHEN now() < m.scheduled_at + (m.duration_mins * interval '1 minute') THEN 'in_progress'
+    ELSE 'completed'
+  END`;
+
 @Injectable()
 export class MatchesRepository extends BaseRepository {
   constructor(@Inject(DB_POOL) pool: Pool) {
@@ -68,7 +80,8 @@ export class MatchesRepository extends BaseRepository {
       GROUP BY match_id
     ) bc ON bc.match_id = m.id
     WHERE v.tenant_id = $1
-      AND m.status = 'upcoming'
+      AND m.status <> 'cancelled'
+      AND now() < m.scheduled_at
       AND v.is_active = true
       AND ($2::text IS NULL OR m.sport_type = $2::sport_type)
       AND ($3::uuid IS NULL OR m.venue_id = $3)
@@ -121,7 +134,7 @@ export class MatchesRepository extends BaseRepository {
         m.scheduled_at,
         m.duration_mins,
         m.price_per_player,
-        m.status,
+        ${COMPUTED_STATUS_SQL} AS status,
         m.max_players,
         m.created_at,
         m.updated_at,
@@ -181,7 +194,7 @@ export class MatchesRepository extends BaseRepository {
         m.duration_mins,
         m.price_per_player,
         m.max_players,
-        m.status,
+        ${COMPUTED_STATUS_SQL} AS status,
         v.name AS venue_name,
         GREATEST(
           0,
@@ -242,7 +255,7 @@ export class MatchesRepository extends BaseRepository {
         m.scheduled_at,
         m.duration_mins,
         m.price_per_player,
-        m.status,
+        ${COMPUTED_STATUS_SQL} AS status,
         m.max_players,
         m.created_at,
         m.updated_at
@@ -331,7 +344,7 @@ export class MatchesRepository extends BaseRepository {
         m.scheduled_at,
         m.duration_mins,
         m.price_per_player,
-        m.status,
+        ${COMPUTED_STATUS_SQL} AS status,
         m.max_players,
         m.created_at,
         m.updated_at`,
@@ -351,29 +364,33 @@ export class MatchesRepository extends BaseRepository {
   }): Promise<MatchRow> {
     const { rows } = await this.query<MatchRow>(
       this.pool,
-      `INSERT INTO matches (
-        venue_id,
-        title,
-        sport_type,
-        scheduled_at,
-        duration_mins,
-        price_per_player,
-        status,
-        max_players
+      `WITH m AS (
+        INSERT INTO matches (
+          venue_id,
+          title,
+          sport_type,
+          scheduled_at,
+          duration_mins,
+          price_per_player,
+          status,
+          max_players
+        )
+        VALUES ($1, $2, $3::sport_type, $4, $5, $6, 'scheduled', $7)
+        RETURNING *
       )
-      VALUES ($1, $2, $3::sport_type, $4, $5, $6, 'upcoming', $7)
-      RETURNING
-        id,
-        venue_id,
-        title,
-        sport_type,
-        scheduled_at,
-        duration_mins,
-        price_per_player,
-        status,
-        max_players,
-        created_at,
-        updated_at`,
+      SELECT
+        m.id,
+        m.venue_id,
+        m.title,
+        m.sport_type,
+        m.scheduled_at,
+        m.duration_mins,
+        m.price_per_player,
+        ${COMPUTED_STATUS_SQL} AS status,
+        m.max_players,
+        m.created_at,
+        m.updated_at
+      FROM m`,
       [
         input.venueId,
         input.title,

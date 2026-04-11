@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS matches (
   scheduled_at TIMESTAMPTZ NOT NULL,
   duration_mins INT NOT NULL DEFAULT 60,
   price_per_player NUMERIC(10, 2) NOT NULL,
-  status match_status NOT NULL DEFAULT 'upcoming',
+  status match_status NOT NULL DEFAULT 'scheduled',
   max_players INT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
