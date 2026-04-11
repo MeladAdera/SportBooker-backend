@@ -2,7 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import { VenueSportType } from '../../venues/venue-sport-type';
 import { MatchRosterPlayerDto } from './match-roster-player.dto';
 
-/** Match detail: same fields as create response plus spots and confirmed roster only. */
+/** Match detail: create response fields plus venue fields, spots, confirmed roster. */
 export class MatchDetailResponseDto {
   @ApiProperty({ format: 'uuid' })
   id!: string;
@@ -15,6 +15,18 @@ export class MatchDetailResponseDto {
 
   @ApiProperty({ format: 'uuid' })
   venueId!: string;
+
+  @ApiProperty()
+  venueName!: string;
+
+  @ApiProperty()
+  venueAddress!: string;
+
+  @ApiProperty({
+    nullable: true,
+    description: 'Venue cover image URL',
+  })
+  venuePictureUrl!: string | null;
 
   @ApiProperty({ example: '2026-04-01T18:00:00.000Z' })
   scheduledAt!: string;

@@ -21,6 +21,9 @@ export type MatchRow = {
 export type MatchDetailRow = {
   id: string;
   venue_id: string;
+  venue_name: string;
+  venue_address: string;
+  venue_picture_url: string | null;
   title: string;
   sport_type: string;
   scheduled_at: Date;
@@ -129,6 +132,9 @@ export class MatchesRepository extends BaseRepository {
       `SELECT
         m.id,
         m.venue_id,
+        v.name AS venue_name,
+        v.address AS venue_address,
+        v.picture_url AS venue_picture_url,
         m.title,
         m.sport_type,
         m.scheduled_at,

@@ -134,6 +134,9 @@ describe('MatchesService', () => {
     matchesRepo.findMatchDetailForTenant.mockResolvedValue({
       id: matchId,
       venue_id: venueId,
+      venue_name: 'Main Pitch',
+      venue_address: '1 Example Rd',
+      venue_picture_url: 'https://cdn.example.com/venue.jpg',
       title: 'Cup',
       sport_type: 'football',
       scheduled_at: new Date('2026-07-01T12:00:00.000Z'),
@@ -161,6 +164,9 @@ describe('MatchesService', () => {
       tenantId,
     );
     expect(result.spotsRemaining).toBe(8);
+    expect(result.venueName).toBe('Main Pitch');
+    expect(result.venueAddress).toBe('1 Example Rd');
+    expect(result.venuePictureUrl).toBe('https://cdn.example.com/venue.jpg');
     expect(result.roster).toHaveLength(1);
     expect(result.roster[0]).toEqual({
       userId: playerId,
