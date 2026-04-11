@@ -47,3 +47,9 @@ output "cloudwatch_log_group" {
   description = "CloudWatch log group for ECS"
   value       = aws_cloudwatch_log_group.ecs.name
 }
+
+output "openapi_docs_token" {
+  description = "Bearer token for GET /api/docs-json (Orval). Same value is in SSM and ECS. Add to GitHub Actions secret for frontend codegen."
+  value       = random_password.openapi_docs_token.result
+  sensitive   = true
+}

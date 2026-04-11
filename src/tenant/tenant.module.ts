@@ -15,6 +15,10 @@ export class TenantModule implements NestModule {
         { path: 'admin/tenants', method: RequestMethod.ALL },
         { path: 'admin/tenants/(.*)', method: RequestMethod.ALL },
         { path: 'uploads/(.*)', method: RequestMethod.GET },
+        // OpenAPI (Swagger UI + JSON) — no tenant subdomain on apex/staging hosts
+        { path: 'api/docs', method: RequestMethod.ALL },
+        { path: 'api/docs/(.*)', method: RequestMethod.ALL },
+        { path: 'api/docs-json', method: RequestMethod.GET },
       )
       .forRoutes({ path: '*', method: RequestMethod.ALL });
   }

@@ -46,4 +46,12 @@ export const envSchema = Joi.object({
   STRIPE_WEBHOOK_SECRET: Joi.string().optional().allow(''),
   SENDGRID_API_KEY: Joi.string().optional().allow(''),
   EMAIL_FROM: Joi.string().email().optional().allow(''),
+  /**
+   * When set (min 32 chars), enables OpenAPI in production and requires
+   * `Authorization: Bearer <token>` for `/api/docs` and `/api/docs-json`.
+   * Use the same value in frontend CI (Orval) and store in GitHub Actions secrets.
+   */
+  OPENAPI_DOCS_TOKEN: Joi.alternatives()
+    .try(Joi.string().valid(''), Joi.string().min(32))
+    .optional(),
 });
