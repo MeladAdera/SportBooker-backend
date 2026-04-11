@@ -37,3 +37,14 @@ resource "aws_ssm_parameter" "stripe_webhook_secret" {
 
   lifecycle { ignore_changes = [value] }
 }
+
+resource "random_password" "openapi_docs_token" {
+  length  = 48
+  special = false
+}
+
+resource "aws_ssm_parameter" "openapi_docs_token" {
+  name  = "${local.ssm_prefix}/OPENAPI_DOCS_TOKEN"
+  type  = "SecureString"
+  value = random_password.openapi_docs_token.result
+}

@@ -9,6 +9,7 @@ import { createValidationExceptionFactory } from './common/pipes/validation-exce
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
+import { openApiAuthMiddleware } from './common/middleware/open-api-auth.middleware';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -37,7 +38,13 @@ async function bootstrap(): Promise<void> {
 
   app.enableShutdownHooks();
 
-  if (process.env.NODE_ENV !== 'production') {
+  const config = app.get(ConfigService);
+  const openApiToken = (config.get<string>('OPENAPI_DOCS_TOKEN') ?? '').trim();
+  const enableOpenApi =
+    process.env.NODE_ENV !== 'production' || openApiToken.length > 0;
+
+  if (enableOpenApi) {
+    app.use(openApiAuthMiddleware(openApiToken || undefined));
     const document = new DocumentBuilder()
       .setTitle('Sportbooker API')
       .setVersion('1.0')
@@ -50,7 +57,6 @@ async function bootstrap(): Promise<void> {
     );
   }
 
-  const config = app.get(ConfigService);
   const port = config.getOrThrow<number>('PORT');
   await app.listen(port);
 }

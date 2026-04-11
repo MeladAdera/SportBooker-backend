@@ -57,6 +57,7 @@ resource "aws_ecs_task_definition" "app" {
       { name = "SENDGRID_API_KEY", valueFrom = aws_ssm_parameter.sendgrid_api_key.arn },
       { name = "STRIPE_SECRET_KEY", valueFrom = aws_ssm_parameter.stripe_secret_key.arn },
       { name = "STRIPE_WEBHOOK_SECRET", valueFrom = aws_ssm_parameter.stripe_webhook_secret.arn },
+      { name = "OPENAPI_DOCS_TOKEN", valueFrom = aws_ssm_parameter.openapi_docs_token.arn },
     ]
 
     logConfiguration = {
