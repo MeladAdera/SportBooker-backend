@@ -6,6 +6,9 @@ environment = "production"
 # Application
 app_domain = "your-domain.com"
 
+# Browser origins allowed by the API (comma-separated). Override to add localhost, preview deploys, etc.
+# cors_origins = "https://sport-booker-fe.vercel.app,http://localhost:5173"
+
 # Secrets
 jwt_access_secret = "change-me-to-a-random-string-at-least-32-chars"
 
