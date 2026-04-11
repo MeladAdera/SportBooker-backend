@@ -49,6 +49,7 @@ resource "aws_ecs_task_definition" "app" {
       { name = "S3_BUCKET_NAME", value = aws_s3_bucket.uploads.id },
       { name = "S3_REGION", value = var.aws_region },
       { name = "PUBLIC_BASE_URL", value = "http://${aws_lb.main.dns_name}" },
+      { name = "CORS_ORIGINS", value = var.cors_origins },
     ]
 
     secrets = [

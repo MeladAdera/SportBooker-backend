@@ -54,4 +54,6 @@ export const envSchema = Joi.object({
   OPENAPI_DOCS_TOKEN: Joi.alternatives()
     .try(Joi.string().valid(''), Joi.string().min(32))
     .optional(),
+  /** Comma-separated browser origins allowed for CORS (e.g. Vercel + local dev). Empty = CORS off. */
+  CORS_ORIGINS: Joi.string().optional().allow(''),
 });

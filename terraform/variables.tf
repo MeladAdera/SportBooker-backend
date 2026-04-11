@@ -75,6 +75,12 @@ variable "app_domain" {
   type        = string
 }
 
+variable "cors_origins" {
+  description = "Comma-separated browser origins for Access-Control-Allow-Origin (e.g. Vercel frontend)"
+  type        = string
+  default     = "https://sport-booker-fe.vercel.app"
+}
+
 variable "jwt_access_secret" {
   description = "JWT access token secret (min 32 chars)"
   type        = string
