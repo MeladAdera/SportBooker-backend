@@ -35,6 +35,7 @@ export function createDbPoolFactory() {
         statementTimeoutMillis: config.getOrThrow<number>(
           'DB_STATEMENT_TIMEOUT_MILLIS',
         ),
+        ssl: config.get<boolean>('DB_SSL', false),
       });
 
       const pool = new PgPool(poolConfig);

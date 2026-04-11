@@ -10,6 +10,7 @@ export interface PoolConfigInput {
   idleTimeoutMillis?: number;
   connectionTimeoutMillis?: number;
   statementTimeoutMillis?: number;
+  ssl?: boolean;
 }
 
 const DEFAULT_POOL_MAX = 20;
@@ -36,5 +37,6 @@ export function createPoolConfig(input: PoolConfigInput): PoolConfig {
     connectionTimeoutMillis:
       input.connectionTimeoutMillis ?? DEFAULT_CONNECTION_TIMEOUT_MILLIS,
     options: `-c statement_timeout=${timeout}`,
+    ...(input.ssl ? { ssl: { rejectUnauthorized: false } } : {}),
   };
 }

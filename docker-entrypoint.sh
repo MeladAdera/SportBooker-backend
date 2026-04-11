@@ -1,6 +1,6 @@
 #!/bin/sh
 set -e
 echo "Running migrations..."
-npm run migrate
+pnpm run migrate
 echo "Starting app..."
-exec node dist/main.js
+exec node dist/src/main.js

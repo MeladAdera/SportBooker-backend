@@ -24,6 +24,7 @@ export const envSchema = Joi.object({
   DB_PASSWORD: Joi.string().required().messages({
     'any.required': 'DB_PASSWORD is required for PostgreSQL connection.',
   }),
+  DB_SSL: Joi.boolean().default(false),
   DB_POOL_MAX: Joi.number().integer().min(1).default(20),
   DB_POOL_IDLE_TIMEOUT_MILLIS: Joi.number().integer().min(0).default(10000),
   DB_POOL_CONNECTION_TIMEOUT_MILLIS: Joi.number()
@@ -38,6 +39,9 @@ export const envSchema = Joi.object({
   JWT_ACCESS_EXPIRES_IN: Joi.string().default('15m'),
   /** Base URL for absolute links to locally stored uploads (e.g. https://api.example.com). Defaults to http://localhost:{PORT}. */
   PUBLIC_BASE_URL: Joi.string().optional().allow(''),
+  /** S3 bucket name for venue uploads. When set, uploads go to S3 instead of local disk. */
+  S3_BUCKET_NAME: Joi.string().optional().allow(''),
+  S3_REGION: Joi.string().optional().allow(''),
   STRIPE_SECRET_KEY: Joi.string().optional().allow(''),
   STRIPE_WEBHOOK_SECRET: Joi.string().optional().allow(''),
   SENDGRID_API_KEY: Joi.string().optional().allow(''),

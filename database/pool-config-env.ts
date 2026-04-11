@@ -46,6 +46,7 @@ export function getPoolConfigFromEnv(
     database,
     user,
     password,
+    ssl: env.DB_SSL === 'true' || env.DB_SSL === '1',
     max: parseOptionalInt(env.DB_POOL_MAX, 'DB_POOL_MAX', 1),
     idleTimeoutMillis: parseOptionalInt(
       env.DB_POOL_IDLE_TIMEOUT_MILLIS,

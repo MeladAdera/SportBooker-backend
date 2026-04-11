@@ -1,0 +1,20 @@
+# Copy this to terraform.tfvars and fill in your values
+
+aws_region  = "ap-south-1"
+environment = "production"
+
+# Application
+app_domain = "your-domain.com"
+
+# Secrets
+jwt_access_secret = "change-me-to-a-random-string-at-least-32-chars"
+
+# Optional — set these when ready
+# sendgrid_api_key      = "SG.xxx"
+# email_from            = "noreply@your-domain.com"
+# stripe_secret_key     = "sk_live_xxx"
+# stripe_webhook_secret = "whsec_xxx"
+
+# GitHub (for CI/CD OIDC)
+github_repo   = "your-username/SportBooker"
+github_branch = "main"

@@ -18,9 +18,28 @@ const MIME_EXT: Record<string, string> = {
 
 @Injectable()
 export class VenuePictureStorage {
-  constructor(private readonly config: ConfigService) {}
+  private readonly s3BucketName: string | undefined;
+  private readonly s3Region: string | undefined;
+  private s3Client: InstanceType<
+    typeof import('@aws-sdk/client-s3').S3Client
+  > | null = null;
 
-  /** Base URL with no trailing slash (for absolute picture URLs in API responses). */
+  constructor(private readonly config: ConfigService) {
+    this.s3BucketName = this.config.get<string>('S3_BUCKET_NAME');
+    this.s3Region = this.config.get<string>('S3_REGION');
+  }
+
+  private async getS3Client() {
+    if (this.s3Client) return this.s3Client;
+    const { S3Client } = await import('@aws-sdk/client-s3');
+    this.s3Client = new S3Client({ region: this.s3Region });
+    return this.s3Client;
+  }
+
+  private get useS3(): boolean {
+    return !!this.s3BucketName;
+  }
+
   getPublicBaseUrl(): string {
     const explicit = this.config.get<string>('PUBLIC_BASE_URL');
     if (explicit !== undefined && explicit.trim().length > 0) {
@@ -30,9 +49,6 @@ export class VenuePictureStorage {
     return `http://localhost:${port}`;
   }
 
-  /**
-   * Writes an uploaded image under uploads/venues/{tenantId}/ and returns a public URL.
-   */
   async saveVenuePicture(
     tenantId: string,
     file: Express.Multer.File,
@@ -42,16 +58,48 @@ export class VenuePictureStorage {
       throw new BadRequestException('Picture must be JPEG, PNG, WebP, or GIF');
     }
     const filename = `${randomUUID()}${ext}`;
-    const relativeDir = join('venues', tenantId);
-    const absoluteDir = join(process.cwd(), 'uploads', relativeDir);
+    const key = `venues/${tenantId}/${filename}`;
+
+    if (this.useS3) {
+      return this.saveToS3(key, file);
+    }
+    return this.saveToDisk(key, file);
+  }
+
+  private async saveToS3(
+    key: string,
+    file: Express.Multer.File,
+  ): Promise<string> {
     try {
-      await mkdir(absoluteDir, { recursive: true });
-      await writeFile(join(absoluteDir, filename), file.buffer);
+      const { PutObjectCommand } = await import('@aws-sdk/client-s3');
+      const client = await this.getS3Client();
+      await client.send(
+        new PutObjectCommand({
+          Bucket: this.s3BucketName,
+          Key: key,
+          Body: file.buffer,
+          ContentType: file.mimetype,
+        }),
+      );
+      return `https://${this.s3BucketName}.s3.${this.s3Region}.amazonaws.com/${key}`;
+    } catch {
+      throw new InternalServerErrorException('Failed to save venue picture');
+    }
+  }
+
+  private async saveToDisk(
+    key: string,
+    file: Express.Multer.File,
+  ): Promise<string> {
+    const absolutePath = join(process.cwd(), 'uploads', key);
+    const dir = join(absolutePath, '..');
+    try {
+      await mkdir(dir, { recursive: true });
+      await writeFile(absolutePath, file.buffer);
     } catch {
       throw new InternalServerErrorException('Failed to save venue picture');
     }
     const base = this.getPublicBaseUrl();
-    const urlPath = `${relativeDir.replace(/\\/g, '/')}/${filename}`;
-    return `${base}/uploads/${urlPath}`;
+    return `${base}/uploads/${key}`;
   }
 }
