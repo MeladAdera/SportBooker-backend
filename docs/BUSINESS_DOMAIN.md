@@ -205,7 +205,7 @@ platform_admin (5)   ← platform-level, manages all tenants
 | `duration_mins` | integer | ≥ 1 |
 | `price_per_player` | numeric | — |
 | `max_players` | integer | — |
-| `status` | `match_status` enum | Default: `upcoming` |
+| `status` | `match_status` enum | Stored default: `scheduled`. Computed at query time: `upcoming`, `in_progress`, `completed` |
 | `created_at`, `updated_at` | timestamp | — |
 
 Unique constraint: `(venue_id, scheduled_at)` — two matches cannot start at the exact same time at the same venue. Overlap detection in code extends this to prevent time-window collisions.
@@ -590,11 +590,13 @@ platform_admin → POST /admin/tenants
 ┌──────────────────────────────────────────────────────────────────┐
 │                         MATCH STATUSES                           │
 │                                                                  │
-│  scheduled → upcoming → in_progress → completed                  │
-│                   │                                              │
-│                   └──────────────────► cancelled                 │
+│  STORED IN DB:    scheduled ──────────────────────► cancelled    │
 │                                                                  │
-│  New matches default to: upcoming                                │
+│  COMPUTED:        upcoming → in_progress → completed             │
+│  (from scheduled_at + duration_mins vs now())                    │
+│                                                                  │
+│  New matches store: scheduled                                    │
+│  API returns:  upcoming / in_progress / completed / cancelled    │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -641,7 +643,7 @@ POST /matches/:id/cancel
 ```
 
 **Browse matches (any authenticated user, tenant-scoped):**
-- Only `status = 'upcoming'` matches are returned.
+- Only matches where `now() < scheduled_at` (i.e. computed status `upcoming`) are returned.
 - Only matches at active venues.
 - Filterable by: `sportType`, `venueId`, `date` (UTC calendar date), `available` (spots remaining > 0).
 
@@ -946,15 +948,17 @@ POST /auth/logout (JWT required)
 
 ### `match_status`
 
-| Value | Meaning |
-|-------|---------|
-| `scheduled` | Created but not yet imminent (legacy; new matches default to `upcoming`) |
-| `upcoming` | Open for browsing and booking |
-| `in_progress` | Match is currently happening |
-| `completed` | Match finished |
-| `cancelled` | Cancelled by admin; all bookings refunded |
+Only **`scheduled`** and **`cancelled`** are stored in the database. The remaining values are **computed at query time** from `scheduled_at + duration_mins` vs `now()` — they are never written to the DB.
 
-Only `upcoming` matches appear in `GET /matches` (browse). Other statuses visible in detail view.
+| Value | Stored? | Meaning |
+|-------|---------|---------|
+| `scheduled` | ✅ stored | Default for all new matches |
+| `cancelled` | ✅ stored | Explicitly set when admin cancels a match |
+| `upcoming` | ⚡ computed | `now() < scheduled_at` |
+| `in_progress` | ⚡ computed | `scheduled_at <= now() < scheduled_at + duration_mins` |
+| `completed` | ⚡ computed | `now() >= scheduled_at + duration_mins` |
+
+`GET /matches` (browse) returns only matches where `now() < scheduled_at` (computed `upcoming`). All statuses are visible on `GET /matches/:id` (detail).
 
 ### `booking_status`
 

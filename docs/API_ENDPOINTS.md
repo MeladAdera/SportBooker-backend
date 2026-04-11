@@ -96,7 +96,7 @@ Controller default roles: `super_admin`, `tenant_admin` — **overridden per han
 | Method | Path | Roles | Notes |
 |--------|------|-------|--------|
 | `GET` | `/matches` | *(none)* | List upcoming matches |
-| `GET` | `/matches/:id` | *(none)* | Match detail |
+| `GET` | `/matches/:id` | *(none)* | Match detail (includes `venueName`, `venueAddress`, `venuePictureUrl`) |
 | `PATCH` | `/matches/:id` | tenant_admin, tenant_staff | Update match |
 | `POST` | `/matches/:id/cancel` | tenant_admin | Cancel + refunds |
 | `POST` | `/matches` | tenant_admin, tenant_staff | Create match |
