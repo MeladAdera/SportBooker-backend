@@ -48,7 +48,7 @@ resource "aws_ecs_task_definition" "app" {
       { name = "EMAIL_FROM", value = var.email_from },
       { name = "S3_BUCKET_NAME", value = aws_s3_bucket.uploads.id },
       { name = "S3_REGION", value = var.aws_region },
-      { name = "PUBLIC_BASE_URL", value = "http://${aws_lb.main.dns_name}" },
+      { name = "PUBLIC_BASE_URL", value = "https://api.${var.app_domain}" },
       { name = "CORS_ORIGINS", value = var.cors_origins },
     ]
 
@@ -93,7 +93,7 @@ resource "aws_ecs_service" "app" {
     container_port   = 3000
   }
 
-  depends_on = [aws_lb_listener.http]
+  depends_on = [aws_lb_listener.https]
 
   lifecycle {
     ignore_changes = [task_definition]

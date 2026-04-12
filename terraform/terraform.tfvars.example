@@ -3,11 +3,11 @@
 aws_region  = "ap-south-1"
 environment = "production"
 
-# Application
-app_domain = "your-domain.com"
+# Application (also used for ACM cert + Route 53 records)
+app_domain = "sportbooker.net"
 
-# Browser origins allowed by the API (comma-separated). Override to add localhost, preview deploys, etc.
-# cors_origins = "https://sport-booker-fe.vercel.app,http://localhost:5173"
+# Browser origins allowed by the API (comma-separated). Tenant subdomains (*.sportbooker.net) are allowed dynamically.
+# cors_origins = "https://app.sportbooker.net,https://sport-booker-fe.vercel.app,http://localhost:5173"
 
 # Secrets
 jwt_access_secret = "change-me-to-a-random-string-at-least-32-chars"

@@ -2,7 +2,7 @@
 
 resource "aws_security_group" "alb" {
   name_prefix = "${var.project_name}-alb-"
-  description = "Allow HTTP inbound to ALB"
+  description = "Allow HTTP and HTTPS inbound to ALB"
   vpc_id      = aws_vpc.main.id
 
   tags = { Name = "${var.project_name}-alb-sg" }
@@ -15,6 +15,14 @@ resource "aws_vpc_security_group_ingress_rule" "alb_http" {
   cidr_ipv4         = "0.0.0.0/0"
   from_port         = 80
   to_port           = 80
+  ip_protocol       = "tcp"
+}
+
+resource "aws_vpc_security_group_ingress_rule" "alb_https" {
+  security_group_id = aws_security_group.alb.id
+  cidr_ipv4         = "0.0.0.0/0"
+  from_port         = 443
+  to_port           = 443
   ip_protocol       = "tcp"
 }
 
