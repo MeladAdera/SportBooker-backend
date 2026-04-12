@@ -87,10 +87,11 @@ export class TenantMiddleware implements NestMiddleware {
   ) {}
 
   async use(req: Request, _res: Response, next: NextFunction): Promise<void> {
+    const slugHeader = req.get('X-Tenant-Slug')?.trim().toLowerCase();
     const host = req.get('X-Forwarded-Host') || req.get('Host') || '';
     const appDomain = this.config.getOrThrow<string>('APP_DOMAIN');
 
-    const subdomain = extractSubdomain(host, appDomain);
+    const subdomain = slugHeader || extractSubdomain(host, appDomain);
 
     if (!subdomain) {
       throw new BadRequestException('Missing or invalid subdomain');

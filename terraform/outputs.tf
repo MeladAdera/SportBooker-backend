@@ -1,6 +1,21 @@
 output "alb_dns_name" {
-  description = "ALB DNS name — your API endpoint until you add a custom domain"
+  description = "ALB DNS name (internal — use app_url instead)"
   value       = aws_lb.main.dns_name
+}
+
+output "api_url" {
+  description = "API production URL"
+  value       = "https://api.${var.app_domain}"
+}
+
+output "frontend_url" {
+  description = "Frontend production URL"
+  value       = "https://app.${var.app_domain}"
+}
+
+output "acm_certificate_arn" {
+  description = "ACM certificate ARN"
+  value       = aws_acm_certificate.main.arn
 }
 
 output "ecr_repository_url" {

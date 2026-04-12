@@ -10,7 +10,7 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { openApiAuthMiddleware } from './common/middleware/open-api-auth.middleware';
-import { parseCorsOrigins } from './config/cors-origins';
+import { parseCorsOrigins, buildCorsOrigin } from './config/cors-origins';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -41,10 +41,12 @@ async function bootstrap(): Promise<void> {
 
   const config = app.get(ConfigService);
 
-  const corsOrigins = parseCorsOrigins(config.get<string>('CORS_ORIGINS'));
-  if (corsOrigins.length > 0) {
+  const staticOrigins = parseCorsOrigins(config.get<string>('CORS_ORIGINS'));
+  const appDomain = config.getOrThrow<string>('APP_DOMAIN');
+  const corsOrigin = buildCorsOrigin(staticOrigins, appDomain);
+  if (corsOrigin) {
     app.enableCors({
-      origin: corsOrigins,
+      origin: corsOrigin,
       credentials: true,
       methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
       allowedHeaders: [
@@ -53,6 +55,7 @@ async function bootstrap(): Promise<void> {
         'Accept',
         'X-Requested-With',
         'X-Forwarded-Host',
+        'X-Tenant-Slug',
       ],
     });
   }

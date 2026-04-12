@@ -142,14 +142,36 @@ aws ssm put-parameter \
 aws ecs update-service --cluster sportbooker-cluster --service sportbooker-service --force-new-deployment --region ap-south-1
 ```
 
-## Adding a Custom Domain (Later)
+## Custom Domain & HTTPS
 
-When you purchase a domain:
+Managed via `dns.tf` and `alb.tf`. Domain layout:
 
-1. Create a hosted zone in Route 53
-2. Create an ACM certificate (with DNS validation)
-3. Add an HTTPS listener to the ALB
-4. Add a Route 53 alias record pointing to the ALB
+| URL | Target | Purpose |
+|---|---|---|
+| `api.sportbooker.net` | ALB (ECS) | NestJS API |
+| `app.sportbooker.net` | Vercel | Frontend SPA |
+| `{slug}.sportbooker.net` | Vercel | Tenant subdomains (frontend reads subdomain, calls API) |
+| `sportbooker.net` | ALB → 301 | Redirects to `app.sportbooker.net` |
+
+Infrastructure managed by Terraform:
+
+- **ACM certificate** for `sportbooker.net` + `*.sportbooker.net` (DNS validation)
+- **HTTPS listener** (:443) forwards to ECS; listener rule redirects apex to `app.`
+- **HTTP listener** (:80) redirects 301 → HTTPS
+- **Route 53**: `api.` A-alias → ALB, `app.` + `*.` CNAME → `cname.vercel-dns.com`
+- **CORS**: static origins from `CORS_ORIGINS` + dynamic `*.sportbooker.net` matching
+
+### Vercel Frontend Setup
+
+In the Vercel dashboard for the frontend project:
+
+1. Go to **Settings → Domains**
+2. Add `app.sportbooker.net` — DNS is already pointing to Vercel
+3. Add `*.sportbooker.net` (wildcard) — requires **Vercel Pro plan** ($20/mo)
+4. Vercel will issue its own TLS certs for these domains automatically
+
+If on Vercel Hobby (free), wildcard domains are not available. Tenant selection
+would need to happen in-app instead of via subdomain URLs.
 
 ## Tearing Down
 

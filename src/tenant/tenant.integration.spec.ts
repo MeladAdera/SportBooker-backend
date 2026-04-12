@@ -14,11 +14,13 @@ import type { Tenant } from '../common/tenant.types';
 function mockReq(
   host?: string,
   xForwardedHost?: string,
+  xTenantSlug?: string,
 ): Request & { tenant?: Tenant } {
   const req = {
     get: jest.fn((name: string): string | undefined => {
       if (name === 'Host') return host ?? '';
       if (name === 'X-Forwarded-Host') return xForwardedHost;
+      if (name === 'X-Tenant-Slug') return xTenantSlug;
       return undefined;
     }),
     tenant: undefined as Tenant | undefined,
@@ -152,5 +154,94 @@ describe('TenantMiddleware', () => {
 
     expect(mockPool.query).toHaveBeenCalledWith(expect.any(String), ['acfc']);
     expect(req.tenant?.slug).toBe('acfc');
+  });
+
+  it('resolves tenant from X-Tenant-Slug header (no subdomain needed)', async () => {
+    const req = mockReq('api.sportbooker.net', undefined, 'acfc');
+    mockConfigService.getOrThrow.mockReturnValue('sportbooker.net');
+    mockPool.query.mockResolvedValue({
+      rows: [
+        {
+          id: 'uuid-1',
+          name: 'AC FC',
+          slug: 'acfc',
+          cancel_cutoff_hours: 24,
+          is_active: true,
+          created_at: new Date(),
+          updated_at: new Date(),
+        },
+      ],
+    });
+
+    await middleware.use(req, mockRes(), nextFn);
+
+    expect(mockPool.query).toHaveBeenCalledWith(expect.any(String), ['acfc']);
+    expect(req.tenant?.slug).toBe('acfc');
+  });
+
+  it('X-Tenant-Slug takes precedence over Host subdomain', async () => {
+    const req = mockReq('other.localhost:3000', undefined, 'acfc');
+    mockPool.query.mockResolvedValue({
+      rows: [
+        {
+          id: 'uuid-1',
+          name: 'AC FC',
+          slug: 'acfc',
+          cancel_cutoff_hours: 24,
+          is_active: true,
+          created_at: new Date(),
+          updated_at: new Date(),
+        },
+      ],
+    });
+
+    await middleware.use(req, mockRes(), nextFn);
+
+    expect(mockPool.query).toHaveBeenCalledWith(expect.any(String), ['acfc']);
+    expect(req.tenant?.slug).toBe('acfc');
+  });
+
+  it('falls back to Host extraction when X-Tenant-Slug is not set', async () => {
+    const req = mockReq('acfc.localhost:3000');
+    mockPool.query.mockResolvedValue({
+      rows: [
+        {
+          id: 'uuid-1',
+          name: 'AC FC',
+          slug: 'acfc',
+          cancel_cutoff_hours: 24,
+          is_active: true,
+          created_at: new Date(),
+          updated_at: new Date(),
+        },
+      ],
+    });
+
+    await middleware.use(req, mockRes(), nextFn);
+
+    expect(mockPool.query).toHaveBeenCalledWith(expect.any(String), ['acfc']);
+    expect(req.tenant?.slug).toBe('acfc');
+  });
+
+  it('normalizes X-Tenant-Slug to lowercase and trims whitespace', async () => {
+    const req = mockReq('api.sportbooker.net', undefined, '  ACFC  ');
+    mockConfigService.getOrThrow.mockReturnValue('sportbooker.net');
+    mockPool.query.mockResolvedValue({
+      rows: [
+        {
+          id: 'uuid-1',
+          name: 'AC FC',
+          slug: 'acfc',
+          cancel_cutoff_hours: 24,
+          is_active: true,
+          created_at: new Date(),
+          updated_at: new Date(),
+        },
+      ],
+    });
+
+    await middleware.use(req, mockRes(), nextFn);
+
+    expect(mockPool.query).toHaveBeenCalledWith(expect.any(String), ['acfc']);
   });
 });
