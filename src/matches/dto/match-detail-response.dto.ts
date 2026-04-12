@@ -26,7 +26,7 @@ export class MatchDetailResponseDto {
     nullable: true,
     description: 'Venue cover image URL',
   })
-  venuePictureUrl!: string | null;
+  venuePictureUrl!: string;
 
   @ApiProperty({ example: '2026-04-01T18:00:00.000Z' })
   scheduledAt!: string;
