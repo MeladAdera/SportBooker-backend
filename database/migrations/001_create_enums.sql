@@ -1,19 +1,29 @@
 -- =========================
 -- Migration 001: Create Enums
 -- =========================
--- Description: user_role, sport_type, match_status, booking_status,
---              wallet_tx_type, notification_type, notification_channel
+-- Description: All application enums in final state.
+--   user_role, sport_type, match_status, booking_status,
+--   booking_position, wallet_tx_type, payment_intent_status,
+--   notification_type, notification_channel
 -- Dependencies: none
 -- =========================
 
+-- User roles
 DO $$
 BEGIN
-  CREATE TYPE user_role AS ENUM ('admin', 'user', 'venue_owner');
+  CREATE TYPE user_role AS ENUM (
+    'platform_admin',
+    'super_admin',
+    'tenant_admin',
+    'tenant_staff',
+    'player'
+  );
 EXCEPTION
   WHEN duplicate_object THEN NULL;
 END
 $$;
 
+-- Sport types
 DO $$
 BEGIN
   CREATE TYPE sport_type AS ENUM (
@@ -31,36 +41,54 @@ EXCEPTION
 END
 $$;
 
+-- Match status: only 'scheduled' and 'cancelled' are stored.
+-- 'upcoming', 'in_progress', 'completed' are computed at query time
+-- from scheduled_at + duration_mins.
 DO $$
 BEGIN
-  -- Only 'scheduled' and 'cancelled' are stored in the DB.
-  -- 'upcoming', 'in_progress', 'completed' are computed at query time from scheduled_at + duration_mins.
   CREATE TYPE match_status AS ENUM ('scheduled', 'cancelled');
 EXCEPTION
   WHEN duplicate_object THEN NULL;
 END
 $$;
 
+-- Booking status
 DO $$
 BEGIN
-  CREATE TYPE booking_status AS ENUM (
-    'pending',
-    'confirmed',
-    'cancelled'
-  );
+  CREATE TYPE booking_status AS ENUM ('pending', 'confirmed', 'cancelled');
 EXCEPTION
   WHEN duplicate_object THEN NULL;
 END
 $$;
 
+-- Booking position (field vs goalkeeper)
 DO $$
 BEGIN
-  CREATE TYPE wallet_tx_type AS ENUM ('credit', 'debit', 'refund');
+  CREATE TYPE booking_position AS ENUM ('field_player', 'goalkeeper');
 EXCEPTION
   WHEN duplicate_object THEN NULL;
 END
 $$;
 
+-- Wallet transaction types
+DO $$
+BEGIN
+  CREATE TYPE wallet_tx_type AS ENUM ('credit', 'debit', 'refund', 'topup');
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END
+$$;
+
+-- Payment intent status (Ziina top-up lifecycle)
+DO $$
+BEGIN
+  CREATE TYPE payment_intent_status AS ENUM ('pending', 'completed', 'failed', 'cancelled');
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END
+$$;
+
+-- Notification types
 DO $$
 BEGIN
   CREATE TYPE notification_type AS ENUM (
@@ -74,6 +102,7 @@ EXCEPTION
 END
 $$;
 
+-- Notification delivery channels
 DO $$
 BEGIN
   CREATE TYPE notification_channel AS ENUM ('email', 'sms', 'push');
@@ -81,18 +110,3 @@ EXCEPTION
   WHEN duplicate_object THEN NULL;
 END
 $$;
-
--- =========================
--- ROLLBACK SCRIPT (in comments)
--- =========================
-/*
-BEGIN;
-DROP TYPE IF EXISTS notification_channel;
-DROP TYPE IF EXISTS notification_type;
-DROP TYPE IF EXISTS wallet_tx_type;
-DROP TYPE IF EXISTS booking_status;
-DROP TYPE IF EXISTS match_status;
-DROP TYPE IF EXISTS sport_type;
-DROP TYPE IF EXISTS user_role;
-COMMIT;
-*/
