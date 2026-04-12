@@ -53,12 +53,25 @@ export class VenuePictureStorage {
     tenantId: string,
     file: Express.Multer.File,
   ): Promise<string> {
+    return this.savePicture(`venues/${tenantId}`, file);
+  }
+
+  async saveUserPhoto(
+    userId: string,
+    file: Express.Multer.File,
+  ): Promise<string> {
+    return this.savePicture(`users/${userId}`, file);
+  }
+
+  private async savePicture(
+    folder: string,
+    file: Express.Multer.File,
+  ): Promise<string> {
     const ext = MIME_EXT[file.mimetype];
     if (!ext) {
-      throw new BadRequestException('Picture must be JPEG, PNG, WebP, or GIF');
+      throw new BadRequestException('Photo must be JPEG, PNG, WebP, or GIF');
     }
-    const filename = `${randomUUID()}${ext}`;
-    const key = `venues/${tenantId}/${filename}`;
+    const key = `${folder}/${randomUUID()}${ext}`;
 
     if (this.useS3) {
       return this.saveToS3(key, file);

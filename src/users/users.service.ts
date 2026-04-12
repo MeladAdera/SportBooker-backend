@@ -6,8 +6,10 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
+import type { Express } from 'express';
 import { AuthRepository } from '../auth/auth.repository';
 import { BookingsRepository } from '../bookings/bookings.repository';
+import { VenuePictureStorage } from '../venues/venue-picture.storage';
 import type { MyBookingHistoryRow } from '../bookings/bookings.repository';
 import type { VenueSportType } from '../venues/venue-sport-type';
 import type { AssignableRole } from './user-role';
@@ -16,6 +18,7 @@ import type { AccountDeletedResponseDto } from './dto/account-deleted-response.d
 import type { MyBookingItemDto } from './dto/my-booking-item.dto';
 import type { MyBookingsQueryDto } from './dto/my-bookings-query.dto';
 import type { MyProfileResponseDto } from './dto/my-profile-response.dto';
+import type { UploadPhotoResponseDto } from './dto/upload-photo-response.dto';
 import type { PaginatedMyBookingsDto } from './dto/paginated-my-bookings.dto';
 import type { PaginatedTenantUsersDto } from './dto/paginated-tenant-users.dto';
 import type { ListTenantUsersQueryDto } from './dto/list-tenant-users-query.dto';
@@ -48,6 +51,7 @@ export class UsersService {
     private readonly authRepository: AuthRepository,
     private readonly bookingsRepository: BookingsRepository,
     private readonly walletRepository: WalletRepository,
+    private readonly pictureStorage: VenuePictureStorage,
   ) {}
 
   /**
@@ -322,6 +326,29 @@ export class UsersService {
     }
 
     return this.toMyProfileDto(row);
+  }
+
+  /**
+   * Saves a profile photo file and updates photo_url on the user row.
+   * Returns the public URL of the uploaded photo.
+   */
+  async uploadMyPhoto(params: {
+    tenantId: string;
+    userId: string;
+    file: Express.Multer.File;
+  }): Promise<UploadPhotoResponseDto> {
+    const { tenantId, userId, file } = params;
+
+    const photoUrl = await this.pictureStorage.saveUserPhoto(userId, file);
+
+    const row = await this.usersRepository.patchSelfProfile(tenantId, userId, {
+      photo_url: photoUrl,
+    });
+    if (!row || row.deleted_at != null) {
+      throw new UnauthorizedException('Invalid or expired session');
+    }
+
+    return { photoUrl };
   }
 
   /**

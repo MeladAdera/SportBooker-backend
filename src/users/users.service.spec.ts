@@ -94,6 +94,9 @@ describe('UsersService', () => {
       authRepository as unknown as AuthRepository,
       bookingsRepository as unknown as BookingsRepository,
       walletRepository as unknown as WalletRepository,
+      {
+        saveUserPhoto: jest.fn(),
+      } as unknown as import('../venues/venue-picture.storage').VenuePictureStorage,
     );
   });
 

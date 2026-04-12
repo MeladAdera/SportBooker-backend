@@ -10,6 +10,6 @@ import { VenuesService } from './venues.service';
   imports: [AuthModule],
   controllers: [VenuesController],
   providers: [VenuesRepository, VenuePictureStorage, VenuesService, RolesGuard],
-  exports: [VenuesService, VenuesRepository],
+  exports: [VenuesService, VenuesRepository, VenuePictureStorage],
 })
 export class VenuesModule {}

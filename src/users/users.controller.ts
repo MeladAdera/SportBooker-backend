@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -6,12 +7,18 @@ import {
   Param,
   ParseUUIDPipe,
   Patch,
+  Post,
   Query,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import {
   ApiBearerAuth,
   ApiBody,
+  ApiConsumes,
   ApiForbiddenResponse,
   ApiOperation,
   ApiResponse,
@@ -23,6 +30,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import type { AuthenticatedUser } from '../auth/auth.types';
 import { AccountDeletedResponseDto } from './dto/account-deleted-response.dto';
+import { UploadPhotoResponseDto } from './dto/upload-photo-response.dto';
 import { AssignRoleDto } from './dto/assign-role.dto';
 import { ListTenantUsersQueryDto } from './dto/list-tenant-users-query.dto';
 import { MyBookingsQueryDto } from './dto/my-bookings-query.dto';
@@ -191,6 +199,72 @@ export class UsersController {
       tenantId: user.tenantId,
       userId: user.sub,
       dto,
+    });
+  }
+
+  @Post('me/photo')
+  @Roles(
+    UserRole.SuperAdmin,
+    UserRole.TenantAdmin,
+    UserRole.TenantStaff,
+    UserRole.Player,
+  )
+  @UseInterceptors(
+    FileInterceptor('photo', {
+      storage: memoryStorage(),
+      limits: { fileSize: 5 * 1024 * 1024 },
+      fileFilter: (
+        _req: unknown,
+        file: Express.Multer.File,
+        cb: (e: Error | null, accept: boolean) => void,
+      ) => {
+        const ok = /^image\/(jpeg|png|webp|gif)$/.test(file.mimetype);
+        cb(
+          ok
+            ? null
+            : new BadRequestException('Photo must be JPEG, PNG, WebP, or GIF'),
+          ok,
+        );
+      },
+    }),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({
+    summary: 'Upload profile photo',
+    description:
+      'Upload a profile photo (JPEG, PNG, WebP, or GIF; max 5 MB). ' +
+      'Returns the public URL and updates the user profile automatically. ' +
+      'Use the returned photoUrl with PATCH /users/me if you need to update it separately.',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['photo'],
+      properties: {
+        photo: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  @ApiWrappedOkResponse({
+    description: 'Photo uploaded — returns public URL',
+    type: UploadPhotoResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Missing file or unsupported type' })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized or soft-deleted user',
+  })
+  async uploadMyPhoto(
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<UploadPhotoResponseDto> {
+    if (!file) {
+      throw new BadRequestException('Photo file is required');
+    }
+    return this.usersService.uploadMyPhoto({
+      tenantId: user.tenantId,
+      userId: user.sub,
+      file,
     });
   }
 
