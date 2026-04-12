@@ -23,7 +23,7 @@ export type MatchDetailRow = {
   venue_id: string;
   venue_name: string;
   venue_address: string;
-  venue_picture_url: string | null;
+  venue_picture_url: string;
   title: string;
   sport_type: string;
   scheduled_at: Date;
