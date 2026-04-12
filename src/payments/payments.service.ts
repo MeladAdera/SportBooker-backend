@@ -1,0 +1,235 @@
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  UnprocessableEntityException,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import * as crypto from 'crypto';
+import { PaymentsRepository } from './payments.repository';
+import { ZiinaClient } from './ziina.client';
+import type { TopupResponseDto } from './dto/topup-response.dto';
+import type { Tenant } from '../common/tenant.types';
+
+/** Ziina IPs that are allowed to deliver webhooks. */
+const ZIINA_WEBHOOK_IPS = new Set([
+  '3.29.184.186',
+  '3.29.190.95',
+  '20.233.47.127',
+  '13.202.161.181',
+]);
+
+@Injectable()
+export class PaymentsService {
+  private readonly logger = new Logger(PaymentsService.name);
+
+  constructor(
+    private readonly paymentsRepository: PaymentsRepository,
+    private readonly ziinaClient: ZiinaClient,
+    private readonly config: ConfigService,
+  ) {}
+
+  async createTopup(params: {
+    tenant: Tenant;
+    userId: string;
+    amount: number;
+  }): Promise<TopupResponseDto> {
+    const { tenant, userId, amount } = params;
+
+    const creds = await this.paymentsRepository.findZiinaCredentials(tenant.id);
+    if (!creds?.ziina_access_token) {
+      throw new UnprocessableEntityException(
+        'Online top-up is not configured for this tenant. Please contact the organizer.',
+      );
+    }
+
+    const baseUrl = this.getPublicBaseUrl();
+    const successUrl = `${baseUrl}/payments/topup/success`;
+    const cancelUrl = `${baseUrl}/payments/topup/cancel`;
+    const failureUrl = `${baseUrl}/payments/topup/failure`;
+
+    // Ziina amounts are in base units (fils): 1 AED = 100 fils
+    const amountInFils = Math.round(amount * 100);
+
+    const intent = await this.ziinaClient.createPaymentIntent(
+      creds.ziina_access_token,
+      {
+        amount: amountInFils,
+        currency_code: 'AED',
+        message: `Wallet top-up — ${amount} AED`,
+        success_url: successUrl,
+        cancel_url: cancelUrl,
+        failure_url: failureUrl,
+        test: this.config.get<string>('NODE_ENV') !== 'production',
+      },
+    );
+
+    const record = await this.paymentsRepository.insertPaymentIntent({
+      ziinaPaymentId: intent.id,
+      userId,
+      tenantId: tenant.id,
+      amount,
+    });
+
+    if (!intent.redirect_url) {
+      throw new BadRequestException('Ziina did not return a redirect URL');
+    }
+
+    return {
+      redirectUrl: intent.redirect_url,
+      paymentIntentId: record.id,
+    };
+  }
+
+  async handleWebhook(params: {
+    rawBody: Buffer;
+    hmacSignature: string | undefined;
+    clientIp: string;
+    payload: ZiinaWebhookPayload;
+  }): Promise<void> {
+    const { rawBody, hmacSignature, clientIp, payload } = params;
+
+    if (!ZIINA_WEBHOOK_IPS.has(clientIp)) {
+      this.logger.warn(`Webhook rejected: unknown IP ${clientIp}`);
+      return;
+    }
+
+    if (payload.event !== 'payment_intent.status.updated') {
+      // Acknowledged but nothing to do
+      return;
+    }
+
+    const ziinaPaymentId: string = payload.data?.id;
+    if (!ziinaPaymentId) {
+      this.logger.warn('Webhook payload missing payment intent id');
+      return;
+    }
+
+    const tenantCreds =
+      await this.paymentsRepository.findTenantByZiinaPaymentId(ziinaPaymentId);
+
+    if (!tenantCreds) {
+      // Unknown payment intent — could be a stale retry, log and move on
+      this.logger.warn(
+        `Unknown ziina_payment_id in webhook: ${ziinaPaymentId}`,
+      );
+      return;
+    }
+
+    // Verify HMAC if secret is configured
+    if (tenantCreds.ziina_webhook_secret) {
+      if (
+        !hmacSignature ||
+        !this.verifyHmac(
+          rawBody,
+          hmacSignature,
+          tenantCreds.ziina_webhook_secret,
+        )
+      ) {
+        this.logger.warn(
+          `Webhook HMAC verification failed for payment ${ziinaPaymentId}`,
+        );
+        return;
+      }
+    }
+
+    const status: string = payload.data?.status;
+
+    if (status === 'completed') {
+      await this.processCompletedTopup(ziinaPaymentId);
+    } else if (status === 'failed') {
+      await this.paymentsRepository.markFailed(ziinaPaymentId, 'failed');
+    } else if (status === 'canceled') {
+      await this.paymentsRepository.markFailed(ziinaPaymentId, 'cancelled');
+    }
+  }
+
+  private async processCompletedTopup(ziinaPaymentId: string): Promise<void> {
+    const intent =
+      await this.paymentsRepository.findPendingByZiinaId(ziinaPaymentId);
+    if (!intent) {
+      // Already processed or not found — idempotent, do nothing
+      this.logger.debug(
+        `Payment intent ${ziinaPaymentId} already processed or not found`,
+      );
+      return;
+    }
+
+    const amount = parseFloat(intent.amount);
+
+    await this.paymentsRepository.withTransaction(async (client) => {
+      await this.paymentsRepository.completeTopup(client, {
+        paymentIntentId: intent.id,
+        userId: intent.user_id,
+        tenantId: intent.tenant_id,
+        amount,
+      });
+    });
+
+    this.logger.log(
+      `Wallet topped up: user=${intent.user_id} amount=${amount} AED`,
+    );
+  }
+
+  /** Verifies the X-Hmac-Signature header from Ziina (hex-encoded SHA-256 HMAC). */
+  private verifyHmac(
+    rawBody: Buffer,
+    signature: string,
+    secret: string,
+  ): boolean {
+    const expected = crypto
+      .createHmac('sha256', secret)
+      .update(rawBody)
+      .digest('hex');
+    // Constant-time comparison
+    try {
+      return crypto.timingSafeEqual(
+        Buffer.from(signature, 'hex'),
+        Buffer.from(expected, 'hex'),
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  private getPublicBaseUrl(): string {
+    const configured = this.config.get<string>('PUBLIC_BASE_URL');
+    if (configured) return configured.replace(/\/$/, '');
+    const port = this.config.get<number>('PORT') ?? 3000;
+    return `http://localhost:${port}`;
+  }
+
+  /** Called by TenantsService after saving a new Ziina token. Registers webhook with Ziina. */
+  async registerWebhookForTenant(tenantId: string): Promise<void> {
+    const creds = await this.paymentsRepository.findZiinaCredentials(tenantId);
+    if (!creds?.ziina_access_token || !creds.ziina_webhook_secret) return;
+
+    const webhookUrl = `${this.getPublicBaseUrl()}/payments/webhook`;
+
+    try {
+      await this.ziinaClient.registerWebhook(creds.ziina_access_token, {
+        url: webhookUrl,
+        secret: creds.ziina_webhook_secret,
+      });
+      this.logger.log(`Ziina webhook registered for tenant ${tenantId}`);
+    } catch (err) {
+      // Non-fatal: log and surface in the response from TenantsService
+      this.logger.error(
+        `Failed to register Ziina webhook for tenant ${tenantId}`,
+        err,
+      );
+      throw new UnprocessableEntityException(
+        'Ziina token saved but webhook registration failed. Verify the token has write_webhooks scope.',
+      );
+    }
+  }
+}
+
+export interface ZiinaWebhookPayload {
+  event: string;
+  data: {
+    id: string;
+    status: string;
+    [key: string]: unknown;
+  };
+}

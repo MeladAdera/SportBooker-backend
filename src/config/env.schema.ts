@@ -42,8 +42,6 @@ export const envSchema = Joi.object({
   /** S3 bucket name for venue uploads. When set, uploads go to S3 instead of local disk. */
   S3_BUCKET_NAME: Joi.string().optional().allow(''),
   S3_REGION: Joi.string().optional().allow(''),
-  STRIPE_SECRET_KEY: Joi.string().optional().allow(''),
-  STRIPE_WEBHOOK_SECRET: Joi.string().optional().allow(''),
   SENDGRID_API_KEY: Joi.string().optional().allow(''),
   EMAIL_FROM: Joi.string().email().optional().allow(''),
   /**

@@ -192,4 +192,22 @@ export class TenantsRepository extends BaseRepository {
     );
     return rows[0] ?? null;
   }
+
+  /**
+   * Stores the Ziina access token and a freshly generated webhook HMAC secret.
+   * Both are write-only — never included in tenant SELECT queries.
+   */
+  async updateZiinaCredentials(
+    id: string,
+    accessToken: string,
+    webhookSecret: string,
+  ): Promise<void> {
+    await this.query(
+      this.pool,
+      `UPDATE tenants
+       SET ziina_access_token = $1, ziina_webhook_secret = $2, updated_at = NOW()
+       WHERE id = $3`,
+      [accessToken, webhookSecret, id],
+    );
+  }
 }

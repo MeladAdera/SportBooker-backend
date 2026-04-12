@@ -47,4 +47,15 @@ export class UpdateTenantDto {
   @Min(0)
   @Max(24 * 365)
   cancelCutoffHours?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Ziina access token for online wallet top-ups. Write-only — never returned in GET responses. ' +
+      'Generate at ziina.com/business/connect. The token must have write_payment_intents and write_webhooks scopes.',
+    example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+  })
+  @IsOptional()
+  @IsString()
+  @Length(10, 2048)
+  ziinaAccessToken?: string;
 }

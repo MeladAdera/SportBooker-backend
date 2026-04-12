@@ -49,30 +49,6 @@ resource "aws_lb_listener" "https" {
   }
 }
 
-# ── Listener Rule: apex → redirect to app.domain ────────────────────
-
-resource "aws_lb_listener_rule" "apex_redirect" {
-  listener_arn = aws_lb_listener.https.arn
-  priority     = 10
-
-  condition {
-    host_header {
-      values = [var.app_domain]
-    }
-  }
-
-  action {
-    type = "redirect"
-
-    redirect {
-      host        = "app.${var.app_domain}"
-      port        = "443"
-      protocol    = "HTTPS"
-      status_code = "HTTP_301"
-    }
-  }
-}
-
 # ── Listener (HTTP:80 → redirect to HTTPS) ──────────────────────────
 
 resource "aws_lb_listener" "http" {

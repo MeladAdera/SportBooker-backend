@@ -2,9 +2,11 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
+import * as crypto from 'crypto';
 import type { AdminTenantListItemDto } from './dto/admin-tenant-list-item.dto';
 import type { CreateTenantDto } from './dto/create-tenant.dto';
 import type { ListTenantsQueryDto } from './dto/list-tenants-query.dto';
@@ -20,15 +22,19 @@ import { invalidateTenantCache } from '../tenant/tenant.middleware';
 import type { TenantAdminListRow, TenantRow } from './tenants.repository';
 import { TenantsRepository } from './tenants.repository';
 import { UsersRepository } from '../users/users.repository';
+import { PaymentsService } from '../payments/payments.service';
 
 const PG_UNIQUE_VIOLATION = '23505';
 const BCRYPT_ROUNDS = 12;
 
 @Injectable()
 export class TenantsService {
+  private readonly logger = new Logger(TenantsService.name);
+
   constructor(
     private readonly tenantsRepository: TenantsRepository,
     private readonly usersRepository: UsersRepository,
+    private readonly paymentsService: PaymentsService,
   ) {}
 
   async getTenantByIdForAdmin(tenantId: string): Promise<TenantResponseDto> {
@@ -93,28 +99,36 @@ export class TenantsService {
       cancelCutoffHours?: number;
     } = {};
 
-    if (dto.name !== undefined) {
-      patch.name = dto.name;
-    }
-    if (dto.logoUrl !== undefined) {
-      patch.logoUrl = dto.logoUrl;
-    }
-    if (dto.timezone !== undefined) {
-      patch.timezone = dto.timezone;
-    }
-    if (dto.cancelCutoffHours !== undefined) {
+    if (dto.name !== undefined) patch.name = dto.name;
+    if (dto.logoUrl !== undefined) patch.logoUrl = dto.logoUrl;
+    if (dto.timezone !== undefined) patch.timezone = dto.timezone;
+    if (dto.cancelCutoffHours !== undefined)
       patch.cancelCutoffHours = dto.cancelCutoffHours;
+
+    let updatedRow: TenantRow | null = existing;
+
+    if (Object.keys(patch).length > 0) {
+      updatedRow = await this.tenantsRepository.updateTenantById(
+        tenantId,
+        patch,
+      );
+      if (!updatedRow) {
+        throw new NotFoundException(`Tenant "${tenantId}" not found`);
+      }
     }
 
-    if (Object.keys(patch).length === 0) {
-      return this.toResponseDto(existing);
+    if (dto.ziinaAccessToken !== undefined) {
+      const webhookSecret = crypto.randomBytes(32).toString('hex');
+      await this.tenantsRepository.updateZiinaCredentials(
+        tenantId,
+        dto.ziinaAccessToken,
+        webhookSecret,
+      );
+      // Registers the webhook URL with Ziina (throws UnprocessableEntityException on failure)
+      await this.paymentsService.registerWebhookForTenant(tenantId);
     }
 
-    const row = await this.tenantsRepository.updateTenantById(tenantId, patch);
-    if (!row) {
-      throw new NotFoundException(`Tenant "${tenantId}" not found`);
-    }
-    return this.toResponseDto(row);
+    return this.toResponseDto(updatedRow);
   }
 
   async listTenantsForAdmin(

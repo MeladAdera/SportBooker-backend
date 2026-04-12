@@ -85,6 +85,9 @@ describe('TenantsService', () => {
     service = new TenantsService(
       repository as unknown as TenantsRepository,
       usersRepository as unknown as UsersRepository,
+      {
+        registerWebhookForTenant: jest.fn(),
+      } as unknown as import('../payments/payments.service').PaymentsService,
     );
   });
 

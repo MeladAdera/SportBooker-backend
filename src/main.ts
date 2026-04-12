@@ -13,7 +13,9 @@ import { openApiAuthMiddleware } from './common/middleware/open-api-auth.middlew
 import { parseCorsOrigins, buildCorsOrigin } from './config/cors-origins';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    rawBody: true,
+  });
   app.useStaticAssets(join(process.cwd(), 'uploads'), { prefix: '/uploads/' });
 
   // Trust X-Forwarded-For when behind a reverse proxy (nginx, etc.)

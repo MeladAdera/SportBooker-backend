@@ -5,8 +5,10 @@ import { UsersRepository } from '../users/users.repository';
 import { TenantSettingsController } from './tenant-settings.controller';
 import { TenantsRepository } from './tenants.repository';
 import { TenantsService } from './tenants.service';
+import { PaymentsModule } from '../payments/payments.module';
 
 @Module({
+  imports: [PaymentsModule],
   controllers: [TenantSettingsController],
   providers: [
     TenantsRepository,
