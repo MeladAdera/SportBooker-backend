@@ -23,7 +23,7 @@ import { LoginResponseDto } from './dto/login-response.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
-import { RefreshResponseDto } from './dto/refresh-response.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { RegisterDto } from './dto/register.dto';
 import { RegisterResponseDto } from './dto/register-response.dto';
 
@@ -139,12 +139,30 @@ export class AuthController {
   @Public()
   @ApiWrappedOkResponse({
     description: 'New tokens issued',
-    type: RefreshResponseDto,
+    type: LoginResponseDto,
   })
   @ApiResponse({ status: 401, description: 'Invalid or expired refresh token' })
   @ApiResponse({ status: 422, description: 'Validation failed' })
-  async refresh(@Body() dto: RefreshDto): Promise<RefreshResponseDto> {
+  async refresh(@Body() dto: RefreshDto): Promise<LoginResponseDto> {
     return this.authService.refresh(dto.refreshToken);
+  }
+
+  @Post('change-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiWrappedOkResponse({
+    description: 'Password changed successfully',
+    schema: { type: 'object', properties: { message: { type: 'string' } } },
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Invalid current password or unauthenticated',
+  })
+  @ApiResponse({ status: 422, description: 'Validation failed' })
+  async changePassword(
+    @Body() dto: ChangePasswordDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<{ message: string }> {
+    return this.authService.changePassword(user.sub, dto);
   }
 
   @Post('logout')

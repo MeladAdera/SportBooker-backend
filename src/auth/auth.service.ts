@@ -15,7 +15,7 @@ import type { LoginDto } from './dto/login.dto';
 import type { LoginResponseDto } from './dto/login-response.dto';
 import type { ForgotPasswordDto } from './dto/forgot-password.dto';
 import type { ResetPasswordDto } from './dto/reset-password.dto';
-import type { RefreshResponseDto } from './dto/refresh-response.dto';
+import type { ChangePasswordDto } from './dto/change-password.dto';
 import type { RegisterDto } from './dto/register.dto';
 import type { RegisterResponseDto } from './dto/register-response.dto';
 
@@ -98,39 +98,25 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    const expiresInStr = this.config.get<string>(
-      'JWT_ACCESS_EXPIRES_IN',
-      '15m',
-    );
-    const expiresIn = parseExpiresInToSeconds(expiresInStr);
-
-    const accessToken = this.jwtService.sign(
-      {
-        sub: user.id,
-        role: user.role,
-        tenantId,
-      },
-      { expiresIn: expiresInStr },
-    );
-
     const refreshSecret = randomBytes(32).toString('hex');
     const refreshHash = await bcrypt.hash(refreshSecret, BCRYPT_ROUNDS);
-
     const refreshId = await this.authRepository.createRefreshToken(
       user.id,
       refreshHash,
     );
 
-    const refreshToken = `${refreshId}.${refreshSecret}`;
-
-    return {
-      accessToken,
-      refreshToken,
-      expiresIn,
-    };
+    return this.buildLoginResponse({
+      userId: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      tenantId,
+      refreshId,
+      refreshSecret,
+    });
   }
 
-  async refresh(refreshToken: string): Promise<RefreshResponseDto> {
+  async refresh(refreshToken: string): Promise<LoginResponseDto> {
     const parts = refreshToken.split('.');
     if (parts.length !== 2) {
       throw new UnauthorizedException('Invalid refresh token');
@@ -155,38 +141,57 @@ export class AuthService {
 
       await this.authRepository.deleteRefreshTokenById(client, id);
 
-      const expiresInStr = this.config.get<string>(
-        'JWT_ACCESS_EXPIRES_IN',
-        '15m',
-      );
-      const expiresIn = parseExpiresInToSeconds(expiresInStr);
-
-      const accessToken = this.jwtService.sign(
-        {
-          sub: row.user_id,
-          role: row.role,
-          tenantId: row.tenant_id,
-        },
-        { expiresIn: expiresInStr },
-      );
-
       const refreshSecret = randomBytes(32).toString('hex');
       const refreshHash = await bcrypt.hash(refreshSecret, BCRYPT_ROUNDS);
-
       const newRefreshId = await this.authRepository.insertRefreshToken(
         client,
         row.user_id,
         refreshHash,
       );
 
-      const newRefreshToken = `${newRefreshId}.${refreshSecret}`;
-
-      return {
-        accessToken,
-        refreshToken: newRefreshToken,
-        expiresIn,
-      };
+      return this.buildLoginResponse({
+        userId: row.user_id,
+        name: row.name,
+        email: row.email,
+        role: row.role,
+        tenantId: row.tenant_id,
+        refreshId: newRefreshId,
+        refreshSecret,
+      });
     });
+  }
+
+  private buildLoginResponse(params: {
+    userId: string;
+    name: string;
+    email: string;
+    role: string;
+    tenantId: string;
+    refreshId: string;
+    refreshSecret: string;
+  }): LoginResponseDto {
+    const expiresInStr = this.config.get<string>(
+      'JWT_ACCESS_EXPIRES_IN',
+      '15m',
+    );
+    const expiresIn = parseExpiresInToSeconds(expiresInStr);
+
+    const accessToken = this.jwtService.sign(
+      { sub: params.userId, role: params.role, tenantId: params.tenantId },
+      { expiresIn: expiresInStr },
+    );
+
+    return {
+      accessToken,
+      refreshToken: `${params.refreshId}.${params.refreshSecret}`,
+      expiresIn,
+      user: {
+        id: params.userId,
+        name: params.name,
+        email: params.email,
+        role: params.role,
+      },
+    };
   }
 
   async logout(userId: string): Promise<{ message: string }> {
@@ -225,6 +230,33 @@ export class AuthService {
     const resetLink = `${protocol}://${tenantSlug}.${appDomain}/reset-password?token=${encodeURIComponent(fullToken)}`;
 
     await this.emailService.sendPasswordResetEmail(user.email, resetLink);
+  }
+
+  async changePassword(
+    userId: string,
+    dto: ChangePasswordDto,
+  ): Promise<{ message: string }> {
+    const user = await this.usersRepository.findPasswordHashById(userId);
+    if (!user) {
+      throw new UnauthorizedException('User not found or inactive');
+    }
+
+    const valid = await bcrypt.compare(dto.currentPassword, user.password_hash);
+    if (!valid) {
+      throw new UnauthorizedException('Current password is incorrect');
+    }
+
+    const newHash = await bcrypt.hash(dto.newPassword, BCRYPT_ROUNDS);
+
+    await this.authRepository.runInTransaction(async (client) => {
+      await this.usersRepository.updatePasswordHash(client, userId, newHash);
+
+      if (dto.revokeOtherSessions) {
+        await this.authRepository.deleteRefreshTokensByUserId(client, userId);
+      }
+    });
+
+    return { message: 'Password changed successfully' };
   }
 
   async resetPassword(dto: ResetPasswordDto): Promise<{ message: string }> {

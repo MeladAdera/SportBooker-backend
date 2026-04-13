@@ -1,5 +1,19 @@
 import { ApiProperty } from '@nestjs/swagger';
 
+export class AuthUserDto {
+  @ApiProperty()
+  id!: string;
+
+  @ApiProperty()
+  name!: string;
+
+  @ApiProperty()
+  email!: string;
+
+  @ApiProperty()
+  role!: string;
+}
+
 export class LoginResponseDto {
   @ApiProperty({ description: 'JWT access token for Authorization header' })
   accessToken!: string;
@@ -9,4 +23,7 @@ export class LoginResponseDto {
 
   @ApiProperty({ description: 'Access token expiry in seconds', example: 900 })
   expiresIn!: number;
+
+  @ApiProperty({ type: AuthUserDto })
+  user!: AuthUserDto;
 }

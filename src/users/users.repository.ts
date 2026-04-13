@@ -17,6 +17,7 @@ export type UserRow = {
 
 export type UserForLoginRow = {
   id: string;
+  name: string;
   email: string;
   role: string;
   password_hash: string;
@@ -306,7 +307,7 @@ export class UsersRepository extends BaseRepository {
   ): Promise<UserForLoginRow | null> {
     const { rows } = await this.query<UserForLoginRow>(
       this.pool,
-      `SELECT id, email, role, password_hash, deleted_at, is_active
+      `SELECT id, name, email, role, password_hash, deleted_at, is_active
        FROM users
        WHERE tenant_id = $1 AND email = $2`,
       [tenantId, email],
@@ -337,6 +338,17 @@ export class UsersRepository extends BaseRepository {
       'UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2',
       [passwordHash, userId],
     );
+  }
+
+  async findPasswordHashById(
+    userId: string,
+  ): Promise<{ password_hash: string } | null> {
+    const { rows } = await this.query<{ password_hash: string }>(
+      this.pool,
+      `SELECT password_hash FROM users WHERE id = $1 AND deleted_at IS NULL AND is_active = true`,
+      [userId],
+    );
+    return rows[0] ?? null;
   }
 
   /** Row for GET /users (tenant staff list). */
