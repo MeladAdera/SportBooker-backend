@@ -93,13 +93,60 @@ Controller default roles: `super_admin`, `tenant_admin` — **overridden per han
 
 ## Matches (`/matches`)
 
+Player-facing browse. Tenant Host required.
+
 | Method | Path | Roles | Notes |
 |--------|------|-------|--------|
-| `GET` | `/matches` | *(none)* | List upcoming matches |
+| `GET` | `/matches` | *(none — any authenticated)* | List **upcoming** matches only (no cancelled, no past) |
 | `GET` | `/matches/:id` | *(none)* | Match detail (includes `venueName`, `venueAddress`, `venuePictureUrl`) |
 | `PATCH` | `/matches/:id` | tenant_admin, tenant_staff | Update match |
 | `POST` | `/matches/:id/cancel` | tenant_admin | Cancel + refunds |
 | `POST` | `/matches` | tenant_admin, tenant_staff | Create match |
+
+---
+
+## Tenant — Matches (`/tenant/matches`)
+
+Operator match management. Tenant Host required. All routes require JWT + `super_admin`, `tenant_admin`, or `tenant_staff`.
+
+| Method | Path | Roles | Notes |
+|--------|------|-------|--------|
+| `GET` | `/tenant/matches` | super_admin, tenant_admin, tenant_staff | All matches across **all statuses**; full filtering + pagination |
+
+### Query parameters
+
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `status` | `upcoming` \| `in_progress` \| `completed` \| `cancelled` | *(all)* | Filter by computed status |
+| `dateFrom` | `YYYY-MM-DD` | *(none)* | `scheduled_at` ≥ dateFrom (UTC date) |
+| `dateTo` | `YYYY-MM-DD` | *(none)* | `scheduled_at` ≤ dateTo (UTC date) |
+| `venueId` | UUID | *(none)* | Filter by venue |
+| `sportType` | `football` \| `padel` \| `cricket` \| `generic` | *(none)* | Filter by sport |
+| `search` | string (max 100) | *(none)* | Title substring, case-insensitive (ILIKE) |
+| `page` | number ≥ 1 | `1` | Pagination page |
+| `limit` | number 1–100 | `20` | Page size |
+
+### Response item fields
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `id` | UUID | |
+| `title` | string | |
+| `sportType` | enum | |
+| `scheduledAt` | ISO 8601 | |
+| `durationMins` | number | |
+| `pricePerPlayer` | number | |
+| `maxCapacity` | number | |
+| `status` | string | Computed: `upcoming`, `in_progress`, `completed`, `cancelled` |
+| `venueId` | UUID | |
+| `venueName` | string | |
+| `confirmedCount` | number | Confirmed bookings |
+| `waitlistCount` | number | Pending (waitlisted) bookings |
+| `spotsRemaining` | number | `maxCapacity − confirmedCount` |
+| `createdAt` | ISO 8601 | |
+| `updatedAt` | ISO 8601 | |
+
+Results are ordered by `scheduledAt DESC`.
 
 ---
 
@@ -132,8 +179,9 @@ Controller default roles: `super_admin`, `tenant_admin` — **overridden per han
 | Users | 9 |
 | Venues | 6 |
 | Matches | 5 |
+| Tenant — Matches | 1 |
 | Bookings | 3 |
-| **Total** | **37** |
+| **Total** | **38** |
 
 ---
 

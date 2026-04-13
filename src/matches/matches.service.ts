@@ -15,12 +15,16 @@ import type { MatchBrowseItemDto } from './dto/match-browse-item.dto';
 import type { MatchDetailResponseDto } from './dto/match-detail-response.dto';
 import type { MatchRosterPlayerDto } from './dto/match-roster-player.dto';
 import type { ListMatchesQueryDto } from './dto/list-matches-query.dto';
+import type { ListTenantMatchesQueryDto } from './dto/list-tenant-matches-query.dto';
+import type { OperatorMatchItemDto } from './dto/operator-match-item.dto';
+import type { PaginatedOperatorMatchesDto } from './dto/paginated-operator-matches.dto';
 import type { MatchResponseDto } from './dto/match-response.dto';
 import type { PaginatedMatchesListDto } from './dto/paginated-matches-list.dto';
 import {
   MatchesRepository,
   type MatchBrowseRow,
   type MatchDetailRow,
+  type MatchOperatorRow,
   type MatchRow,
 } from './matches.repository';
 import { VenuesRepository } from '../venues/venues.repository';
@@ -83,6 +87,41 @@ export class MatchesService {
       limit,
       total,
       items: rows.map((row) => this.toBrowseItemDto(row)),
+    };
+  }
+
+  async listForOperator(
+    tenantId: string,
+    query: ListTenantMatchesQueryDto,
+  ): Promise<PaginatedOperatorMatchesDto> {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+    const offset = (page - 1) * limit;
+
+    const filter = {
+      tenantId,
+      status: query.status ?? null,
+      dateFrom: query.dateFrom ?? null,
+      dateTo: query.dateTo ?? null,
+      venueId: query.venueId ?? null,
+      sportType: query.sportType ?? null,
+      search: query.search ?? null,
+    };
+
+    const [total, rows] = await Promise.all([
+      this.matchesRepository.countMatchesForOperator(filter),
+      this.matchesRepository.findMatchesForOperator({
+        ...filter,
+        limit,
+        offset,
+      }),
+    ]);
+
+    return {
+      page,
+      limit,
+      total,
+      items: rows.map((row) => this.toOperatorItemDto(row)),
     };
   }
 
@@ -342,6 +381,26 @@ export class MatchesService {
       spotsRemaining: Number(row.spots_remaining),
       status: row.status,
       venueName: row.venue_name,
+    };
+  }
+
+  private toOperatorItemDto(row: MatchOperatorRow): OperatorMatchItemDto {
+    return {
+      id: row.id,
+      title: row.title,
+      sportType: row.sport_type as VenueSportType,
+      scheduledAt: row.scheduled_at.toISOString(),
+      durationMins: row.duration_mins,
+      pricePerPlayer: Number(row.price_per_player),
+      maxCapacity: row.max_players ?? 0,
+      status: row.status,
+      venueId: row.venue_id,
+      venueName: row.venue_name,
+      confirmedCount: row.confirmed_count,
+      waitlistCount: row.waitlist_count,
+      spotsRemaining: Number(row.spots_remaining),
+      createdAt: row.created_at.toISOString(),
+      updatedAt: row.updated_at.toISOString(),
     };
   }
 

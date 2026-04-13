@@ -51,6 +51,25 @@ export type MatchBrowseRow = {
   spots_remaining: number;
 };
 
+/** Row for operator match management list (all statuses). */
+export type MatchOperatorRow = {
+  id: string;
+  title: string;
+  sport_type: string;
+  scheduled_at: Date;
+  duration_mins: number;
+  price_per_player: string;
+  max_players: number | null;
+  status: string;
+  venue_id: string;
+  venue_name: string;
+  confirmed_count: number;
+  waitlist_count: number;
+  spots_remaining: number;
+  created_at: Date;
+  updated_at: Date;
+};
+
 /**
  * Computes the effective match status from stored data + current time.
  * Only 'scheduled' and 'cancelled' are stored; the rest are derived.
@@ -357,6 +376,107 @@ export class MatchesRepository extends BaseRepository {
       values,
     );
     return rows[0] ?? null;
+  }
+
+  /**
+   * Shared FROM clause for operator match queries (all statuses, no active-venue restriction).
+   * Params: $1 tenantId, $2 status, $3 dateFrom, $4 dateTo, $5 venueId, $6 sportType, $7 search
+   */
+  private static readonly operatorMatchesFrom = `
+    FROM matches m
+    INNER JOIN venues v ON v.id = m.venue_id
+    LEFT JOIN (
+      SELECT match_id,
+        COUNT(*) FILTER (WHERE status = 'confirmed')::int AS confirmed_count,
+        COUNT(*) FILTER (WHERE status = 'pending')::int   AS waitlist_count
+      FROM bookings
+      GROUP BY match_id
+    ) bc ON bc.match_id = m.id
+    WHERE v.tenant_id = $1
+      AND (
+        $2::text IS NULL
+        OR (${COMPUTED_STATUS_SQL}) = $2
+      )
+      AND ($3::date IS NULL OR (m.scheduled_at AT TIME ZONE 'UTC')::date >= $3::date)
+      AND ($4::date IS NULL OR (m.scheduled_at AT TIME ZONE 'UTC')::date <= $4::date)
+      AND ($5::uuid IS NULL OR m.venue_id = $5)
+      AND ($6::text IS NULL OR m.sport_type = $6::sport_type)
+      AND ($7::text IS NULL OR m.title ILIKE '%' || $7 || '%')`;
+
+  async countMatchesForOperator(params: {
+    tenantId: string;
+    status: string | null;
+    dateFrom: string | null;
+    dateTo: string | null;
+    venueId: string | null;
+    sportType: string | null;
+    search: string | null;
+  }): Promise<number> {
+    const { rows } = await this.query<{ count: string }>(
+      this.pool,
+      `SELECT COUNT(*)::text AS count
+      ${MatchesRepository.operatorMatchesFrom}`,
+      [
+        params.tenantId,
+        params.status,
+        params.dateFrom,
+        params.dateTo,
+        params.venueId,
+        params.sportType,
+        params.search,
+      ],
+    );
+    return parseInt(rows[0]?.count ?? '0', 10);
+  }
+
+  async findMatchesForOperator(params: {
+    tenantId: string;
+    status: string | null;
+    dateFrom: string | null;
+    dateTo: string | null;
+    venueId: string | null;
+    sportType: string | null;
+    search: string | null;
+    limit: number;
+    offset: number;
+  }): Promise<MatchOperatorRow[]> {
+    const { rows } = await this.query<MatchOperatorRow>(
+      this.pool,
+      `SELECT
+        m.id,
+        m.title,
+        m.sport_type,
+        m.scheduled_at,
+        m.duration_mins,
+        m.price_per_player,
+        m.max_players,
+        ${COMPUTED_STATUS_SQL} AS status,
+        m.venue_id,
+        v.name AS venue_name,
+        COALESCE(bc.confirmed_count, 0) AS confirmed_count,
+        COALESCE(bc.waitlist_count, 0)  AS waitlist_count,
+        GREATEST(
+          0,
+          COALESCE(m.max_players, 0) - COALESCE(bc.confirmed_count, 0)
+        ) AS spots_remaining,
+        m.created_at,
+        m.updated_at
+      ${MatchesRepository.operatorMatchesFrom}
+      ORDER BY m.scheduled_at DESC
+      LIMIT $8 OFFSET $9`,
+      [
+        params.tenantId,
+        params.status,
+        params.dateFrom,
+        params.dateTo,
+        params.venueId,
+        params.sportType,
+        params.search,
+        params.limit,
+        params.offset,
+      ],
+    );
+    return rows;
   }
 
   async insertMatch(input: {
