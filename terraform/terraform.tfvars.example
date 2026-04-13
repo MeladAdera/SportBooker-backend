@@ -18,6 +18,10 @@ jwt_access_secret = "change-me-to-a-random-string-at-least-32-chars"
 # stripe_secret_key     = "sk_live_xxx"
 # stripe_webhook_secret = "whsec_xxx"
 
+# Ziina — required to encrypt/decrypt tenant Ziina tokens at rest
+# Generate with: openssl rand -hex 32
+# ziina_encryption_key = "your-64-hex-char-key-here"
+
 # GitHub (for CI/CD OIDC)
 github_repo   = "your-username/SportBooker"
 github_branch = "main"

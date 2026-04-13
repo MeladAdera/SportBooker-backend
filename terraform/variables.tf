@@ -120,6 +120,13 @@ variable "stripe_webhook_secret" {
   sensitive   = true
 }
 
+variable "ziina_encryption_key" {
+  description = "AES-256-GCM key for encrypting Ziina tokens at rest (64 hex chars). Generate: openssl rand -hex 32"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 # ── GitHub OIDC ──────────────────────────────────────────────────────
 
 variable "github_repo" {

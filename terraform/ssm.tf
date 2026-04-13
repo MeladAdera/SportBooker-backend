@@ -48,3 +48,11 @@ resource "aws_ssm_parameter" "openapi_docs_token" {
   type  = "SecureString"
   value = random_password.openapi_docs_token.result
 }
+
+resource "aws_ssm_parameter" "ziina_encryption_key" {
+  name  = "${local.ssm_prefix}/ZIINA_ENCRYPTION_KEY"
+  type  = "SecureString"
+  value = var.ziina_encryption_key != "" ? var.ziina_encryption_key : "placeholder"
+
+  lifecycle { ignore_changes = [value] }
+}
