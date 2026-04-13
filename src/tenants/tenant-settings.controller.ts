@@ -14,6 +14,7 @@ import {
   ApiOperation,
   ApiTags,
   ApiUnauthorizedResponse,
+  ApiUnprocessableEntityResponse,
 } from '@nestjs/swagger';
 import { ApiWrappedOkResponse } from '../common/decorators/api-wrapped-response.decorator';
 import type { Tenant } from '../common/tenant.types';
@@ -61,6 +62,10 @@ export class TenantSettingsController {
   @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
   @ApiForbiddenResponse({ description: 'Super admin only' })
   @ApiNotFoundResponse({ description: 'Tenant not found' })
+  @ApiUnprocessableEntityResponse({
+    description:
+      'Ziina token saved but webhook registration failed (e.g. missing write_webhooks scope or non-public webhook URL)',
+  })
   async updateSettings(
     @TenantDecorator() tenant: Tenant,
     @Body() dto: UpdateTenantDto,

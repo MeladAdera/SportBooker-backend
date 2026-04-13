@@ -23,6 +23,7 @@ import type { TenantAdminListRow, TenantRow } from './tenants.repository';
 import { TenantsRepository } from './tenants.repository';
 import { UsersRepository } from '../users/users.repository';
 import { PaymentsService } from '../payments/payments.service';
+import { CryptoService } from '../common/crypto/crypto.service';
 
 const PG_UNIQUE_VIOLATION = '23505';
 const BCRYPT_ROUNDS = 12;
@@ -35,6 +36,7 @@ export class TenantsService {
     private readonly tenantsRepository: TenantsRepository,
     private readonly usersRepository: UsersRepository,
     private readonly paymentsService: PaymentsService,
+    private readonly cryptoService: CryptoService,
   ) {}
 
   async getTenantByIdForAdmin(tenantId: string): Promise<TenantResponseDto> {
@@ -119,9 +121,10 @@ export class TenantsService {
 
     if (dto.ziinaAccessToken !== undefined) {
       const webhookSecret = crypto.randomBytes(32).toString('hex');
+      const encryptedToken = this.cryptoService.encrypt(dto.ziinaAccessToken);
       await this.tenantsRepository.updateZiinaCredentials(
         tenantId,
-        dto.ziinaAccessToken,
+        encryptedToken,
         webhookSecret,
       );
       // Registers the webhook URL with Ziina (throws UnprocessableEntityException on failure)

@@ -42,6 +42,12 @@ export const envSchema = Joi.object({
   /** S3 bucket name for venue uploads. When set, uploads go to S3 instead of local disk. */
   S3_BUCKET_NAME: Joi.string().optional().allow(''),
   S3_REGION: Joi.string().optional().allow(''),
+  /**
+   * AES-256-GCM key for encrypting Ziina access tokens at rest.
+   * Must be exactly 64 hex characters (32 bytes).
+   * Generate with: openssl rand -hex 32
+   */
+  ZIINA_ENCRYPTION_KEY: Joi.string().length(64).optional().allow(''),
   SENDGRID_API_KEY: Joi.string().optional().allow(''),
   EMAIL_FROM: Joi.string().email().optional().allow(''),
   /**

@@ -88,6 +88,10 @@ describe('TenantsService', () => {
       {
         registerWebhookForTenant: jest.fn(),
       } as unknown as import('../payments/payments.service').PaymentsService,
+      {
+        encrypt: jest.fn((v: string) => v),
+        decrypt: jest.fn((v: string) => v),
+      } as unknown as import('../common/crypto/crypto.service').CryptoService,
     );
   });
 

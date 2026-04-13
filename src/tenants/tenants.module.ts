@@ -6,6 +6,7 @@ import { TenantSettingsController } from './tenant-settings.controller';
 import { TenantsRepository } from './tenants.repository';
 import { TenantsService } from './tenants.service';
 import { PaymentsModule } from '../payments/payments.module';
+import { CryptoService } from '../common/crypto/crypto.service';
 
 @Module({
   imports: [PaymentsModule],
@@ -16,6 +17,7 @@ import { PaymentsModule } from '../payments/payments.module';
     UsersRepository,
     RolesGuard,
     TenantRequiredGuard,
+    CryptoService,
   ],
   exports: [TenantsService],
 })

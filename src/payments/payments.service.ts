@@ -8,6 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 import { PaymentsRepository } from './payments.repository';
 import { ZiinaClient } from './ziina.client';
+import { CryptoService } from '../common/crypto/crypto.service';
 import type { TopupResponseDto } from './dto/topup-response.dto';
 import type { Tenant } from '../common/tenant.types';
 
@@ -27,6 +28,7 @@ export class PaymentsService {
     private readonly paymentsRepository: PaymentsRepository,
     private readonly ziinaClient: ZiinaClient,
     private readonly config: ConfigService,
+    private readonly cryptoService: CryptoService,
   ) {}
 
   async createTopup(params: {
@@ -43,6 +45,8 @@ export class PaymentsService {
       );
     }
 
+    const accessToken = this.cryptoService.decrypt(creds.ziina_access_token);
+
     const baseUrl = this.getPublicBaseUrl();
     const successUrl = `${baseUrl}/payments/topup/success`;
     const cancelUrl = `${baseUrl}/payments/topup/cancel`;
@@ -51,18 +55,15 @@ export class PaymentsService {
     // Ziina amounts are in base units (fils): 1 AED = 100 fils
     const amountInFils = Math.round(amount * 100);
 
-    const intent = await this.ziinaClient.createPaymentIntent(
-      creds.ziina_access_token,
-      {
-        amount: amountInFils,
-        currency_code: 'AED',
-        message: `Wallet top-up — ${amount} AED`,
-        success_url: successUrl,
-        cancel_url: cancelUrl,
-        failure_url: failureUrl,
-        test: this.config.get<string>('NODE_ENV') !== 'production',
-      },
-    );
+    const intent = await this.ziinaClient.createPaymentIntent(accessToken, {
+      amount: amountInFils,
+      currency_code: 'AED',
+      message: `Wallet top-up — ${amount} AED`,
+      success_url: successUrl,
+      cancel_url: cancelUrl,
+      failure_url: failureUrl,
+      test: this.config.get<string>('NODE_ENV') !== 'production',
+    });
 
     const record = await this.paymentsRepository.insertPaymentIntent({
       ziinaPaymentId: intent.id,
@@ -204,16 +205,25 @@ export class PaymentsService {
     const creds = await this.paymentsRepository.findZiinaCredentials(tenantId);
     if (!creds?.ziina_access_token || !creds.ziina_webhook_secret) return;
 
+    const accessToken = this.cryptoService.decrypt(creds.ziina_access_token);
     const webhookUrl = `${this.getPublicBaseUrl()}/payments/webhook`;
 
+    if (!webhookUrl.startsWith('https://')) {
+      this.logger.warn(
+        `Ziina webhook registration skipped for tenant ${tenantId}: ` +
+          `PUBLIC_BASE_URL is not a public HTTPS URL ("${webhookUrl}"). ` +
+          `Set PUBLIC_BASE_URL to your public HTTPS base URL to enable webhook registration.`,
+      );
+      return;
+    }
+
     try {
-      await this.ziinaClient.registerWebhook(creds.ziina_access_token, {
+      await this.ziinaClient.registerWebhook(accessToken, {
         url: webhookUrl,
         secret: creds.ziina_webhook_secret,
       });
       this.logger.log(`Ziina webhook registered for tenant ${tenantId}`);
     } catch (err) {
-      // Non-fatal: log and surface in the response from TenantsService
       this.logger.error(
         `Failed to register Ziina webhook for tenant ${tenantId}`,
         err,

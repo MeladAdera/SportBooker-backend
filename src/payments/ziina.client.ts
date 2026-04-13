@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 
 const ZIINA_API_BASE = 'https://api-v2.ziina.com/api';
-const ZIINA_AUTH_BASE = 'https://auth.ziina.com';
 
 export type ZiinaPaymentIntentStatus =
   | 'requires_payment_instrument'
@@ -78,7 +77,7 @@ export class ZiinaClient {
     accessToken: string,
     params: RegisterWebhookParams,
   ): Promise<void> {
-    const res = await fetch(`${ZIINA_AUTH_BASE}/webhook`, {
+    const res = await fetch(`${ZIINA_API_BASE}/webhook`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
