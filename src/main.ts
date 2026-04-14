@@ -44,7 +44,7 @@ async function bootstrap(): Promise<void> {
   const config = app.get(ConfigService);
 
   const staticOrigins = parseCorsOrigins(config.get<string>('CORS_ORIGINS'));
-  const appDomain = config.getOrThrow<string>('APP_DOMAIN');
+  const appDomain = config.getOrThrow<string>('TENANT_HOST_SUFFIX');
   const corsOrigin = buildCorsOrigin(staticOrigins, appDomain);
   if (corsOrigin) {
     app.enableCors({

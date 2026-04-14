@@ -40,20 +40,20 @@ Sportbooker is a **white-label SaaS platform** for sports clubs and organizers (
 
 ## 2. Core Concepts Glossary
 
-| Term | Definition |
-|------|-----------|
-| **Tenant** | A sports club or organizer that uses the platform. Has its own slug-based subdomain, its own users, venues, and matches. Isolated from other tenants. |
-| **Venue** | A physical sports facility owned by a tenant. Has a name, address, map URL, photo, and a list of sport types it supports. |
-| **Match** | A scheduled sports game at a venue. Has a date/time, duration, price per player, max player count, and a status. |
-| **Booking** | A player's reservation for a match. Can be `confirmed` (active spot) or `pending` (waitlisted). |
-| **Waitlist** | When a match is full, new bookings become `pending` (waitlisted). The player is still charged. They get a refund if they cancel or never get promoted. |
-| **Wallet** | Each user has an internal balance. All payments go through this wallet — no external payment at booking time. Top-up is a separate future concern (likely Stripe). |
-| **Wallet Transaction** | A record of every balance change: `debit` (booking charge), `refund` (cancel/waitlist), `credit` or `topup` (future). |
-| **Cancel Cutoff** | A per-tenant setting (`cancel_cutoff_hours`, default 24h). Players cannot cancel a confirmed booking within this many hours of match start. |
-| **Position** | Each booking has a position: `field_player` or `goalkeeper`. Maximum 2 confirmed goalkeepers per match. |
-| **Soft Delete** | Users are not hard-deleted. They get a `deleted_at` timestamp and `is_active = false`. They cannot log in but their data (bookings, transactions) is preserved. |
-| **FIFO Promotion** | When a confirmed spot opens up, the oldest (first-created) eligible pending booking is promoted automatically. |
-| **Platform Tenant** | A special system tenant (slug: `platform`, `is_active = true`) that owns the `platform_admin` user. It has no subdomain-accessible content — it exists only to satisfy the `tenant_id NOT NULL` constraint on the users table. |
+| Term                   | Definition                                                                                                                                                                                                                     |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Tenant**             | A sports club or organizer that uses the platform. Has its own slug-based subdomain, its own users, venues, and matches. Isolated from other tenants.                                                                          |
+| **Venue**              | A physical sports facility owned by a tenant. Has a name, address, map URL, photo, and a list of sport types it supports.                                                                                                      |
+| **Match**              | A scheduled sports game at a venue. Has a date/time, duration, price per player, max player count, and a status.                                                                                                               |
+| **Booking**            | A player's reservation for a match. Can be `confirmed` (active spot) or `pending` (waitlisted).                                                                                                                                |
+| **Waitlist**           | When a match is full, new bookings become `pending` (waitlisted). The player is still charged. They get a refund if they cancel or never get promoted.                                                                         |
+| **Wallet**             | Each user has an internal balance. All payments go through this wallet — no external payment at booking time. Top-up is a separate future concern (likely Stripe).                                                             |
+| **Wallet Transaction** | A record of every balance change: `debit` (booking charge), `refund` (cancel/waitlist), `credit` or `topup` (future).                                                                                                          |
+| **Cancel Cutoff**      | A per-tenant setting (`cancel_cutoff_hours`, default 24h). Players cannot cancel a confirmed booking within this many hours of match start.                                                                                    |
+| **Position**           | Each booking has a position: `field_player` or `goalkeeper`. Maximum 2 confirmed goalkeepers per match.                                                                                                                        |
+| **Soft Delete**        | Users are not hard-deleted. They get a `deleted_at` timestamp and `is_active = false`. They cannot log in but their data (bookings, transactions) is preserved.                                                                |
+| **FIFO Promotion**     | When a confirmed spot opens up, the oldest (first-created) eligible pending booking is promoted automatically.                                                                                                                 |
+| **Platform Tenant**    | A special system tenant (slug: `platform`, `is_active = true`) that owns the `platform_admin` user. It has no subdomain-accessible content — it exists only to satisfy the `tenant_id NOT NULL` constraint on the users table. |
 
 ---
 
@@ -64,7 +64,7 @@ Sportbooker is a **white-label SaaS platform** for sports clubs and organizers (
 Every request to a tenant-scoped route is resolved by the `TenantMiddleware`:
 
 1. Reads the `Host` (or `X-Forwarded-Host`) header.
-2. Extracts the subdomain before `APP_DOMAIN` (e.g., `acfc` from `acfc.sportbooker.com`).
+2. Extracts the subdomain before `TENANT_HOST_SUFFIX` (e.g., `acfc` from `acfc.sportbooker.com`).
 3. Looks up the `tenants` table by `slug = 'acfc'` (with a 60-second in-memory cache).
 4. If the tenant does not exist → `404`.
 5. If the tenant exists but `is_active = false` → `403`.
@@ -106,31 +106,31 @@ platform_admin (5)   ← platform-level, manages all tenants
 
 ### Permission Matrix
 
-| Action | platform_admin | super_admin | tenant_admin | tenant_staff | player |
-|--------|:--------------:|:-----------:|:------------:|:------------:|:------:|
-| Create tenant (+ initial super_admin) | ✅ | ❌ | ❌ | ❌ | ❌ |
-| List / view all tenants | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Update any tenant (PATCH /admin/tenants/:id) | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Activate / deactivate any tenant | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Update own tenant settings (PATCH /tenant/settings) | ❌ | ✅ | ❌ | ❌ | ❌ |
-| View own tenant settings (GET /tenant/settings) | ❌ | ✅ | ❌ | ❌ | ❌ |
-| List all users in tenant | ❌ | ✅ | ✅ | ✅ | ❌ |
-| List deleted users (`includeDeleted`) | ❌ | ✅ | ✅ | ❌ | ❌ |
-| View own profile | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Update own profile | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Assign / change user roles | ❌ | ✅ | ✅ (cannot touch super_admin/platform_admin) | ❌ | ❌ |
-| Delete own account | ❌ | ❌ | ❌ | ❌ | ✅ |
-| Create venues | ❌ | ✅ | ✅ | ✅ | ❌ |
-| Update venues | ❌ | ✅ | ✅ | ✅ | ❌ |
-| Deactivate venues | ❌ | ✅ | ✅ | ❌ | ❌ |
-| Activate venues | ❌ | ✅ | ✅ | ✅ | ❌ |
-| Create matches | ❌ | ✅ | ✅ | ✅ | ❌ |
-| Update matches | ❌ | ✅ | ✅ | ✅ | ❌ |
-| Cancel matches | ❌ | ✅ | ✅ | ❌ | ❌ |
-| Create bookings | ❌ | ❌ | ❌ | ❌ | ✅ |
-| Cancel own booking | ❌ | ❌ | ❌ | ❌ | ✅ |
-| View own bookings | ❌ | ❌ | ❌ | ❌ | ✅ |
-| View own wallet | ❌ | ❌ | ❌ | ❌ | ✅ |
+| Action                                              | platform_admin | super_admin |                 tenant_admin                 | tenant_staff | player |
+| --------------------------------------------------- | :------------: | :---------: | :------------------------------------------: | :----------: | :----: |
+| Create tenant (+ initial super_admin)               |       ✅       |     ❌      |                      ❌                      |      ❌      |   ❌   |
+| List / view all tenants                             |       ✅       |     ❌      |                      ❌                      |      ❌      |   ❌   |
+| Update any tenant (PATCH /admin/tenants/:id)        |       ✅       |     ❌      |                      ❌                      |      ❌      |   ❌   |
+| Activate / deactivate any tenant                    |       ✅       |     ❌      |                      ❌                      |      ❌      |   ❌   |
+| Update own tenant settings (PATCH /tenant/settings) |       ❌       |     ✅      |                      ❌                      |      ❌      |   ❌   |
+| View own tenant settings (GET /tenant/settings)     |       ❌       |     ✅      |                      ❌                      |      ❌      |   ❌   |
+| List all users in tenant                            |       ❌       |     ✅      |                      ✅                      |      ✅      |   ❌   |
+| List deleted users (`includeDeleted`)               |       ❌       |     ✅      |                      ✅                      |      ❌      |   ❌   |
+| View own profile                                    |       ✅       |     ✅      |                      ✅                      |      ✅      |   ✅   |
+| Update own profile                                  |       ✅       |     ✅      |                      ✅                      |      ✅      |   ✅   |
+| Assign / change user roles                          |       ❌       |     ✅      | ✅ (cannot touch super_admin/platform_admin) |      ❌      |   ❌   |
+| Delete own account                                  |       ❌       |     ❌      |                      ❌                      |      ❌      |   ✅   |
+| Create venues                                       |       ❌       |     ✅      |                      ✅                      |      ✅      |   ❌   |
+| Update venues                                       |       ❌       |     ✅      |                      ✅                      |      ✅      |   ❌   |
+| Deactivate venues                                   |       ❌       |     ✅      |                      ✅                      |      ❌      |   ❌   |
+| Activate venues                                     |       ❌       |     ✅      |                      ✅                      |      ✅      |   ❌   |
+| Create matches                                      |       ❌       |     ✅      |                      ✅                      |      ✅      |   ❌   |
+| Update matches                                      |       ❌       |     ✅      |                      ✅                      |      ✅      |   ❌   |
+| Cancel matches                                      |       ❌       |     ✅      |                      ✅                      |      ❌      |   ❌   |
+| Create bookings                                     |       ❌       |     ❌      |                      ❌                      |      ❌      |   ✅   |
+| Cancel own booking                                  |       ❌       |     ❌      |                      ❌                      |      ❌      |   ✅   |
+| View own bookings                                   |       ❌       |     ❌      |                      ❌                      |      ❌      |   ✅   |
+| View own wallet                                     |       ❌       |     ❌      |                      ❌                      |      ❌      |   ✅   |
 
 ### Role Assignment Rules
 
@@ -149,93 +149,93 @@ platform_admin (5)   ← platform-level, manages all tenants
 
 ### `tenants`
 
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | UUID | PK |
-| `name` | text | Display name |
-| `slug` | text | Unique; used for subdomain; validated against reserved slugs |
-| `is_active` | boolean | Inactive = 403 on all tenant routes |
-| `timezone` | text | Default: `Asia/Dubai` |
-| `logo_url` | text | Optional |
-| `cancel_cutoff_hours` | integer | Default: 24. Minimum hours before match start a player can cancel a confirmed booking. |
-| `created_at`, `updated_at` | timestamp | — |
+| Column                     | Type      | Notes                                                                                  |
+| -------------------------- | --------- | -------------------------------------------------------------------------------------- |
+| `id`                       | UUID      | PK                                                                                     |
+| `name`                     | text      | Display name                                                                           |
+| `slug`                     | text      | Unique; used for subdomain; validated against reserved slugs                           |
+| `is_active`                | boolean   | Inactive = 403 on all tenant routes                                                    |
+| `timezone`                 | text      | Default: `Asia/Dubai`                                                                  |
+| `logo_url`                 | text      | Optional                                                                               |
+| `cancel_cutoff_hours`      | integer   | Default: 24. Minimum hours before match start a player can cancel a confirmed booking. |
+| `created_at`, `updated_at` | timestamp | —                                                                                      |
 
 **Reserved slugs** (cannot be used by real tenants): `api`, `admin`, `www`, `mail`, `static`, `app`, `dashboard`, `health`, `platform`.
 
 ### `users`
 
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | UUID | PK |
-| `tenant_id` | UUID | FK → tenants; every user belongs to a tenant (including `platform_admin`, who belongs to the `platform` system tenant) |
-| `email` | text | Unique per `(tenant_id, email)` |
-| `password_hash` | text | bcrypt |
-| `role` | `user_role` enum | `platform_admin`, `super_admin`, `tenant_admin`, `tenant_staff`, `player` |
-| `name` | text | Display name |
-| `phone` | text | Optional |
-| `photo_url` | text | Optional |
-| `wallet_balance` | numeric | Default: 0 |
-| `is_active` | boolean | Inactive users cannot log in |
-| `deleted_at` | timestamp | Soft delete marker |
-| `created_at`, `updated_at` | timestamp | — |
+| Column                     | Type             | Notes                                                                                                                  |
+| -------------------------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `id`                       | UUID             | PK                                                                                                                     |
+| `tenant_id`                | UUID             | FK → tenants; every user belongs to a tenant (including `platform_admin`, who belongs to the `platform` system tenant) |
+| `email`                    | text             | Unique per `(tenant_id, email)`                                                                                        |
+| `password_hash`            | text             | bcrypt                                                                                                                 |
+| `role`                     | `user_role` enum | `platform_admin`, `super_admin`, `tenant_admin`, `tenant_staff`, `player`                                              |
+| `name`                     | text             | Display name                                                                                                           |
+| `phone`                    | text             | Optional                                                                                                               |
+| `photo_url`                | text             | Optional                                                                                                               |
+| `wallet_balance`           | numeric          | Default: 0                                                                                                             |
+| `is_active`                | boolean          | Inactive users cannot log in                                                                                           |
+| `deleted_at`               | timestamp        | Soft delete marker                                                                                                     |
+| `created_at`, `updated_at` | timestamp        | —                                                                                                                      |
 
 ### `venues`
 
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | UUID | PK |
-| `tenant_id` | UUID | FK → tenants |
-| `name` | text | Unique per tenant |
-| `address` | text | — |
-| `maps_url` | text | Optional Google Maps link |
-| `picture_url` | text | Required (upload or URL) |
-| `sport_types` | `TEXT[]` | Array; CHECK constraint: must be subset of `{football, padel, cricket, generic}`, minimum 1 |
-| `is_active` | boolean | — |
-| `created_at`, `updated_at` | timestamp | — |
+| Column                     | Type      | Notes                                                                                       |
+| -------------------------- | --------- | ------------------------------------------------------------------------------------------- |
+| `id`                       | UUID      | PK                                                                                          |
+| `tenant_id`                | UUID      | FK → tenants                                                                                |
+| `name`                     | text      | Unique per tenant                                                                           |
+| `address`                  | text      | —                                                                                           |
+| `maps_url`                 | text      | Optional Google Maps link                                                                   |
+| `picture_url`              | text      | Required (upload or URL)                                                                    |
+| `sport_types`              | `TEXT[]`  | Array; CHECK constraint: must be subset of `{football, padel, cricket, generic}`, minimum 1 |
+| `is_active`                | boolean   | —                                                                                           |
+| `created_at`, `updated_at` | timestamp | —                                                                                           |
 
 ### `matches`
 
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | UUID | PK |
-| `venue_id` | UUID | FK → venues |
-| `title` | text | — |
-| `sport_type` | `sport_type` enum | One of the valid sport types |
-| `scheduled_at` | timestamp | Must be in the future on create/update |
-| `duration_mins` | integer | ≥ 1 |
-| `price_per_player` | numeric | — |
-| `max_players` | integer | — |
-| `status` | `match_status` enum | Stored default: `scheduled`. Computed at query time: `upcoming`, `in_progress`, `completed` |
-| `created_at`, `updated_at` | timestamp | — |
+| Column                     | Type                | Notes                                                                                       |
+| -------------------------- | ------------------- | ------------------------------------------------------------------------------------------- |
+| `id`                       | UUID                | PK                                                                                          |
+| `venue_id`                 | UUID                | FK → venues                                                                                 |
+| `title`                    | text                | —                                                                                           |
+| `sport_type`               | `sport_type` enum   | One of the valid sport types                                                                |
+| `scheduled_at`             | timestamp           | Must be in the future on create/update                                                      |
+| `duration_mins`            | integer             | ≥ 1                                                                                         |
+| `price_per_player`         | numeric             | —                                                                                           |
+| `max_players`              | integer             | —                                                                                           |
+| `status`                   | `match_status` enum | Stored default: `scheduled`. Computed at query time: `upcoming`, `in_progress`, `completed` |
+| `created_at`, `updated_at` | timestamp           | —                                                                                           |
 
 Unique constraint: `(venue_id, scheduled_at)` — two matches cannot start at the exact same time at the same venue. Overlap detection in code extends this to prevent time-window collisions.
 
 ### `bookings`
 
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | UUID | PK |
-| `match_id` | UUID | FK → matches |
-| `user_id` | UUID | FK → users |
-| `status` | `booking_status` enum | `pending` (waitlist), `confirmed`, `cancelled` |
-| `paid_amount` | numeric | Amount deducted from wallet on booking. Refunded on cancel or match cancel. |
-| `position` | `booking_position` enum | `field_player` or `goalkeeper` |
-| `cancelled_at` | timestamp | Set on cancel |
-| `refunded_at` | timestamp | Set when wallet refund is issued |
-| `created_at`, `updated_at` | timestamp | — |
+| Column                     | Type                    | Notes                                                                       |
+| -------------------------- | ----------------------- | --------------------------------------------------------------------------- |
+| `id`                       | UUID                    | PK                                                                          |
+| `match_id`                 | UUID                    | FK → matches                                                                |
+| `user_id`                  | UUID                    | FK → users                                                                  |
+| `status`                   | `booking_status` enum   | `pending` (waitlist), `confirmed`, `cancelled`                              |
+| `paid_amount`              | numeric                 | Amount deducted from wallet on booking. Refunded on cancel or match cancel. |
+| `position`                 | `booking_position` enum | `field_player` or `goalkeeper`                                              |
+| `cancelled_at`             | timestamp               | Set on cancel                                                               |
+| `refunded_at`              | timestamp               | Set when wallet refund is issued                                            |
+| `created_at`, `updated_at` | timestamp               | —                                                                           |
 
 Partial unique index: `(match_id, user_id)` where `status IN ('pending', 'confirmed')` — a player can only have one active booking per match (cancelled bookings do not block re-booking).
 
 ### `wallet_transactions`
 
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | UUID | PK |
-| `user_id` | UUID | FK → users |
-| `amount` | numeric | Always positive; direction implied by `type` |
-| `type` | `wallet_tx_type` enum | `debit`, `refund`, `credit`, `topup` |
-| `reference_id` | UUID | Optional; links to the booking that caused the transaction |
-| `created_at` | timestamp | — |
+| Column         | Type                  | Notes                                                      |
+| -------------- | --------------------- | ---------------------------------------------------------- |
+| `id`           | UUID                  | PK                                                         |
+| `user_id`      | UUID                  | FK → users                                                 |
+| `amount`       | numeric               | Always positive; direction implied by `type`               |
+| `type`         | `wallet_tx_type` enum | `debit`, `refund`, `credit`, `topup`                       |
+| `reference_id` | UUID                  | Optional; links to the booking that caused the transaction |
+| `created_at`   | timestamp             | —                                                          |
 
 ### `refresh_tokens`
 
@@ -258,7 +258,7 @@ The platform admin is the sole operator of the entire SaaS platform. They exist 
         │
         ▼
     Logs in via POST /auth/login
-    Host: platform.<APP_DOMAIN>
+    Host: platform.<TENANT_HOST_SUFFIX>
     JWT: { role: 'platform_admin', tenantId: <platform_tenant_id> }
         │
         ▼
@@ -279,6 +279,7 @@ The platform admin is the sole operator of the entire SaaS platform. They exist 
 ```
 
 **Key constraints:**
+
 - Cannot be assigned via the API — seeded only.
 - Cannot access tenant-scoped routes (venues, matches, users, bookings).
 - JWT's `tenantId` is the `platform` tenant ID; `TenantUserMatchGuard` skips on `admin/tenants` routes (no `req.tenant`).
@@ -295,7 +296,7 @@ The super admin is the **top authority within a single tenant**. They are create
         │
         ▼
     Logs in via POST /auth/login
-    Host: <tenant-slug>.<APP_DOMAIN>
+    Host: <tenant-slug>.<TENANT_HOST_SUFFIX>
     JWT: { role: 'super_admin', tenantId: <tenant_id> }
         │
         ▼
@@ -324,6 +325,7 @@ The super admin is the **top authority within a single tenant**. They are create
 ```
 
 **Key constraints:**
+
 - Scoped to a single tenant — cannot operate across tenants.
 - Cannot activate/deactivate tenants (platform_admin exclusive).
 - Cannot be assigned via `PATCH /users/:id/role` (not in `ASSIGNABLE_ROLE_VALUES`).
@@ -381,6 +383,7 @@ OR
 ```
 
 **Key constraints:**
+
 - Cannot delete their own account (only `player` can via `DELETE /users/me`).
 - Cannot modify `super_admin` or `platform_admin` users.
 - Cannot update tenant settings (super_admin exclusive via `/tenant/settings`).
@@ -425,6 +428,7 @@ Staff are operational employees — they manage day-to-day venue and match opera
 ```
 
 **Key constraints:**
+
 - Read-only user access (no role changes).
 - Cannot perform destructive venue or match actions.
 - Cannot see soft-deleted users in user list.
@@ -503,6 +507,7 @@ The player is the end customer — the person who books and pays for spots in ma
 ```
 
 **Key constraints:**
+
 - Only role that can book and cancel bookings.
 - Only role that can delete their own account.
 - Confirmed cancellations never get a refund (penalty for no-shows).
@@ -532,16 +537,17 @@ platform_admin → POST /admin/tenants
     └── INSERT into users (role = 'super_admin', tenant_id = new tenant id)
         │
         ▼
-    Subdomain now resolves: slug.APP_DOMAIN
+    Subdomain now resolves: slug.TENANT_HOST_SUFFIX
         │
         ▼
-    Super admin logs in on slug.APP_DOMAIN
+    Super admin logs in on slug.TENANT_HOST_SUFFIX
         │
         ▼
     Creates venues → creates matches → assigns tenant admins → invites players
 ```
 
 **Deactivating a tenant (platform_admin only):**
+
 - `POST /admin/tenants/:id/deactivate`
 - All subsequent requests to that tenant's Host → `403`
 - Existing data (users, venues, bookings) is preserved in DB
@@ -574,11 +580,13 @@ platform_admin → POST /admin/tenants
 ```
 
 **Create venue rules:**
+
 - `name` must be unique per tenant.
 - `sport_types` must be a non-empty array from: `football`, `padel`, `cricket`, `generic`.
 - Must provide either an uploaded picture file (multipart) or a `pictureUrl`.
 
 **Match `sport_type` constraint:**
+
 - The `sport_type` on a match uses the broader `sport_type` enum (which includes `basketball`, `tennis`, `volleyball`, etc.).
 - Venue `sport_types` array only supports the 4 venue-level types.
 
@@ -601,12 +609,14 @@ platform_admin → POST /admin/tenants
 ```
 
 **Create match rules:**
+
 - Venue must belong to same tenant and be active.
 - `scheduled_at` must be in the future.
 - No overlapping match at the same venue: the time window `[scheduled_at, scheduled_at + duration_mins)` must not overlap any other match at that venue. Touching edges (back-to-back) are allowed.
 - Unique constraint: no two matches can have the exact same `(venue_id, scheduled_at)`.
 
 **Update match rules:**
+
 - Cannot update a `cancelled` match.
 - `max_players` cannot be set below the current confirmed booking count.
 - All create-time checks (overlap, future date) are re-applied on update (excluding self).
@@ -643,6 +653,7 @@ POST /matches/:id/cancel
 ```
 
 **Browse matches (any authenticated user, tenant-scoped):**
+
 - Only matches where `now() < scheduled_at` (i.e. computed status `upcoming`) are returned.
 - Only matches at active venues.
 - Filterable by: `sportType`, `venueId`, `date` (UTC calendar date), `available` (spots remaining > 0).
@@ -671,6 +682,7 @@ This is the most complex part of the business.
 ```
 
 **Goalkeeper cap:**
+
 - Max 2 confirmed goalkeepers per match.
 - If a player requests `position = goalkeeper` and there are already 2 confirmed goalkeepers but the match has outfield capacity, the GK booking goes to the **waitlist** (pending), not a hard rejection.
 - The player is charged immediately even in this case.
@@ -796,23 +808,25 @@ POST /matches/:matchId/bookings/:bookingId/cancel
 
 The wallet is a simple internal balance. There is no external payment integration yet.
 
-| Event | Wallet Change | Transaction Type |
-|-------|--------------|-----------------|
-| Book a match (confirmed) | − price_per_player | `debit` |
-| Book a match (waitlisted) | − price_per_player | `debit` |
-| Cancel confirmed booking | no change | — |
-| Cancel pending (waitlist) booking | + paid_amount | `refund` |
-| Match cancelled by admin | + paid_amount (all bookings) | `refund` |
-| FIFO promotion (prepaid) | no change | — |
-| Future: top-up | + amount | `topup` |
-| Future: credit | + amount | `credit` |
+| Event                             | Wallet Change                | Transaction Type |
+| --------------------------------- | ---------------------------- | ---------------- |
+| Book a match (confirmed)          | − price_per_player           | `debit`          |
+| Book a match (waitlisted)         | − price_per_player           | `debit`          |
+| Cancel confirmed booking          | no change                    | —                |
+| Cancel pending (waitlist) booking | + paid_amount                | `refund`         |
+| Match cancelled by admin          | + paid_amount (all bookings) | `refund`         |
+| FIFO promotion (prepaid)          | no change                    | —                |
+| Future: top-up                    | + amount                     | `topup`          |
+| Future: credit                    | + amount                     | `credit`         |
 
 **API exposure:**
+
 - `GET /users/me/wallet` — returns `{ balance, transactions[] }`
 - Transaction type `debit` is surfaced as `"deduction"` in the API response.
 - No public top-up endpoint exists yet.
 
 **Balance protection:**
+
 - Booking is rejected (before insert) if `wallet_balance < price_per_player`.
 - Wallet update uses `SELECT FOR UPDATE` on the user row to prevent race conditions.
 
@@ -842,8 +856,8 @@ body: { email, password }
   Issue opaque refresh token (stored hashed in refresh_tokens)
   Return: { accessToken, refreshToken, expiresIn }
 
-  platform_admin logs in via Host: platform.<APP_DOMAIN>
-  super_admin logs in via Host: <slug>.<APP_DOMAIN>
+  platform_admin logs in via Host: platform.<TENANT_HOST_SUFFIX>
+  super_admin logs in via Host: <slug>.<TENANT_HOST_SUFFIX>
 
 REFRESH:
 POST /auth/refresh (no tenant Host needed)
@@ -918,29 +932,29 @@ POST /auth/logout (JWT required)
 
 ## 8. Business Rules Enforced in Code
 
-| Rule | Where enforced | Error |
-|------|---------------|-------|
-| Tenant slug not reserved | `TenantsService` constants | 400 |
-| Inactive tenant | `TenantMiddleware` | 403 |
-| JWT tenant mismatch | `TenantUserMatchGuard` | 403 |
-| User must be active + not deleted to log in | `AuthService` | 401 |
-| Duplicate email per tenant | DB unique constraint | 409 |
-| Duplicate active booking (user + match) | DB partial unique index | 409 |
-| Booking must be in the future | `BookingsRepository` | 422 |
-| Wallet must have sufficient balance | `BookingsRepository` | 422 |
-| Cancel confirmed booking only before cutoff | `BookingsRepository` | 422 |
-| Cannot delete account with confirmed upcoming bookings | `UsersService` | 409 |
-| Venue deactivation blocked by active matches | `VenuesService` | 409 |
-| Match overlap at same venue | `MatchesRepository` | 409 |
-| Max 2 confirmed goalkeepers | `BookingsRepository` | → waitlist (not hard reject) |
-| `max_players` cannot decrease below confirmed count | `MatchesService` | 422 |
-| Cannot update cancelled match | `MatchesService` | 422 |
-| Cannot assign `super_admin` or `platform_admin` role via tenant API | `UsersService` + `AssignRoleDto` | 403 / 422 |
-| Cannot demote self | `UsersService` | 400 |
-| `tenant_admin` cannot modify `super_admin` or `platform_admin` users | `UsersService` | 403 |
-| `super_admin` cannot modify `platform_admin` users | `UsersService` | 403 |
-| Venue `sport_types` restricted to 4 values | DB CHECK constraint | 422 |
-| `platform` slug reserved | `RESERVED_SLUGS` constant | 400 |
+| Rule                                                                 | Where enforced                   | Error                        |
+| -------------------------------------------------------------------- | -------------------------------- | ---------------------------- |
+| Tenant slug not reserved                                             | `TenantsService` constants       | 400                          |
+| Inactive tenant                                                      | `TenantMiddleware`               | 403                          |
+| JWT tenant mismatch                                                  | `TenantUserMatchGuard`           | 403                          |
+| User must be active + not deleted to log in                          | `AuthService`                    | 401                          |
+| Duplicate email per tenant                                           | DB unique constraint             | 409                          |
+| Duplicate active booking (user + match)                              | DB partial unique index          | 409                          |
+| Booking must be in the future                                        | `BookingsRepository`             | 422                          |
+| Wallet must have sufficient balance                                  | `BookingsRepository`             | 422                          |
+| Cancel confirmed booking only before cutoff                          | `BookingsRepository`             | 422                          |
+| Cannot delete account with confirmed upcoming bookings               | `UsersService`                   | 409                          |
+| Venue deactivation blocked by active matches                         | `VenuesService`                  | 409                          |
+| Match overlap at same venue                                          | `MatchesRepository`              | 409                          |
+| Max 2 confirmed goalkeepers                                          | `BookingsRepository`             | → waitlist (not hard reject) |
+| `max_players` cannot decrease below confirmed count                  | `MatchesService`                 | 422                          |
+| Cannot update cancelled match                                        | `MatchesService`                 | 422                          |
+| Cannot assign `super_admin` or `platform_admin` role via tenant API  | `UsersService` + `AssignRoleDto` | 403 / 422                    |
+| Cannot demote self                                                   | `UsersService`                   | 400                          |
+| `tenant_admin` cannot modify `super_admin` or `platform_admin` users | `UsersService`                   | 403                          |
+| `super_admin` cannot modify `platform_admin` users                   | `UsersService`                   | 403                          |
+| Venue `sport_types` restricted to 4 values                           | DB CHECK constraint              | 422                          |
+| `platform` slug reserved                                             | `RESERVED_SLUGS` constant        | 400                          |
 
 ---
 
@@ -950,39 +964,39 @@ POST /auth/logout (JWT required)
 
 Only **`scheduled`** and **`cancelled`** are stored in the database. The remaining values are **computed at query time** from `scheduled_at + duration_mins` vs `now()` — they are never written to the DB.
 
-| Value | Stored? | Meaning |
-|-------|---------|---------|
-| `scheduled` | ✅ stored | Default for all new matches |
-| `cancelled` | ✅ stored | Explicitly set when admin cancels a match |
-| `upcoming` | ⚡ computed | `now() < scheduled_at` |
+| Value         | Stored?     | Meaning                                                |
+| ------------- | ----------- | ------------------------------------------------------ |
+| `scheduled`   | ✅ stored   | Default for all new matches                            |
+| `cancelled`   | ✅ stored   | Explicitly set when admin cancels a match              |
+| `upcoming`    | ⚡ computed | `now() < scheduled_at`                                 |
 | `in_progress` | ⚡ computed | `scheduled_at <= now() < scheduled_at + duration_mins` |
-| `completed` | ⚡ computed | `now() >= scheduled_at + duration_mins` |
+| `completed`   | ⚡ computed | `now() >= scheduled_at + duration_mins`                |
 
 `GET /matches` (browse) returns only matches where `now() < scheduled_at` (computed `upcoming`). All statuses are visible on `GET /matches/:id` (detail).
 
 ### `booking_status`
 
-| Value | Meaning |
-|-------|---------|
-| `confirmed` | Player has an active spot; wallet was charged |
-| `pending` | Player is on the waitlist; wallet was charged (prepaid) |
-| `cancelled` | Booking cancelled (by player or match cancel) |
+| Value       | Meaning                                                 |
+| ----------- | ------------------------------------------------------- |
+| `confirmed` | Player has an active spot; wallet was charged           |
+| `pending`   | Player is on the waitlist; wallet was charged (prepaid) |
+| `cancelled` | Booking cancelled (by player or match cancel)           |
 
 ### `booking_position`
 
-| Value | Meaning |
-|-------|---------|
-| `field_player` | Regular outfield position |
-| `goalkeeper` | Goalkeeper position; max 2 confirmed per match |
+| Value          | Meaning                                        |
+| -------------- | ---------------------------------------------- |
+| `field_player` | Regular outfield position                      |
+| `goalkeeper`   | Goalkeeper position; max 2 confirmed per match |
 
 ### `wallet_tx_type`
 
-| Value | API label | Meaning |
-|-------|-----------|---------|
-| `debit` | `"deduction"` | Wallet charged for a booking |
-| `refund` | `"refund"` | Wallet credited back (cancel / match cancel) |
-| `credit` | `"credit"` | Manual credit (future use) |
-| `topup` | `"topup"` | Player adds money (future Stripe integration) |
+| Value    | API label     | Meaning                                       |
+| -------- | ------------- | --------------------------------------------- |
+| `debit`  | `"deduction"` | Wallet charged for a booking                  |
+| `refund` | `"refund"`    | Wallet credited back (cancel / match cancel)  |
+| `credit` | `"credit"`    | Manual credit (future use)                    |
+| `topup`  | `"topup"`     | Player adds money (future Stripe integration) |
 
 ### `sport_type` (matches)
 
@@ -994,13 +1008,13 @@ Only **`scheduled`** and **`cancelled`** are stored in the database. The remaini
 
 ### `user_role`
 
-| Value | Rank | Scope | Notes |
-|-------|------|-------|-------|
-| `platform_admin` | 5 | Platform | Manages all tenants; lives in `platform` system tenant; not assignable via API |
-| `super_admin` | 4 | Tenant-scoped | Top authority within one tenant; created atomically with tenant by platform_admin; not assignable via tenant role API |
-| `tenant_admin` | 3 | Tenant-scoped | Full tenant management except tenant settings |
-| `tenant_staff` | 2 | Tenant-scoped | Operational management (no destructive actions) |
-| `player` | 1 | Tenant-scoped | End customer; default on registration |
+| Value            | Rank | Scope         | Notes                                                                                                                 |
+| ---------------- | ---- | ------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `platform_admin` | 5    | Platform      | Manages all tenants; lives in `platform` system tenant; not assignable via API                                        |
+| `super_admin`    | 4    | Tenant-scoped | Top authority within one tenant; created atomically with tenant by platform_admin; not assignable via tenant role API |
+| `tenant_admin`   | 3    | Tenant-scoped | Full tenant management except tenant settings                                                                         |
+| `tenant_staff`   | 2    | Tenant-scoped | Operational management (no destructive actions)                                                                       |
+| `player`         | 1    | Tenant-scoped | End customer; default on registration                                                                                 |
 
 ---
 
@@ -1008,52 +1022,52 @@ Only **`scheduled`** and **`cancelled`** are stored in the database. The remaini
 
 All routes below are tenant-scoped (require correct Host header) unless marked **[PLATFORM]**.
 
-| Method | Path | Roles | Notes |
-|--------|------|-------|-------|
-| GET | `/` | public | Health check |
-| **Auth** | | | |
-| POST | `/auth/register` | public | Creates player; tenant Host required |
-| POST | `/auth/login` | public | Returns JWT + refresh token; all roles login via their tenant Host |
-| POST | `/auth/forgot-password` | public | Anti-enumeration; always 200 |
-| POST | `/auth/reset-password` | public | [PLATFORM] no Host needed; consumes token |
-| POST | `/auth/refresh` | public | [PLATFORM] no Host needed |
-| POST | `/auth/logout` | authenticated | Revokes refresh tokens |
-| **Admin (Platform)** [PLATFORM] | | | |
-| GET | `/admin/tenants` | platform_admin | List all tenants |
-| POST | `/admin/tenants` | platform_admin | Create tenant + super_admin atomically |
-| GET | `/admin/tenants/:id` | platform_admin | Get tenant |
-| PATCH | `/admin/tenants/:id` | platform_admin | Update tenant (including is_active management) |
-| POST | `/admin/tenants/:id/deactivate` | platform_admin | Deactivate |
-| POST | `/admin/tenants/:id/activate` | platform_admin | Activate |
-| **Tenant Settings** | | | |
-| GET | `/tenant/settings` | super_admin | View own tenant config |
-| PATCH | `/tenant/settings` | super_admin | Update own tenant (name, logo, timezone, cutoff; NOT is_active) |
-| **Users** | | | |
-| GET | `/users` | super_admin, admin, staff | List tenant users (platform_admin excluded from results) |
-| GET | `/users/me` | any | Own profile |
-| PATCH | `/users/me` | any | Update own profile |
-| DELETE | `/users/me` | player | Soft delete (if no upcoming bookings) |
-| GET | `/users/me/bookings` | any | Own booking history |
-| GET | `/users/me/wallet` | any | Own wallet + transactions |
-| GET | `/users/:id` | super_admin, admin, staff | View any user in tenant |
-| PATCH | `/users/:id/role` | super_admin, admin | Change user role (assignable: tenant_admin, tenant_staff, player only) |
-| **Venues** | | | |
-| GET | `/venues` | any authenticated | Browse active venues |
-| GET | `/venues/:id` | any authenticated | Venue detail |
-| POST | `/venues` | super_admin, admin, staff | Create venue (multipart) |
-| PATCH | `/venues/:id` | super_admin, admin, staff | Update venue |
-| POST | `/venues/:id/activate` | super_admin, admin, staff | Activate |
-| POST | `/venues/:id/deactivate` | super_admin, admin | Deactivate (blocked if matches) |
-| **Matches** | | | |
-| GET | `/matches` | any authenticated | Browse upcoming matches |
-| GET | `/matches/:id` | any authenticated | Match detail + roster |
-| POST | `/matches` | super_admin, admin, staff | Create match |
-| PATCH | `/matches/:id` | super_admin, admin, staff | Update match |
-| POST | `/matches/:id/cancel` | super_admin, admin | Cancel match + refund all |
-| **Bookings** | | | |
-| POST | `/matches/:matchId/bookings` | player | Book or join waitlist |
-| POST | `/matches/:matchId/bookings/:id/cancel` | player | Cancel own booking |
-| GET | `/bookings/:id` | player | Get booking detail |
+| Method                          | Path                                    | Roles                     | Notes                                                                  |
+| ------------------------------- | --------------------------------------- | ------------------------- | ---------------------------------------------------------------------- |
+| GET                             | `/`                                     | public                    | Health check                                                           |
+| **Auth**                        |                                         |                           |                                                                        |
+| POST                            | `/auth/register`                        | public                    | Creates player; tenant Host required                                   |
+| POST                            | `/auth/login`                           | public                    | Returns JWT + refresh token; all roles login via their tenant Host     |
+| POST                            | `/auth/forgot-password`                 | public                    | Anti-enumeration; always 200                                           |
+| POST                            | `/auth/reset-password`                  | public                    | [PLATFORM] no Host needed; consumes token                              |
+| POST                            | `/auth/refresh`                         | public                    | [PLATFORM] no Host needed                                              |
+| POST                            | `/auth/logout`                          | authenticated             | Revokes refresh tokens                                                 |
+| **Admin (Platform)** [PLATFORM] |                                         |                           |                                                                        |
+| GET                             | `/admin/tenants`                        | platform_admin            | List all tenants                                                       |
+| POST                            | `/admin/tenants`                        | platform_admin            | Create tenant + super_admin atomically                                 |
+| GET                             | `/admin/tenants/:id`                    | platform_admin            | Get tenant                                                             |
+| PATCH                           | `/admin/tenants/:id`                    | platform_admin            | Update tenant (including is_active management)                         |
+| POST                            | `/admin/tenants/:id/deactivate`         | platform_admin            | Deactivate                                                             |
+| POST                            | `/admin/tenants/:id/activate`           | platform_admin            | Activate                                                               |
+| **Tenant Settings**             |                                         |                           |                                                                        |
+| GET                             | `/tenant/settings`                      | super_admin               | View own tenant config                                                 |
+| PATCH                           | `/tenant/settings`                      | super_admin               | Update own tenant (name, logo, timezone, cutoff; NOT is_active)        |
+| **Users**                       |                                         |                           |                                                                        |
+| GET                             | `/users`                                | super_admin, admin, staff | List tenant users (platform_admin excluded from results)               |
+| GET                             | `/users/me`                             | any                       | Own profile                                                            |
+| PATCH                           | `/users/me`                             | any                       | Update own profile                                                     |
+| DELETE                          | `/users/me`                             | player                    | Soft delete (if no upcoming bookings)                                  |
+| GET                             | `/users/me/bookings`                    | any                       | Own booking history                                                    |
+| GET                             | `/users/me/wallet`                      | any                       | Own wallet + transactions                                              |
+| GET                             | `/users/:id`                            | super_admin, admin, staff | View any user in tenant                                                |
+| PATCH                           | `/users/:id/role`                       | super_admin, admin        | Change user role (assignable: tenant_admin, tenant_staff, player only) |
+| **Venues**                      |                                         |                           |                                                                        |
+| GET                             | `/venues`                               | any authenticated         | Browse active venues                                                   |
+| GET                             | `/venues/:id`                           | any authenticated         | Venue detail                                                           |
+| POST                            | `/venues`                               | super_admin, admin, staff | Create venue (multipart)                                               |
+| PATCH                           | `/venues/:id`                           | super_admin, admin, staff | Update venue                                                           |
+| POST                            | `/venues/:id/activate`                  | super_admin, admin, staff | Activate                                                               |
+| POST                            | `/venues/:id/deactivate`                | super_admin, admin        | Deactivate (blocked if matches)                                        |
+| **Matches**                     |                                         |                           |                                                                        |
+| GET                             | `/matches`                              | any authenticated         | Browse upcoming matches                                                |
+| GET                             | `/matches/:id`                          | any authenticated         | Match detail + roster                                                  |
+| POST                            | `/matches`                              | super_admin, admin, staff | Create match                                                           |
+| PATCH                           | `/matches/:id`                          | super_admin, admin, staff | Update match                                                           |
+| POST                            | `/matches/:id/cancel`                   | super_admin, admin        | Cancel match + refund all                                              |
+| **Bookings**                    |                                         |                           |                                                                        |
+| POST                            | `/matches/:matchId/bookings`            | player                    | Book or join waitlist                                                  |
+| POST                            | `/matches/:matchId/bookings/:id/cancel` | player                    | Cancel own booking                                                     |
+| GET                             | `/bookings/:id`                         | player                    | Get booking detail                                                     |
 
 ---
 
@@ -1079,4 +1093,4 @@ The `wallet_transactions` table supports `topup` and `credit` types. The wallet 
 
 ---
 
-*Last updated: 2026-04-05 | Status: PRE-PRODUCTION*
+_Last updated: 2026-04-05 | Status: PRE-PRODUCTION_

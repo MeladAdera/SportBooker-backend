@@ -11,6 +11,11 @@ import { ZiinaClient } from './ziina.client';
 import { CryptoService } from '../common/crypto/crypto.service';
 import type { TopupResponseDto } from './dto/topup-response.dto';
 import type { Tenant } from '../common/tenant.types';
+import { buildTenantPublicOrigin } from './tenant-public-url';
+import {
+  resolveApiPublicOrigin,
+  resolveWebAppPublicOrigin,
+} from '../config/public-origins';
 
 /** Ziina IPs that are allowed to deliver webhooks. */
 const ZIINA_WEBHOOK_IPS = new Set([
@@ -47,7 +52,7 @@ export class PaymentsService {
 
     const accessToken = this.cryptoService.decrypt(creds.ziina_access_token);
 
-    const baseUrl = this.getPublicBaseUrl();
+    const baseUrl = this.getTenantPublicBaseUrl(tenant.slug);
     const successUrl = `${baseUrl}/payments/topup/success`;
     const cancelUrl = `${baseUrl}/payments/topup/cancel`;
     const failureUrl = `${baseUrl}/payments/topup/failure`;
@@ -193,11 +198,13 @@ export class PaymentsService {
     }
   }
 
-  private getPublicBaseUrl(): string {
-    const configured = this.config.get<string>('PUBLIC_BASE_URL');
-    if (configured) return configured.replace(/\/$/, '');
-    const port = this.config.get<number>('PORT') ?? 3000;
-    return `http://localhost:${port}`;
+  /** Base URL including tenant subdomain for Ziina browser redirects (frontend origin + protocol). */
+  private getTenantPublicBaseUrl(tenantSlug: string): string {
+    return buildTenantPublicOrigin(
+      resolveWebAppPublicOrigin(this.config),
+      this.config.getOrThrow<string>('TENANT_HOST_SUFFIX'),
+      tenantSlug,
+    );
   }
 
   /** Called by TenantsService after saving a new Ziina token. Registers webhook with Ziina. */
@@ -206,13 +213,14 @@ export class PaymentsService {
     if (!creds?.ziina_access_token || !creds.ziina_webhook_secret) return;
 
     const accessToken = this.cryptoService.decrypt(creds.ziina_access_token);
-    const webhookUrl = `${this.getPublicBaseUrl()}/payments/webhook`;
+    const apiOrigin = resolveApiPublicOrigin(this.config);
+    const webhookUrl = `${apiOrigin}/payments/webhook`;
 
     if (!webhookUrl.startsWith('https://')) {
       this.logger.warn(
         `Ziina webhook registration skipped for tenant ${tenantId}: ` +
-          `PUBLIC_BASE_URL is not a public HTTPS URL ("${webhookUrl}"). ` +
-          `Set PUBLIC_BASE_URL to your public HTTPS base URL to enable webhook registration.`,
+          `API_PUBLIC_ORIGIN is not a public HTTPS URL ("${webhookUrl}"). ` +
+          `Set API_PUBLIC_ORIGIN to your public HTTPS API origin.`,
       );
       return;
     }

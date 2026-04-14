@@ -8,6 +8,7 @@ import { randomUUID } from 'crypto';
 import type { Express } from 'express';
 import { mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
+import { resolveApiPublicOrigin } from '../config/public-origins';
 
 const MIME_EXT: Record<string, string> = {
   'image/jpeg': '.jpg',
@@ -41,12 +42,7 @@ export class VenuePictureStorage {
   }
 
   getPublicBaseUrl(): string {
-    const explicit = this.config.get<string>('PUBLIC_BASE_URL');
-    if (explicit !== undefined && explicit.trim().length > 0) {
-      return explicit.replace(/\/$/, '');
-    }
-    const port = this.config.get<number>('PORT', 3000);
-    return `http://localhost:${port}`;
+    return resolveApiPublicOrigin(this.config);
   }
 
   async saveVenuePicture(

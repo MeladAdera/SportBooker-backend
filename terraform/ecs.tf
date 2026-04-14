@@ -38,7 +38,7 @@ resource "aws_ecs_task_definition" "app" {
     environment = [
       { name = "PORT", value = "3000" },
       { name = "NODE_ENV", value = "production" },
-      { name = "APP_DOMAIN", value = var.app_domain },
+      { name = "TENANT_HOST_SUFFIX", value = var.TENANT_HOST_SUFFIX },
       { name = "DB_HOST", value = split(":", aws_db_instance.main.endpoint)[0] },
       { name = "DB_PORT", value = "5432" },
       { name = "DB_SSL", value = "true" },
@@ -48,7 +48,8 @@ resource "aws_ecs_task_definition" "app" {
       { name = "EMAIL_FROM", value = var.email_from },
       { name = "S3_BUCKET_NAME", value = aws_s3_bucket.uploads.id },
       { name = "S3_REGION", value = var.aws_region },
-      { name = "PUBLIC_BASE_URL", value = "https://api.${var.app_domain}" },
+      { name = "API_PUBLIC_ORIGIN", value = "https://api.${var.TENANT_HOST_SUFFIX}" },
+      { name = "WEB_APP_PUBLIC_ORIGIN", value = "https://app.${var.TENANT_HOST_SUFFIX}" },
       { name = "CORS_ORIGINS", value = var.cors_origins },
     ]
 

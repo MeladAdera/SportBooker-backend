@@ -5,9 +5,9 @@ export const envSchema = Joi.object({
   NODE_ENV: Joi.string()
     .valid('development', 'production', 'test')
     .default('development'),
-  APP_DOMAIN: Joi.string().required().messages({
+  TENANT_HOST_SUFFIX: Joi.string().required().messages({
     'any.required':
-      'APP_DOMAIN is required. Tenant resolution uses it to extract subdomain from Host.',
+      'TENANT_HOST_SUFFIX is required. Tenant resolution uses it to extract subdomain from Host.',
   }),
   DB_HOST: Joi.string().required().messages({
     'any.required': 'DB_HOST is required for PostgreSQL connection.',
@@ -37,8 +37,16 @@ export const envSchema = Joi.object({
     'string.min': 'JWT_ACCESS_SECRET must be at least 32 characters.',
   }),
   JWT_ACCESS_EXPIRES_IN: Joi.string().default('15m'),
-  /** Base URL for absolute links to locally stored uploads (e.g. https://api.example.com). Defaults to http://localhost:{PORT}. */
-  PUBLIC_BASE_URL: Joi.string().optional().allow(''),
+  /**
+   * Public origin of this API (upload URLs, Ziina webhooks). No path.
+   * Defaults to http://localhost:{PORT} when unset.
+   */
+  API_PUBLIC_ORIGIN: Joi.string().optional().allow(''),
+  /**
+   * Public origin of the browser app (Ziina success/cancel/failure redirects).
+   * When unset, defaults to the resolved API public origin.
+   */
+  WEB_APP_PUBLIC_ORIGIN: Joi.string().optional().allow(''),
   /** S3 bucket name for venue uploads. When set, uploads go to S3 instead of local disk. */
   S3_BUCKET_NAME: Joi.string().optional().allow(''),
   S3_REGION: Joi.string().optional().allow(''),

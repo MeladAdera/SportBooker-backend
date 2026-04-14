@@ -70,7 +70,7 @@ variable "db_allocated_storage" {
 
 # ── Application Config ───────────────────────────────────────────────
 
-variable "app_domain" {
+variable "TENANT_HOST_SUFFIX" {
   description = "Application domain for tenant subdomain resolution"
   type        = string
 }

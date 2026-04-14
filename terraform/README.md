@@ -44,7 +44,7 @@ Edit `terraform.tfvars` with your values:
 
 ```hcl
 aws_region        = "ap-south-1"
-app_domain        = "your-domain.com"
+TENANT_HOST_SUFFIX        = "your-domain.com"
 jwt_access_secret = "$(openssl rand -hex 32)"  # generate a random secret
 github_repo       = "your-username/SportBooker"
 github_branch     = "main"
@@ -95,8 +95,8 @@ aws ecs update-service \
 
 Add this secret to your GitHub repository (Settings → Secrets → Actions):
 
-| Secret Name | Value |
-|---|---|
+| Secret Name    | Value                                               |
+| -------------- | --------------------------------------------------- |
 | `AWS_ROLE_ARN` | The `github_actions_role_arn` from terraform output |
 
 After this, every push to `main` will automatically build and deploy.
@@ -146,12 +146,12 @@ aws ecs update-service --cluster sportbooker-cluster --service sportbooker-servi
 
 Managed via `dns.tf` and `alb.tf`. Domain layout:
 
-| URL | Target | Purpose |
-|---|---|---|
-| `api.sportbooker.net` | ALB (ECS) | NestJS API |
-| `app.sportbooker.net` | Vercel | Frontend SPA |
-| `{slug}.sportbooker.net` | Vercel | Tenant subdomains (frontend reads subdomain, calls API) |
-| `sportbooker.net` | ALB → 301 | Redirects to `app.sportbooker.net` |
+| URL                      | Target    | Purpose                                                 |
+| ------------------------ | --------- | ------------------------------------------------------- |
+| `api.sportbooker.net`    | ALB (ECS) | NestJS API                                              |
+| `app.sportbooker.net`    | Vercel    | Frontend SPA                                            |
+| `{slug}.sportbooker.net` | Vercel    | Tenant subdomains (frontend reads subdomain, calls API) |
+| `sportbooker.net`        | ALB → 301 | Redirects to `app.sportbooker.net`                      |
 
 Infrastructure managed by Terraform:
 

@@ -59,7 +59,7 @@ export function invalidateTenantCache(slug: string): void {
 }
 
 /**
- * Extracts subdomain from Host by stripping APP_DOMAIN suffix.
+ * Extracts subdomain from Host by stripping TENANT_HOST_SUFFIX suffix.
  * Handles: acfc.sportbooker.com + sportbooker.com → acfc
  *          acfc.localhost:3000 + localhost:3000 → acfc
  * Requires prefix to end with '.' to avoid matching evil-sportbooker.com.
@@ -89,7 +89,7 @@ export class TenantMiddleware implements NestMiddleware {
   async use(req: Request, _res: Response, next: NextFunction): Promise<void> {
     const slugHeader = req.get('X-Tenant-Slug')?.trim().toLowerCase();
     const host = req.get('X-Forwarded-Host') || req.get('Host') || '';
-    const appDomain = this.config.getOrThrow<string>('APP_DOMAIN');
+    const appDomain = this.config.getOrThrow<string>('TENANT_HOST_SUFFIX');
 
     const subdomain = slugHeader || extractSubdomain(host, appDomain);
 

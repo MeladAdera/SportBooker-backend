@@ -8,8 +8,8 @@
 # authoritative DNS provider, regardless of whether that's Route 53.
 
 resource "aws_acm_certificate" "main" {
-  domain_name               = var.app_domain
-  subject_alternative_names = ["*.${var.app_domain}"]
+  domain_name               = var.TENANT_HOST_SUFFIX
+  subject_alternative_names = ["*.${var.TENANT_HOST_SUFFIX}"]
   validation_method         = "DNS"
 
   lifecycle {

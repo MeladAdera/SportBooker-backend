@@ -4,7 +4,7 @@ aws_region  = "ap-south-1"
 environment = "production"
 
 # Application (also used for ACM cert + Route 53 records)
-app_domain = "sportbooker.net"
+TENANT_HOST_SUFFIX = "sportbooker.net"
 
 # Browser origins allowed by the API (comma-separated). Tenant subdomains (*.sportbooker.net) are allowed dynamically.
 # cors_origins = "https://app.sportbooker.net,https://sport-booker-fe.vercel.app,http://localhost:5173"

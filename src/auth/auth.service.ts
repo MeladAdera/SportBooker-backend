@@ -225,7 +225,7 @@ export class AuthService {
 
     const fullToken = `${resetId}.${plainToken}`;
 
-    const appDomain = this.config.getOrThrow<string>('APP_DOMAIN');
+    const appDomain = this.config.getOrThrow<string>('TENANT_HOST_SUFFIX');
     const protocol = appDomain.includes('localhost') ? 'http' : 'https';
     const resetLink = `${protocol}://${tenantSlug}.${appDomain}/reset-password?token=${encodeURIComponent(fullToken)}`;
 

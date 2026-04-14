@@ -5,12 +5,12 @@ output "alb_dns_name" {
 
 output "api_url" {
   description = "API production URL"
-  value       = "https://api.${var.app_domain}"
+  value       = "https://api.${var.TENANT_HOST_SUFFIX}"
 }
 
 output "frontend_url" {
   description = "Frontend production URL"
-  value       = "https://app.${var.app_domain}"
+  value       = "https://app.${var.TENANT_HOST_SUFFIX}"
 }
 
 output "acm_certificate_arn" {
