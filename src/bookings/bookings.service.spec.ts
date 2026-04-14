@@ -63,6 +63,7 @@ describe('BookingsService', () => {
     cancelled_at: null,
     refunded_at: null,
     created_at: new Date('2026-06-01T12:00:00.000Z'),
+    waitlist_position: null,
     match_venue_id: '990e8400-e29b-41d4-a716-446655440010',
     match_title: 'Kickabout',
     sport_type: 'football',
@@ -112,6 +113,7 @@ describe('BookingsService', () => {
       remainingSpots: 5,
       emailForConfirmation: 'p@example.com',
       waitlistNotice: null,
+      waitlistPosition: null,
     });
 
     const dto = await service.createBookingForPlayer({
@@ -124,6 +126,7 @@ describe('BookingsService', () => {
     expect(dto.status).toBe('confirmed');
     expect(dto.position).toBe(BookingPosition.FieldPlayer);
     expect(dto.waitlistNotice).toBeNull();
+    expect(dto.waitlistPosition).toBeNull();
     expect(dto.remainingSpots).toBe(5);
     expect(bookingsRepo.createBookingForMatch).toHaveBeenCalledWith({
       tenantId,
@@ -143,6 +146,7 @@ describe('BookingsService', () => {
       remainingSpots: 3,
       emailForConfirmation: 'gk@example.com',
       waitlistNotice: null,
+      waitlistPosition: null,
     });
 
     await service.createBookingForPlayer({
@@ -160,7 +164,7 @@ describe('BookingsService', () => {
     });
   });
 
-  it('does not send email for waitlist (pending); returns prepaid notice', async () => {
+  it('does not send email for waitlist (pending); returns prepaid notice and position', async () => {
     bookingsRepo.createBookingForMatch.mockResolvedValue({
       success: true,
       booking: {
@@ -171,6 +175,7 @@ describe('BookingsService', () => {
       remainingSpots: 0,
       emailForConfirmation: null,
       waitlistNotice: WAITLIST_PREPAID_NOTICE,
+      waitlistPosition: 3,
     });
 
     const dto = await service.createBookingForPlayer({
@@ -181,6 +186,7 @@ describe('BookingsService', () => {
 
     expect(emailService.sendBookingConfirmedEmail).not.toHaveBeenCalled();
     expect(dto.waitlistNotice).toBe(WAITLIST_PREPAID_NOTICE);
+    expect(dto.waitlistPosition).toBe(3);
     expect(dto.paidAmount).toBe('15.50');
   });
 
@@ -437,6 +443,40 @@ describe('BookingsService', () => {
           actorRole: UserRole.Player,
         }),
       ).rejects.toThrow(NotFoundException);
+    });
+
+    it('returns waitlistPosition for pending booking', async () => {
+      bookingsRepo.findBookingDetailForTenant.mockResolvedValue({
+        ...bookingDetailRow,
+        status: 'pending',
+        waitlist_position: 2,
+      });
+
+      const dto = await service.getBookingDetail({
+        tenantId,
+        bookingId: bookingRow.id,
+        actorUserId: userId,
+        actorRole: UserRole.Player,
+      });
+
+      expect(dto.status).toBe('pending');
+      expect(dto.waitlistPosition).toBe(2);
+    });
+
+    it('returns null waitlistPosition for confirmed booking', async () => {
+      bookingsRepo.findBookingDetailForTenant.mockResolvedValue(
+        bookingDetailRow,
+      );
+
+      const dto = await service.getBookingDetail({
+        tenantId,
+        bookingId: bookingRow.id,
+        actorUserId: userId,
+        actorRole: UserRole.Player,
+      });
+
+      expect(dto.status).toBe('confirmed');
+      expect(dto.waitlistPosition).toBeNull();
     });
   });
 });

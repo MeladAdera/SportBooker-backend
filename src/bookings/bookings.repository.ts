@@ -47,6 +47,8 @@ export type BookingDetailRow = {
   match_status: string;
   max_players: number | null;
   position: string;
+  /** 1-based FIFO position when status='pending'; null otherwise */
+  waitlist_position: number | null;
   match_created_at: Date;
   match_updated_at: Date;
   venue_id: string;
@@ -78,6 +80,8 @@ export type CreateBookingResult =
       emailForConfirmation: string | null;
       /** When status is pending (waitlist): prepaid notice for API consumers */
       waitlistNotice: string | null;
+      /** 1-based FIFO queue position when waitlisted; null when confirmed */
+      waitlistPosition: number | null;
     }
   | { success: false; code: CreateBookingFailureCode };
 
@@ -119,6 +123,16 @@ export type PromoteWaitlistResult = {
   promotedEmail: string | null;
   skippedEmails: string[];
 };
+
+export type RemoveFromWaitlistFailureCode = 'BOOKING_NOT_FOUND' | 'NOT_PENDING';
+
+export type RemoveFromWaitlistResult =
+  | {
+      success: true;
+      refundAmount: string;
+      playerEmail: string;
+    }
+  | { success: false; code: RemoveFromWaitlistFailureCode };
 
 type MatchLockRow = {
   id: string;
@@ -287,6 +301,15 @@ export class BookingsRepository extends BaseRepository {
           [userId, price, booking.id],
         );
 
+        const { rows: posRows } = await this.query<{ pos: string }>(
+          client,
+          `SELECT COUNT(*)::text AS pos
+           FROM bookings
+           WHERE match_id = $1 AND status = 'pending'`,
+          [matchId],
+        );
+        const waitlistPosition = parseInt(posRows[0]?.pos ?? '1', 10);
+
         const remainingSpots = this.computeRemainingSpots(
           maxPlayers,
           confirmedCount,
@@ -297,6 +320,7 @@ export class BookingsRepository extends BaseRepository {
           remainingSpots,
           emailForConfirmation: null,
           waitlistNotice: WAITLIST_PREPAID_NOTICE,
+          waitlistPosition,
         };
       }
 
@@ -349,6 +373,7 @@ export class BookingsRepository extends BaseRepository {
         remainingSpots,
         emailForConfirmation: user.email,
         waitlistNotice: null,
+        waitlistPosition: null,
       };
     } catch (err: unknown) {
       const code =
@@ -887,6 +912,86 @@ export class BookingsRepository extends BaseRepository {
     return { promotedEmail: null, skippedEmails };
   }
 
+  /**
+   * Admin removes a player from the waitlist. Refunds prepaid amount if any.
+   * Does NOT trigger waitlist promotion (no confirmed spot freed).
+   */
+  async removeFromWaitlistForTenant(params: {
+    tenantId: string;
+    matchId: string;
+    bookingId: string;
+  }): Promise<RemoveFromWaitlistResult> {
+    return this.withTransaction(async (client) => {
+      const { tenantId, matchId, bookingId } = params;
+
+      const { rows: lockRows } = await this.query<{
+        bid: string;
+        b_status: string;
+        b_user_id: string;
+        b_paid_amount: string;
+        user_email: string;
+      }>(
+        client,
+        `SELECT
+           b.id AS bid,
+           b.status::text AS b_status,
+           b.user_id AS b_user_id,
+           b.paid_amount::text AS b_paid_amount,
+           u.email AS user_email
+         FROM bookings b
+         INNER JOIN matches m ON m.id = b.match_id
+         INNER JOIN venues v ON v.id = m.venue_id
+         INNER JOIN users u ON u.id = b.user_id
+         WHERE b.id = $1 AND b.match_id = $2 AND v.tenant_id = $3
+         FOR UPDATE OF b`,
+        [bookingId, matchId, tenantId],
+      );
+
+      const row = lockRows[0];
+      if (!row) {
+        return { success: false, code: 'BOOKING_NOT_FOUND' };
+      }
+      if (row.b_status !== 'pending') {
+        return { success: false, code: 'NOT_PENDING' };
+      }
+
+      const prepaid = parseFloat(row.b_paid_amount ?? '0') > 0;
+      if (prepaid) {
+        await this.query(
+          client,
+          `UPDATE users
+           SET wallet_balance = wallet_balance + $2::numeric,
+               updated_at = now()
+           WHERE id = $1`,
+          [row.b_user_id, row.b_paid_amount],
+        );
+        await this.query(
+          client,
+          `INSERT INTO wallet_transactions (user_id, amount, type, reference_id)
+           VALUES ($1, $2, 'refund', $3)`,
+          [row.b_user_id, row.b_paid_amount, bookingId],
+        );
+      }
+
+      await this.query(
+        client,
+        `UPDATE bookings
+         SET status = 'cancelled'::booking_status,
+             cancelled_at = now(),
+             refunded_at = CASE WHEN paid_amount > 0 THEN now() ELSE refunded_at END,
+             updated_at = now()
+         WHERE id = $1`,
+        [bookingId],
+      );
+
+      return {
+        success: true,
+        refundAmount: prepaid ? row.b_paid_amount : '0.00',
+        playerEmail: row.user_email,
+      };
+    });
+  }
+
   private computeRemainingSpots(
     maxPlayers: number | null,
     confirmedCount: number,
@@ -1013,6 +1118,13 @@ export class BookingsRepository extends BaseRepository {
          b.cancelled_at,
          b.refunded_at,
          b.created_at,
+         CASE WHEN b.status = 'pending' THEN (
+           SELECT COUNT(*)::int
+           FROM bookings b2
+           WHERE b2.match_id = b.match_id
+             AND b2.status = 'pending'
+             AND b2.created_at <= b.created_at
+         ) END AS waitlist_position,
          m.venue_id AS match_venue_id,
          m.title AS match_title,
          m.sport_type::text AS sport_type,

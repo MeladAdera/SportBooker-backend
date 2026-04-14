@@ -35,6 +35,8 @@ export type MatchDetailRow = {
   updated_at: Date;
   spots_remaining: number;
   roster: unknown;
+  waitlist: unknown;
+  waitlist_count: number;
 };
 
 /** Row for player browse list (upcoming matches). */
@@ -49,6 +51,20 @@ export type MatchBrowseRow = {
   status: string;
   venue_name: string;
   spots_remaining: number;
+  waitlist_count: number;
+};
+
+/** Row for GET /matches/:matchId/waitlist (operator). */
+export type WaitlistEntryRow = {
+  booking_id: string;
+  user_id: string;
+  name: string;
+  photo_url: string | null;
+  email: string;
+  position: string;
+  paid_amount: string;
+  created_at: Date;
+  queue_position: number;
 };
 
 /** Row for operator match management list (all statuses). */
@@ -101,6 +117,12 @@ export class MatchesRepository extends BaseRepository {
       WHERE status = 'confirmed'
       GROUP BY match_id
     ) bc ON bc.match_id = m.id
+    LEFT JOIN (
+      SELECT match_id, COUNT(*)::int AS waitlist_count
+      FROM bookings
+      WHERE status = 'pending'
+      GROUP BY match_id
+    ) wc ON wc.match_id = m.id
     WHERE v.tenant_id = $1
       AND m.status <> 'cancelled'
       AND now() < m.scheduled_at
@@ -139,7 +161,7 @@ export class MatchesRepository extends BaseRepository {
   }
 
   /**
-   * Match in tenant with spots + confirmed roster (pending bookings excluded).
+   * Match in tenant with spots, confirmed roster, and waitlist (FIFO-ordered).
    * Returns null if match id wrong or venue not in tenant.
    */
   async findMatchDetailForTenant(
@@ -185,7 +207,34 @@ export class MatchesRepository extends BaseRepository {
               AND u.deleted_at IS NULL
           ),
           '[]'::json
-        ) AS roster
+        ) AS roster,
+        COALESCE(
+          (
+            SELECT json_agg(
+              json_build_object(
+                'userId', wl.user_id,
+                'name', wl.name,
+                'photoUrl', wl.photo_url,
+                'position', wl.position,
+                'queuePosition', wl.rn,
+                'joinedAt', wl.created_at
+              )
+              ORDER BY wl.rn
+            )
+            FROM (
+              SELECT u.id::text AS user_id, u.name, u.photo_url,
+                     b.position::text AS position, b.created_at,
+                     ROW_NUMBER() OVER (ORDER BY b.created_at ASC) AS rn
+              FROM bookings b
+              INNER JOIN users u ON u.id = b.user_id
+              WHERE b.match_id = m.id
+                AND b.status = 'pending'
+                AND u.deleted_at IS NULL
+            ) wl
+          ),
+          '[]'::json
+        ) AS waitlist,
+        COALESCE(wc.waitlist_count, 0) AS waitlist_count
       FROM matches m
       INNER JOIN venues v ON v.id = m.venue_id
       LEFT JOIN (
@@ -194,6 +243,12 @@ export class MatchesRepository extends BaseRepository {
         WHERE status = 'confirmed'
         GROUP BY match_id
       ) bc ON bc.match_id = m.id
+      LEFT JOIN (
+        SELECT match_id, COUNT(*)::int AS waitlist_count
+        FROM bookings
+        WHERE status = 'pending'
+        GROUP BY match_id
+      ) wc ON wc.match_id = m.id
       WHERE m.id = $1 AND v.tenant_id = $2`,
       [matchId, tenantId],
     );
@@ -224,7 +279,8 @@ export class MatchesRepository extends BaseRepository {
         GREATEST(
           0,
           COALESCE(m.max_players, 0) - COALESCE(bc.confirmed_count, 0)
-        ) AS spots_remaining
+        ) AS spots_remaining,
+        COALESCE(wc.waitlist_count, 0) AS waitlist_count
       ${MatchesRepository.upcomingBrowseFrom}
       ORDER BY m.scheduled_at ASC
       LIMIT $6 OFFSET $7`,
@@ -532,5 +588,35 @@ export class MatchesRepository extends BaseRepository {
       throw new Error('insertMatch: expected one row');
     }
     return row;
+  }
+
+  async findWaitlistForMatch(
+    matchId: string,
+    tenantId: string,
+  ): Promise<WaitlistEntryRow[]> {
+    const { rows } = await this.query<WaitlistEntryRow>(
+      this.pool,
+      `SELECT
+        b.id AS booking_id,
+        u.id::text AS user_id,
+        u.name,
+        u.photo_url,
+        u.email,
+        b.position::text AS position,
+        b.paid_amount::text AS paid_amount,
+        b.created_at,
+        ROW_NUMBER() OVER (ORDER BY b.created_at ASC) AS queue_position
+      FROM bookings b
+      INNER JOIN users u ON u.id = b.user_id
+      INNER JOIN matches m ON m.id = b.match_id
+      INNER JOIN venues v ON v.id = m.venue_id
+      WHERE b.match_id = $1
+        AND v.tenant_id = $2
+        AND b.status = 'pending'
+        AND u.deleted_at IS NULL
+      ORDER BY b.created_at ASC`,
+      [matchId, tenantId],
+    );
+    return rows;
   }
 }

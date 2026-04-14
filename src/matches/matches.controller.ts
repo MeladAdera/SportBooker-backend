@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -31,12 +32,14 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { TenantRequiredGuard } from '../auth/guards/tenant-required.guard';
 import { UserRole } from '../users/user-role';
+import { RemoveFromWaitlistResponseDto } from '../bookings/dto/remove-from-waitlist-response.dto';
 import { CreateMatchDto } from './dto/create-match.dto';
 import { UpdateMatchDto } from './dto/update-match.dto';
 import { ListMatchesQueryDto } from './dto/list-matches-query.dto';
 import { MatchDetailResponseDto } from './dto/match-detail-response.dto';
 import { MatchResponseDto } from './dto/match-response.dto';
 import { CancelMatchResponseDto } from './dto/cancel-match-response.dto';
+import { OperatorWaitlistEntryDto } from './dto/operator-waitlist-entry.dto';
 import { PaginatedMatchesListDto } from './dto/paginated-matches-list.dto';
 import { MatchesService } from './matches.service';
 
@@ -66,7 +69,7 @@ export class MatchesController {
   @ApiOperation({
     summary: 'Get match details',
     description:
-      'Any authenticated user in the tenant. Includes confirmed player roster only (pending / waitlist excluded).',
+      'Any authenticated user in the tenant. Includes confirmed player roster and FIFO-ordered waitlist with queue positions.',
   })
   @ApiWrappedOkResponse({ type: MatchDetailResponseDto })
   @ApiNotFoundResponse({ description: 'Match not found for this tenant' })
@@ -96,6 +99,51 @@ export class MatchesController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<CancelMatchResponseDto> {
     return this.matchesService.cancelMatchForTenant(tenant.id, id);
+  }
+
+  @Get(':matchId/waitlist')
+  @Roles(UserRole.SuperAdmin, UserRole.TenantAdmin, UserRole.TenantStaff)
+  @ApiOperation({
+    summary: 'Get match waitlist (operator)',
+    description:
+      'Tenant staff and above. Returns all pending (waitlisted) bookings for a match, FIFO-ordered with queue position, email, and paid amount.',
+  })
+  @ApiWrappedOkResponse({ type: OperatorWaitlistEntryDto })
+  @ApiNotFoundResponse({ description: 'Match not found for this tenant' })
+  @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
+  @ApiForbiddenResponse({ description: 'Insufficient role' })
+  async getWaitlist(
+    @TenantDecorator() tenant: Tenant,
+    @Param('matchId', ParseUUIDPipe) matchId: string,
+  ): Promise<OperatorWaitlistEntryDto[]> {
+    return this.matchesService.getWaitlistForMatch(tenant.id, matchId);
+  }
+
+  @Delete(':matchId/waitlist/:bookingId')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.SuperAdmin, UserRole.TenantAdmin)
+  @ApiOperation({
+    summary: 'Remove a player from the waitlist (operator)',
+    description:
+      'Tenant admin only. Cancels the pending booking and refunds the prepaid amount to the player wallet. Does not trigger waitlist promotion.',
+  })
+  @ApiWrappedOkResponse({ type: RemoveFromWaitlistResponseDto })
+  @ApiNotFoundResponse({ description: 'Waitlist entry not found' })
+  @ApiBadRequestResponse({
+    description: 'Booking is not pending (not on waitlist)',
+  })
+  @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
+  @ApiForbiddenResponse({ description: 'Insufficient role' })
+  async removeFromWaitlist(
+    @TenantDecorator() tenant: Tenant,
+    @Param('matchId', ParseUUIDPipe) matchId: string,
+    @Param('bookingId', ParseUUIDPipe) bookingId: string,
+  ): Promise<RemoveFromWaitlistResponseDto> {
+    return this.matchesService.removeFromWaitlist({
+      tenantId: tenant.id,
+      matchId,
+      bookingId,
+    });
   }
 
   @Patch(':id')

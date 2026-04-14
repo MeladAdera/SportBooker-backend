@@ -39,6 +39,14 @@ export class BookingDetailResponseDto {
   })
   refundedAt!: string | null;
 
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      '1-based FIFO queue position when waitlisted; null for confirmed/cancelled',
+    example: 2,
+  })
+  waitlistPosition!: number | null;
+
   @ApiProperty({ type: String, format: 'date-time' })
   createdAt!: string;
 

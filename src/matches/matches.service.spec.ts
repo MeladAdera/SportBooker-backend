@@ -21,6 +21,7 @@ describe('MatchesService', () => {
       | 'findMatchDetailForTenant'
       | 'findMatchRowForTenant'
       | 'findUpcomingMatchesForBrowse'
+      | 'findWaitlistForMatch'
       | 'hasOverlappingMatchAtVenue'
       | 'insertMatch'
       | 'patchMatchForTenant'
@@ -30,9 +31,14 @@ describe('MatchesService', () => {
     Pick<VenuesRepository, 'findVenueRowByIdForTenant'>
   >;
   let bookingsRepo: jest.Mocked<
-    Pick<BookingsRepository, 'cancelMatchForTenant'>
+    Pick<
+      BookingsRepository,
+      'cancelMatchForTenant' | 'removeFromWaitlistForTenant'
+    >
   >;
-  let emailService: jest.Mocked<Pick<EmailService, 'sendMatchCancelledEmail'>>;
+  let emailService: jest.Mocked<
+    Pick<EmailService, 'sendMatchCancelledEmail' | 'sendBookingCancelledEmail'>
+  >;
 
   const tenantId = '550e8400-e29b-41d4-a716-446655440000';
   const venueId = '660e8400-e29b-41d4-a716-446655440001';
@@ -58,6 +64,7 @@ describe('MatchesService', () => {
       findMatchDetailForTenant: jest.fn(),
       findMatchRowForTenant: jest.fn(),
       findUpcomingMatchesForBrowse: jest.fn(),
+      findWaitlistForMatch: jest.fn().mockResolvedValue([]),
       hasOverlappingMatchAtVenue: jest.fn().mockResolvedValue(false),
       insertMatch: jest.fn(),
       patchMatchForTenant: jest.fn(),
@@ -67,9 +74,11 @@ describe('MatchesService', () => {
     };
     bookingsRepo = {
       cancelMatchForTenant: jest.fn(),
+      removeFromWaitlistForTenant: jest.fn(),
     };
     emailService = {
       sendMatchCancelledEmail: jest.fn().mockResolvedValue(undefined),
+      sendBookingCancelledEmail: jest.fn().mockResolvedValue(undefined),
     };
     service = new MatchesService(
       matchesRepo as unknown as MatchesRepository,
@@ -93,6 +102,7 @@ describe('MatchesService', () => {
         status: 'upcoming',
         venue_name: 'Main Pitch',
         spots_remaining: 20,
+        waitlist_count: 2,
       },
     ]);
 
@@ -123,6 +133,7 @@ describe('MatchesService', () => {
       sportType: VenueSportType.Football,
       venueName: 'Main Pitch',
       spotsRemaining: 20,
+      waitlistCount: 2,
       maxCapacity: 22,
       status: 'upcoming',
     });
@@ -155,6 +166,17 @@ describe('MatchesService', () => {
           photoUrl: 'https://cdn.example.com/p.jpg',
         },
       ],
+      waitlist: [
+        {
+          userId: '990e8400-e29b-41d4-a716-446655440004',
+          name: 'Bob',
+          position: BookingPosition.FieldPlayer,
+          photoUrl: null,
+          queuePosition: 1,
+          joinedAt: '2026-07-01T10:00:00.000Z',
+        },
+      ],
+      waitlist_count: 1,
     });
 
     const result = await service.getDetailForTenant(tenantId, matchId);
@@ -173,6 +195,16 @@ describe('MatchesService', () => {
       name: 'Alex',
       position: BookingPosition.FieldPlayer,
       photoUrl: 'https://cdn.example.com/p.jpg',
+    });
+    expect(result.waitlistCount).toBe(1);
+    expect(result.waitlist).toHaveLength(1);
+    expect(result.waitlist[0]).toEqual({
+      userId: '990e8400-e29b-41d4-a716-446655440004',
+      name: 'Bob',
+      position: BookingPosition.FieldPlayer,
+      photoUrl: null,
+      queuePosition: 1,
+      joinedAt: '2026-07-01T10:00:00.000Z',
     });
   });
 
@@ -417,6 +449,117 @@ describe('MatchesService', () => {
 
       await expect(
         service.cancelMatchForTenant(tenantId, matchId),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('getWaitlistForMatch', () => {
+    const matchId = '770e8400-e29b-41d4-a716-446655440002';
+
+    it('returns FIFO-ordered waitlist entries for a match', async () => {
+      matchesRepo.findMatchRowForTenant.mockResolvedValue(matchRow);
+      matchesRepo.findWaitlistForMatch.mockResolvedValue([
+        {
+          booking_id: 'b1',
+          user_id: 'u1',
+          name: 'Alice',
+          photo_url: null,
+          email: 'alice@test.com',
+          position: 'field_player',
+          paid_amount: '15.50',
+          created_at: new Date('2026-06-01T10:00:00.000Z'),
+          queue_position: 1,
+        },
+        {
+          booking_id: 'b2',
+          user_id: 'u2',
+          name: 'Bob',
+          photo_url: 'https://cdn.test/bob.jpg',
+          email: 'bob@test.com',
+          position: 'goalkeeper',
+          paid_amount: '15.50',
+          created_at: new Date('2026-06-01T11:00:00.000Z'),
+          queue_position: 2,
+        },
+      ]);
+
+      const result = await service.getWaitlistForMatch(tenantId, matchId);
+
+      expect(result).toHaveLength(2);
+      expect(result[0]).toEqual({
+        bookingId: 'b1',
+        userId: 'u1',
+        name: 'Alice',
+        photoUrl: null,
+        email: 'alice@test.com',
+        position: 'field_player',
+        paidAmount: '15.50',
+        queuePosition: 1,
+        joinedAt: '2026-06-01T10:00:00.000Z',
+      });
+      expect(result[1]?.queuePosition).toBe(2);
+    });
+
+    it('throws NotFoundException when match not found', async () => {
+      matchesRepo.findMatchRowForTenant.mockResolvedValue(null);
+
+      await expect(
+        service.getWaitlistForMatch(tenantId, matchId),
+      ).rejects.toThrow(NotFoundException);
+      expect(matchesRepo.findWaitlistForMatch).not.toHaveBeenCalled();
+    });
+
+    it('returns empty array when no waitlist entries', async () => {
+      matchesRepo.findMatchRowForTenant.mockResolvedValue(matchRow);
+      matchesRepo.findWaitlistForMatch.mockResolvedValue([]);
+
+      const result = await service.getWaitlistForMatch(tenantId, matchId);
+      expect(result).toEqual([]);
+    });
+  });
+
+  describe('removeFromWaitlist', () => {
+    const matchId = '770e8400-e29b-41d4-a716-446655440002';
+    const bookingId = 'bb0e8400-e29b-41d4-a716-446655440099';
+
+    it('removes entry, returns refundAmount, and sends cancel email', async () => {
+      bookingsRepo.removeFromWaitlistForTenant.mockResolvedValue({
+        success: true,
+        refundAmount: '15.50',
+        playerEmail: 'player@test.com',
+      });
+
+      const result = await service.removeFromWaitlist({
+        tenantId,
+        matchId,
+        bookingId,
+      });
+
+      expect(result).toEqual({ removed: true, refundAmount: '15.50' });
+      expect(emailService.sendBookingCancelledEmail).toHaveBeenCalledWith(
+        'player@test.com',
+      );
+    });
+
+    it('throws NotFoundException when booking not found', async () => {
+      bookingsRepo.removeFromWaitlistForTenant.mockResolvedValue({
+        success: false,
+        code: 'BOOKING_NOT_FOUND',
+      });
+
+      await expect(
+        service.removeFromWaitlist({ tenantId, matchId, bookingId }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('throws BadRequestException when booking is not pending', async () => {
+      bookingsRepo.removeFromWaitlistForTenant.mockResolvedValue({
+        success: false,
+        code: 'NOT_PENDING',
+      });
+
+      await expect(
+        service.removeFromWaitlist({ tenantId, matchId, bookingId }),
       ).rejects.toThrow(BadRequestException);
     });
   });

@@ -8,12 +8,15 @@ import {
 import { EmailService } from '../auth/email.service';
 import { BookingPosition } from '../bookings/booking-position';
 import { BookingsRepository } from '../bookings/bookings.repository';
+import type { RemoveFromWaitlistResponseDto } from '../bookings/dto/remove-from-waitlist-response.dto';
 import type { CreateMatchDto } from './dto/create-match.dto';
 import type { CancelMatchResponseDto } from './dto/cancel-match-response.dto';
 import type { UpdateMatchDto } from './dto/update-match.dto';
 import type { MatchBrowseItemDto } from './dto/match-browse-item.dto';
 import type { MatchDetailResponseDto } from './dto/match-detail-response.dto';
 import type { MatchRosterPlayerDto } from './dto/match-roster-player.dto';
+import type { MatchWaitlistPlayerDto } from './dto/match-waitlist-player.dto';
+import type { OperatorWaitlistEntryDto } from './dto/operator-waitlist-entry.dto';
 import type { ListMatchesQueryDto } from './dto/list-matches-query.dto';
 import type { ListTenantMatchesQueryDto } from './dto/list-tenant-matches-query.dto';
 import type { OperatorMatchItemDto } from './dto/operator-match-item.dto';
@@ -26,6 +29,7 @@ import {
   type MatchDetailRow,
   type MatchOperatorRow,
   type MatchRow,
+  type WaitlistEntryRow,
 } from './matches.repository';
 import { VenuesRepository } from '../venues/venues.repository';
 import type { VenueSportType } from '../venues/venue-sport-type';
@@ -327,6 +331,54 @@ export class MatchesService {
     };
   }
 
+  async getWaitlistForMatch(
+    tenantId: string,
+    matchId: string,
+  ): Promise<OperatorWaitlistEntryDto[]> {
+    const match = await this.matchesRepository.findMatchRowForTenant(
+      matchId,
+      tenantId,
+    );
+    if (!match) {
+      throw new NotFoundException('Match not found');
+    }
+    const rows = await this.matchesRepository.findWaitlistForMatch(
+      matchId,
+      tenantId,
+    );
+    return rows.map((r) => this.toWaitlistEntryDto(r));
+  }
+
+  async removeFromWaitlist(params: {
+    tenantId: string;
+    matchId: string;
+    bookingId: string;
+  }): Promise<RemoveFromWaitlistResponseDto> {
+    const result =
+      await this.bookingsRepository.removeFromWaitlistForTenant(params);
+    if (!result.success) {
+      if (result.code === 'BOOKING_NOT_FOUND') {
+        throw new NotFoundException('Waitlist entry not found');
+      }
+      throw new BadRequestException(
+        'Booking is not on the waitlist (not pending)',
+      );
+    }
+
+    void this.emailService
+      .sendBookingCancelledEmail(result.playerEmail)
+      .catch((err: unknown) => {
+        this.logger.warn(
+          `sendBookingCancelledEmail (admin waitlist kick) failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      });
+
+    return {
+      removed: true,
+      refundAmount: result.refundAmount,
+    };
+  }
+
   private toDetailDto(row: MatchDetailRow): MatchDetailResponseDto {
     return {
       id: row.id,
@@ -343,6 +395,8 @@ export class MatchesService {
       status: row.status,
       spotsRemaining: Number(row.spots_remaining),
       roster: MatchesService.parseRoster(row.roster),
+      waitlist: MatchesService.parseWaitlist(row.waitlist),
+      waitlistCount: Number(row.waitlist_count),
       createdAt: row.created_at.toISOString(),
       updatedAt: row.updated_at.toISOString(),
     };
@@ -369,6 +423,31 @@ export class MatchesService {
     });
   }
 
+  static parseWaitlist(raw: unknown): MatchWaitlistPlayerDto[] {
+    if (!Array.isArray(raw)) {
+      return [];
+    }
+    return raw.map((item) => {
+      const r = item as {
+        userId?: string;
+        name?: string;
+        position?: string;
+        photoUrl?: string | null;
+        queuePosition?: number;
+        joinedAt?: string;
+      };
+      return {
+        userId: String(r.userId ?? ''),
+        name: String(r.name ?? ''),
+        position: (r.position ??
+          BookingPosition.FieldPlayer) as BookingPosition,
+        photoUrl: r.photoUrl ?? null,
+        queuePosition: Number(r.queuePosition ?? 0),
+        joinedAt: r.joinedAt ? new Date(r.joinedAt).toISOString() : '',
+      };
+    });
+  }
+
   private toBrowseItemDto(row: MatchBrowseRow): MatchBrowseItemDto {
     return {
       id: row.id,
@@ -379,6 +458,7 @@ export class MatchesService {
       pricePerPlayer: Number(row.price_per_player),
       maxCapacity: row.max_players ?? 0,
       spotsRemaining: Number(row.spots_remaining),
+      waitlistCount: Number(row.waitlist_count),
       status: row.status,
       venueName: row.venue_name,
     };
@@ -429,6 +509,20 @@ export class MatchesService {
       status: row.status,
       createdAt: row.created_at.toISOString(),
       updatedAt: row.updated_at.toISOString(),
+    };
+  }
+
+  private toWaitlistEntryDto(row: WaitlistEntryRow): OperatorWaitlistEntryDto {
+    return {
+      bookingId: row.booking_id,
+      userId: row.user_id,
+      name: row.name,
+      email: row.email,
+      photoUrl: row.photo_url,
+      position: row.position as BookingPosition,
+      paidAmount: row.paid_amount,
+      queuePosition: Number(row.queue_position),
+      joinedAt: row.created_at.toISOString(),
     };
   }
 }

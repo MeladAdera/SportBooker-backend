@@ -65,8 +65,13 @@ export class BookingsService {
       throw this.mapFailure(result.code);
     }
 
-    const { booking, remainingSpots, emailForConfirmation, waitlistNotice } =
-      result;
+    const {
+      booking,
+      remainingSpots,
+      emailForConfirmation,
+      waitlistNotice,
+      waitlistPosition,
+    } = result;
 
     if (emailForConfirmation) {
       void this.emailService
@@ -78,7 +83,12 @@ export class BookingsService {
         });
     }
 
-    return this.toDto(booking, remainingSpots, waitlistNotice);
+    return this.toDto(
+      booking,
+      remainingSpots,
+      waitlistNotice,
+      waitlistPosition,
+    );
   }
 
   async cancelBookingForPlayer(params: {
@@ -233,6 +243,7 @@ export class BookingsService {
     },
     remainingSpots: number | null,
     waitlistNotice: string | null,
+    waitlistPosition: number | null,
   ): CreateBookingResponseDto {
     return {
       id: booking.id,
@@ -245,6 +256,7 @@ export class BookingsService {
       remainingSpots,
       waitlistNotice:
         booking.status === 'pending' ? (waitlistNotice ?? null) : null,
+      waitlistPosition: booking.status === 'pending' ? waitlistPosition : null,
     };
   }
 
@@ -258,6 +270,7 @@ export class BookingsService {
       position: row.position as BookingPosition,
       cancelledAt: row.cancelled_at ? row.cancelled_at.toISOString() : null,
       refundedAt: row.refunded_at ? row.refunded_at.toISOString() : null,
+      waitlistPosition: row.waitlist_position ?? null,
       createdAt: row.created_at.toISOString(),
       match: {
         id: row.match_id,

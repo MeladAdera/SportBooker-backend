@@ -28,6 +28,9 @@ export class MatchBrowseItemDto {
   })
   spotsRemaining!: number;
 
+  @ApiProperty({ description: 'Number of players on the waitlist' })
+  waitlistCount!: number;
+
   @ApiProperty({ example: 'upcoming' })
   status!: string;
 

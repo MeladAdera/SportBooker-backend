@@ -41,4 +41,12 @@ export class CreateBookingResponseDto {
       'When status is pending (waitlist): explains prepaid charge and refund policy',
   })
   waitlistNotice!: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      '1-based FIFO queue position when waitlisted; null when confirmed',
+    example: 3,
+  })
+  waitlistPosition!: number | null;
 }

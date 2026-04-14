@@ -1,8 +1,9 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { VenueSportType } from '../../venues/venue-sport-type';
 import { MatchRosterPlayerDto } from './match-roster-player.dto';
+import { MatchWaitlistPlayerDto } from './match-waitlist-player.dto';
 
-/** Match detail: create response fields plus venue fields, spots, confirmed roster. */
+/** Match detail: venue fields, spots, confirmed roster, and waitlist. */
 export class MatchDetailResponseDto {
   @ApiProperty({ format: 'uuid' })
   id!: string;
@@ -52,9 +53,18 @@ export class MatchDetailResponseDto {
 
   @ApiProperty({
     type: [MatchRosterPlayerDto],
-    description: 'Confirmed bookings only; pending (waitlist) excluded',
+    description: 'Confirmed bookings only',
   })
   roster!: MatchRosterPlayerDto[];
+
+  @ApiProperty({
+    type: [MatchWaitlistPlayerDto],
+    description: 'Pending (waitlist) bookings ordered by FIFO queue position',
+  })
+  waitlist!: MatchWaitlistPlayerDto[];
+
+  @ApiProperty({ description: 'Number of players on the waitlist' })
+  waitlistCount!: number;
 
   @ApiProperty()
   createdAt!: string;
