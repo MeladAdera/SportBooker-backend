@@ -179,7 +179,7 @@ export class UsersController {
   @ApiOperation({
     summary: 'Update current user profile',
     description:
-      'Optional name, phone, and photoUrl. Other fields are ignored (whitelist). Returns the updated profile.',
+      'Optional name, email, phone, and photoUrl. Email must be unique per tenant (case-insensitive); stored lowercased. Other fields are ignored (whitelist). Returns the updated profile.',
   })
   @ApiWrappedOkResponse({
     description: 'Updated profile',

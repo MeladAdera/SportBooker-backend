@@ -145,6 +145,28 @@ export class UsersRepository extends BaseRepository {
   }
 
   /**
+   * Another active user in the tenant with the same normalized email (case-insensitive), excluding `excludeUserId`.
+   */
+  async findOtherUserIdByNormalizedEmail(
+    tenantId: string,
+    normalizedEmail: string,
+    excludeUserId: string,
+  ): Promise<string | null> {
+    const { rows } = await this.query<{ id: string }>(
+      this.pool,
+      `SELECT id
+       FROM users
+       WHERE tenant_id = $1
+         AND deleted_at IS NULL
+         AND id <> $2
+         AND LOWER(TRIM(email)) = $3
+       LIMIT 1`,
+      [tenantId, excludeUserId, normalizedEmail],
+    );
+    return rows[0]?.id ?? null;
+  }
+
+  /**
    * Confirmed bookings for matches that are still in the future (blocks self-delete).
    */
   async hasUpcomingConfirmedBookings(
@@ -192,7 +214,12 @@ export class UsersRepository extends BaseRepository {
   async patchSelfProfile(
     tenantId: string,
     userId: string,
-    fields: { name?: string; phone?: string; photo_url?: string },
+    fields: {
+      name?: string;
+      phone?: string;
+      photo_url?: string;
+      email?: string;
+    },
   ): Promise<UserSelfProfileRow | null> {
     const fragments: string[] = [];
     const values: unknown[] = [];
@@ -209,6 +236,10 @@ export class UsersRepository extends BaseRepository {
     if (fields.photo_url !== undefined) {
       fragments.push(`photo_url = $${i++}`);
       values.push(fields.photo_url);
+    }
+    if (fields.email !== undefined) {
+      fragments.push(`email = $${i++}`);
+      values.push(fields.email);
     }
 
     if (fragments.length === 0) {

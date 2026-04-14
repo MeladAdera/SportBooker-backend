@@ -1,5 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 import {
+  IsEmail,
   IsOptional,
   IsString,
   IsUrl,
@@ -14,6 +16,18 @@ export class UpdateMyProfileDto {
   @IsString()
   @MinLength(2)
   name?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'New email (unique per tenant). Stored normalized (trimmed, lowercased).',
+    example: 'john@acfc.test',
+  })
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @IsEmail()
+  email?: string;
 
   @ApiPropertyOptional({ maxLength: 50 })
   @IsOptional()

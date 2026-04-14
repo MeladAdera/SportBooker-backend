@@ -69,7 +69,7 @@ Controller default roles: `super_admin`, `tenant_admin` — **overridden per han
 | `GET` | `/users/me` | super_admin, tenant_admin, tenant_staff, player | Current user profile |
 | `GET` | `/users/me/bookings` | super_admin, tenant_admin, tenant_staff, player | My bookings |
 | `GET` | `/users/me/wallet` | super_admin, tenant_admin, tenant_staff, player | Wallet + transactions |
-| `PATCH` | `/users/me` | super_admin, tenant_admin, tenant_staff, player | Update my profile |
+| `PATCH` | `/users/me` | super_admin, tenant_admin, tenant_staff, player | Update profile (`name`, `email`, `phone`, `photoUrl`); email unique per tenant, normalized to lowercase |
 | `DELETE` | `/users/me` | **player** | Soft-delete my account |
 | `GET` | `/users/:userId` | tenant_admin, tenant_staff | User detail in tenant (UUID) |
 | `PATCH` | `/users/:userId/role` | **super_admin**, **tenant_admin** (class default) | Assign role |

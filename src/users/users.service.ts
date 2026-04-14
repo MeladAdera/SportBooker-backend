@@ -44,6 +44,8 @@ import { WalletRepository } from './wallet.repository';
 export const UPCOMING_BOOKINGS_BLOCK_DELETE_MESSAGE =
   'You have confirmed upcoming bookings. Cancel them before deleting your account.';
 
+const PG_UNIQUE_VIOLATION = '23505';
+
 @Injectable()
 export class UsersService {
   constructor(
@@ -311,16 +313,54 @@ export class UsersService {
     dto: UpdateMyProfileDto;
   }): Promise<MyProfileResponseDto> {
     const { dto, tenantId, userId } = params;
-    const patch: { name?: string; phone?: string; photo_url?: string } = {};
+    const patch: {
+      name?: string;
+      phone?: string;
+      photo_url?: string;
+      email?: string;
+    } = {};
     if (dto.name !== undefined) patch.name = dto.name;
     if (dto.phone !== undefined) patch.phone = dto.phone;
     if (dto.photoUrl !== undefined) patch.photo_url = dto.photoUrl;
 
-    const row = await this.usersRepository.patchSelfProfile(
-      tenantId,
-      userId,
-      patch,
-    );
+    if (dto.email !== undefined) {
+      const normalized = dto.email.trim().toLowerCase();
+      const current = await this.usersRepository.findByIdForSelfProfile(
+        tenantId,
+        userId,
+      );
+      if (!current || current.deleted_at != null) {
+        throw new UnauthorizedException('Invalid or expired session');
+      }
+      const currentNormalized = current.email.trim().toLowerCase();
+      if (normalized !== currentNormalized) {
+        const otherId =
+          await this.usersRepository.findOtherUserIdByNormalizedEmail(
+            tenantId,
+            normalized,
+            userId,
+          );
+        if (otherId) {
+          throw new ConflictException('Email already in use for this tenant');
+        }
+        patch.email = normalized;
+      }
+    }
+
+    let row: UserSelfProfileRow | null;
+    try {
+      row = await this.usersRepository.patchSelfProfile(
+        tenantId,
+        userId,
+        patch,
+      );
+    } catch (err: unknown) {
+      const pgErr = err as { code?: string };
+      if (pgErr?.code === PG_UNIQUE_VIOLATION) {
+        throw new ConflictException('Email already in use for this tenant');
+      }
+      throw err;
+    }
     if (!row || row.deleted_at != null) {
       throw new UnauthorizedException('Invalid or expired session');
     }

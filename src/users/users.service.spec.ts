@@ -24,6 +24,7 @@ describe('UsersService', () => {
       UsersRepository,
       | 'findByIdInTenant'
       | 'findByIdForSelfProfile'
+      | 'findOtherUserIdByNormalizedEmail'
       | 'hasUpcomingConfirmedBookings'
       | 'patchSelfProfile'
       | 'softDeleteAccount'
@@ -72,6 +73,7 @@ describe('UsersService', () => {
     repository = {
       findByIdInTenant: jest.fn(),
       findByIdForSelfProfile: jest.fn(),
+      findOtherUserIdByNormalizedEmail: jest.fn().mockResolvedValue(null),
       hasUpcomingConfirmedBookings: jest.fn(),
       patchSelfProfile: jest.fn(),
       softDeleteAccount: jest.fn(),
@@ -433,6 +435,83 @@ describe('UsersService', () => {
       expect(result.name).toBe('New Name');
       expect(result.phone).toBe('+1999');
       expect(result.photoUrl).toBe('https://cdn.example/b.png');
+      expect(repository.findByIdForSelfProfile).not.toHaveBeenCalled();
+    });
+
+    it('updates email when new and unique (normalized lowercase)', async () => {
+      repository.findByIdForSelfProfile.mockResolvedValue(profileRow);
+      repository.findOtherUserIdByNormalizedEmail.mockResolvedValue(null);
+      repository.patchSelfProfile.mockResolvedValue({
+        ...profileRow,
+        email: 'new@test.com',
+      });
+
+      const result = await service.updateMyProfile({
+        tenantId,
+        userId: actorId,
+        dto: { email: 'New@Test.com' },
+      });
+
+      expect(repository.findOtherUserIdByNormalizedEmail).toHaveBeenCalledWith(
+        tenantId,
+        'new@test.com',
+        actorId,
+      );
+      expect(repository.patchSelfProfile).toHaveBeenCalledWith(
+        tenantId,
+        actorId,
+        { email: 'new@test.com' },
+      );
+      expect(result.email).toBe('new@test.com');
+    });
+
+    it('skips email in patch when unchanged after normalization', async () => {
+      repository.findByIdForSelfProfile.mockResolvedValue(profileRow);
+      repository.patchSelfProfile.mockResolvedValue(profileRow);
+
+      await service.updateMyProfile({
+        tenantId,
+        userId: actorId,
+        dto: { email: 'P@Test.com' },
+      });
+
+      expect(
+        repository.findOtherUserIdByNormalizedEmail,
+      ).not.toHaveBeenCalled();
+      expect(repository.patchSelfProfile).toHaveBeenCalledWith(
+        tenantId,
+        actorId,
+        {},
+      );
+    });
+
+    it('throws ConflictException when email belongs to another user', async () => {
+      repository.findByIdForSelfProfile.mockResolvedValue(profileRow);
+      repository.findOtherUserIdByNormalizedEmail.mockResolvedValue(
+        'other-user-id',
+      );
+
+      await expect(
+        service.updateMyProfile({
+          tenantId,
+          userId: actorId,
+          dto: { email: 'taken@test.com' },
+        }),
+      ).rejects.toThrow(ConflictException);
+
+      expect(repository.patchSelfProfile).not.toHaveBeenCalled();
+    });
+
+    it('throws Unauthorized when email change but profile missing', async () => {
+      repository.findByIdForSelfProfile.mockResolvedValue(null);
+
+      await expect(
+        service.updateMyProfile({
+          tenantId,
+          userId: actorId,
+          dto: { email: 'x@test.com' },
+        }),
+      ).rejects.toThrow(UnauthorizedException);
     });
 
     it('passes empty patch when dto has no keys set', async () => {
