@@ -5,7 +5,6 @@ import {
   IsEnum,
   IsInt,
   IsNotEmpty,
-  IsNumber,
   IsString,
   IsUUID,
   MaxLength,
@@ -46,9 +45,12 @@ export class CreateMatchDto {
   @Min(1)
   maxCapacity!: number;
 
-  @ApiProperty({ example: 15.5 })
+  @ApiProperty({
+    example: 15,
+    description: 'Whole currency units; must be >= 1',
+  })
   @Type(() => Number)
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(0)
+  @IsInt()
+  @Min(1)
   pricePerPlayer!: number;
 }

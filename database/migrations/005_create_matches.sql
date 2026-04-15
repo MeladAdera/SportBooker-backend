@@ -18,7 +18,8 @@ CREATE TABLE IF NOT EXISTS matches (
   max_players      INT,
   created_at       TIMESTAMPTZ   NOT NULL DEFAULT now(),
   updated_at       TIMESTAMPTZ   NOT NULL DEFAULT now(),
-  CONSTRAINT matches_duration_mins_positive CHECK (duration_mins >= 1)
+  CONSTRAINT matches_duration_mins_positive CHECK (duration_mins >= 1),
+  CONSTRAINT matches_price_per_player_positive CHECK (price_per_player > 0)
 );
 
 CREATE INDEX IF NOT EXISTS idx_matches_venue_id     ON matches(venue_id);

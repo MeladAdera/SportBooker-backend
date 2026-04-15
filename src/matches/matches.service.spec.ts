@@ -50,7 +50,7 @@ describe('MatchesService', () => {
     sport_type: 'football',
     scheduled_at: new Date('2026-06-01T18:00:00.000Z'),
     duration_mins: 90,
-    price_per_player: '15.50',
+    price_per_player: '15.00',
     status: 'upcoming',
     max_players: 22,
     created_at: new Date('2026-01-01T12:00:00.000Z'),
@@ -226,7 +226,7 @@ describe('MatchesService', () => {
     scheduledAt: '2026-06-01T18:00:00.000Z',
     durationMins: 90,
     maxCapacity: 22,
-    pricePerPlayer: 15.5,
+    pricePerPlayer: 15,
   };
 
   it('creates a match when venue is active', async () => {
@@ -258,7 +258,7 @@ describe('MatchesService', () => {
       scheduledAt: new Date('2026-06-01T18:00:00.000Z'),
       durationMins: 90,
       maxPlayers: 22,
-      pricePerPlayer: 15.5,
+      pricePerPlayer: 15,
     });
     expect(result).toMatchObject({
       id: matchRow.id,
@@ -267,7 +267,7 @@ describe('MatchesService', () => {
       venueId,
       durationMins: 90,
       maxCapacity: 22,
-      pricePerPlayer: 15.5,
+      pricePerPlayer: 15,
       status: 'upcoming',
     });
     expect(result.scheduledAt).toBe('2026-06-01T18:00:00.000Z');

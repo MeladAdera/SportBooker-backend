@@ -4,7 +4,6 @@ import {
   IsDateString,
   IsEnum,
   IsInt,
-  IsNumber,
   IsOptional,
   IsString,
   IsUUID,
@@ -54,10 +53,10 @@ export class UpdateMatchDto {
   @Min(1)
   maxCapacity?: number;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ description: 'Whole currency units; must be >= 1' })
   @IsOptional()
   @Type(() => Number)
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(0)
+  @IsInt()
+  @Min(1)
   pricePerPlayer?: number;
 }
