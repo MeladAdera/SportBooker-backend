@@ -28,6 +28,8 @@ import type { TenantUserListItemDto } from './dto/tenant-user-list-item.dto';
 import type { UpdateMyProfileDto } from './dto/update-my-profile.dto';
 import type { UserResponseDto } from './dto/user-response.dto';
 import type { WalletQueryDto } from './dto/wallet-query.dto';
+import { parseE164ToBigint } from '../auth/register-phone.util';
+import { phoneE164FromDb } from './phone-from-db';
 import type {
   WalletTransactionApiType,
   WalletTransactionItemDto,
@@ -315,12 +317,12 @@ export class UsersService {
     const { dto, tenantId, userId } = params;
     const patch: {
       name?: string;
-      phone?: string;
+      phone?: bigint;
       photo_url?: string;
       email?: string;
     } = {};
     if (dto.name !== undefined) patch.name = dto.name;
-    if (dto.phone !== undefined) patch.phone = dto.phone;
+    if (dto.phone !== undefined) patch.phone = parseE164ToBigint(dto.phone);
     if (dto.photoUrl !== undefined) patch.photo_url = dto.photoUrl;
 
     if (dto.email !== undefined) {
@@ -501,7 +503,7 @@ export class UsersService {
       id: row.id,
       name: row.name,
       email: row.email,
-      phone: row.phone,
+      phone: phoneE164FromDb(row.phone),
       photoUrl: row.photo_url,
       role: row.role,
       isActive: row.is_active,
@@ -516,7 +518,7 @@ export class UsersService {
       id: row.id,
       name: row.name,
       email: row.email,
-      phone: row.phone,
+      phone: phoneE164FromDb(row.phone),
       photoUrl: row.photo_url,
       role: row.role,
       walletBalance: Number(row.wallet_balance),

@@ -260,7 +260,7 @@ describe('UsersService', () => {
       id: targetId,
       name: 'Player',
       email: 'p@test.com',
-      phone: '+1000',
+      phone: 97150001000,
       photo_url: null,
       role: 'player',
       is_active: true,
@@ -282,7 +282,7 @@ describe('UsersService', () => {
         id: targetId,
         name: 'Player',
         email: 'p@test.com',
-        phone: '+1000',
+        phone: '+97150001000',
         photoUrl: null,
         role: 'player',
         isActive: true,
@@ -338,7 +338,7 @@ describe('UsersService', () => {
         id: actorId,
         name: 'Player One',
         email: 'p@test.com',
-        phone: '+15550001',
+        phone: 15550001,
         photo_url: 'https://cdn.example/a.png',
         role: UserRole.Player,
         wallet_balance: '42.50',
@@ -394,7 +394,7 @@ describe('UsersService', () => {
     id: actorId,
     name: 'Player One',
     email: 'p@test.com',
-    phone: '+15550001',
+    phone: 15550001,
     photo_url: 'https://cdn.example/a.png',
     role: UserRole.Player,
     wallet_balance: '42.50',
@@ -407,13 +407,13 @@ describe('UsersService', () => {
       repository.patchSelfProfile.mockResolvedValue({
         ...profileRow,
         name: 'New Name',
-        phone: '+1999',
+        phone: 97150001999,
         photo_url: 'https://cdn.example/b.png',
       });
 
       const dto: UpdateMyProfileDto = {
         name: 'New Name',
-        phone: '+1999',
+        phone: '+97150001999',
         photoUrl: 'https://cdn.example/b.png',
       };
 
@@ -428,12 +428,12 @@ describe('UsersService', () => {
         actorId,
         {
           name: 'New Name',
-          phone: '+1999',
+          phone: 97150001999n,
           photo_url: 'https://cdn.example/b.png',
         },
       );
       expect(result.name).toBe('New Name');
-      expect(result.phone).toBe('+1999');
+      expect(result.phone).toBe('+97150001999');
       expect(result.photoUrl).toBe('https://cdn.example/b.png');
       expect(repository.findByIdForSelfProfile).not.toHaveBeenCalled();
     });

@@ -54,7 +54,7 @@ export type TenantUserDetailRow = {
   id: string;
   name: string;
   email: string;
-  phone: string | null;
+  phone: string | number | null;
   photo_url: string | null;
   role: string;
   is_active: boolean;
@@ -69,7 +69,7 @@ export type UserSelfProfileRow = {
   id: string;
   name: string;
   email: string;
-  phone: string | null;
+  phone: string | number | null;
   photo_url: string | null;
   role: string;
   /** pg `numeric` — use Number() when mapping to API */
@@ -216,7 +216,7 @@ export class UsersRepository extends BaseRepository {
     userId: string,
     fields: {
       name?: string;
-      phone?: string;
+      phone?: number | bigint;
       photo_url?: string;
       email?: string;
     },
@@ -283,7 +283,7 @@ export class UsersRepository extends BaseRepository {
     name: string;
     email: string;
     passwordHash: string;
-    phone: string | null;
+    phone: bigint;
   }): Promise<RegisteredUserRow> {
     const { rows } = await this.query<RegisteredUserRow>(
       this.pool,

@@ -11,8 +11,12 @@ export class TenantUserDetailDto {
   @ApiProperty()
   email!: string;
 
-  @ApiPropertyOptional({ nullable: true, type: String })
-  phone!: string | null;
+  @ApiPropertyOptional({
+    type: String,
+    example: '+963998163901',
+    description: 'E.164 format. Omitted when not set.',
+  })
+  phone?: string;
 
   @ApiPropertyOptional({ nullable: true, type: String })
   photoUrl!: string | null;

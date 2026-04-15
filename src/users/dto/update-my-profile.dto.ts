@@ -5,9 +5,10 @@ import {
   IsOptional,
   IsString,
   IsUrl,
-  MaxLength,
+  Matches,
   MinLength,
 } from 'class-validator';
+import { E164_STRING_REGEX } from '../../auth/register-phone.util';
 
 /** PATCH /users/me — only these fields; others stripped by ValidationPipe whitelist. */
 export class UpdateMyProfileDto {
@@ -29,10 +30,24 @@ export class UpdateMyProfileDto {
   @IsEmail()
   email?: string;
 
-  @ApiPropertyOptional({ maxLength: 50 })
+  @ApiPropertyOptional({
+    description:
+      'E.164 international format: leading +, then 2–15 digits. Omit to leave unchanged.',
+    example: '+963998163901',
+  })
   @IsOptional()
+  @Transform(({ value }: { value: unknown }) => {
+    if (value === undefined || value === null) {
+      return undefined;
+    }
+    if (typeof value !== 'string') {
+      return value;
+    }
+    const t = value.trim();
+    return t === '' ? undefined : t;
+  })
   @IsString()
-  @MaxLength(50)
+  @Matches(E164_STRING_REGEX)
   phone?: string;
 
   @ApiPropertyOptional({

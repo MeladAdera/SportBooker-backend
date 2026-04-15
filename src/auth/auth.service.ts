@@ -18,6 +18,7 @@ import type { ResetPasswordDto } from './dto/reset-password.dto';
 import type { ChangePasswordDto } from './dto/change-password.dto';
 import type { RegisterDto } from './dto/register.dto';
 import type { RegisterResponseDto } from './dto/register-response.dto';
+import { parseE164ToBigint } from './register-phone.util';
 
 const BCRYPT_ROUNDS = 12;
 
@@ -59,12 +60,14 @@ export class AuthService {
     const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
 
     try {
+      const phone = parseE164ToBigint(dto.phone);
+
       const row = await this.usersRepository.insertRegisteredUser({
         tenantId,
         name: dto.name,
         email: dto.email,
         passwordHash,
-        phone: dto.phone ?? null,
+        phone,
       });
 
       return {
