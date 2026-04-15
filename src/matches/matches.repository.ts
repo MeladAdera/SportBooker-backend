@@ -50,6 +50,7 @@ export type MatchBrowseRow = {
   max_players: number | null;
   status: string;
   venue_name: string;
+  venue_picture_url: string | null;
   spots_remaining: number;
   waitlist_count: number;
 };
@@ -276,6 +277,7 @@ export class MatchesRepository extends BaseRepository {
         m.max_players,
         ${COMPUTED_STATUS_SQL} AS status,
         v.name AS venue_name,
+        v.picture_url AS venue_picture_url,
         GREATEST(
           0,
           COALESCE(m.max_players, 0) - COALESCE(bc.confirmed_count, 0)

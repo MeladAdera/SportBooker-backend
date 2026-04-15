@@ -101,6 +101,7 @@ describe('MatchesService', () => {
         max_players: 22,
         status: 'upcoming',
         venue_name: 'Main Pitch',
+        venue_picture_url: null,
         spots_remaining: 20,
         waitlist_count: 2,
       },

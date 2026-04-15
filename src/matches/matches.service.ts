@@ -461,6 +461,7 @@ export class MatchesService {
       waitlistCount: Number(row.waitlist_count),
       status: row.status,
       venueName: row.venue_name,
+      venuePictureUrl: row.venue_picture_url ?? null,
     };
   }
 
