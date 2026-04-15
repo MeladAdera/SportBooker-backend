@@ -37,6 +37,8 @@ export class MatchBrowseItemDto {
   @ApiProperty()
   venueName!: string;
 
-  @ApiProperty({ nullable: true, description: 'Venue cover image URL' })
-  venuePictureUrl!: string | null;
+  @ApiProperty({
+    description: 'Venue cover image URL; empty string when none',
+  })
+  venuePictureUrl!: string;
 }

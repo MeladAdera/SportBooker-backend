@@ -133,6 +133,7 @@ describe('MatchesService', () => {
       title: 'Sunday league',
       sportType: VenueSportType.Football,
       venueName: 'Main Pitch',
+      venuePictureUrl: '',
       spotsRemaining: 20,
       waitlistCount: 2,
       maxCapacity: 22,
