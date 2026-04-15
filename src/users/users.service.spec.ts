@@ -572,7 +572,7 @@ describe('UsersService', () => {
           sport_type: 'football',
           scheduled_at: new Date('2026-12-01T12:00:00.000Z'),
           venue_name: 'Main',
-          venue_picture_url: null,
+          venue_picture_url: '',
           created_at: new Date('2026-03-01T12:00:00.000Z'),
         },
       ]);
