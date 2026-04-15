@@ -565,6 +565,7 @@ describe('UsersService', () => {
       bookingsRepository.findMyBookingsForUser.mockResolvedValue([
         {
           id: 'b1',
+          match_id: '880e8400-e29b-41d4-a716-446655440003',
           status: 'pending',
           paid_amount: '0',
           match_title: 'Sunday',
@@ -585,6 +586,9 @@ describe('UsersService', () => {
       expect(result.limit).toBe(20);
       expect(result.total).toBe(1);
       expect(result.items[0]?.status).toBe('waitlisted');
+      expect(result.items[0]?.matchId).toBe(
+        '880e8400-e29b-41d4-a716-446655440003',
+      );
       expect(result.items[0]?.matchTitle).toBe('Sunday');
       expect(bookingsRepository.countMyBookingsForUser).toHaveBeenCalledWith({
         tenantId,

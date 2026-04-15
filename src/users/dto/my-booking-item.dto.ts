@@ -6,6 +6,9 @@ export class MyBookingItemDto {
   @ApiProperty({ format: 'uuid' })
   id!: string;
 
+  @ApiProperty({ description: 'ID of the match this booking belongs to' })
+  matchId!: string;
+
   @ApiProperty({
     enum: ['waitlisted', 'confirmed', 'cancelled'],
     description: 'Waitlisted = on waitlist (pending in DB)',

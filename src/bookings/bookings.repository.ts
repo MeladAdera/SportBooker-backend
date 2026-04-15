@@ -19,6 +19,7 @@ export type BookingRow = {
 /** Row for GET /users/me/bookings (joined query). */
 export type MyBookingHistoryRow = {
   id: string;
+  match_id: string;
   status: string;
   paid_amount: string;
   match_title: string;
@@ -1081,6 +1082,7 @@ export class BookingsRepository extends BaseRepository {
       this.pool,
       `SELECT
          b.id,
+         m.id AS match_id,
          b.status,
          b.paid_amount::text AS paid_amount,
          m.title AS match_title,

@@ -474,6 +474,7 @@ export class UsersService {
     const status = row.status === 'pending' ? 'waitlisted' : row.status;
     return {
       id: row.id,
+      matchId: row.match_id,
       status,
       paidAmount: row.paid_amount,
       matchTitle: row.match_title,
