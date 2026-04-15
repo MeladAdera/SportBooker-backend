@@ -113,6 +113,7 @@ export class AuthService {
       name: user.name,
       email: user.email,
       role: user.role,
+      photoUrl: user.photo_url ?? '',
       tenantId,
       refreshId,
       refreshSecret,
@@ -157,6 +158,7 @@ export class AuthService {
         name: row.name,
         email: row.email,
         role: row.role,
+        photoUrl: row.photo_url ?? '',
         tenantId: row.tenant_id,
         refreshId: newRefreshId,
         refreshSecret,
@@ -169,6 +171,7 @@ export class AuthService {
     name: string;
     email: string;
     role: string;
+    photoUrl: string;
     tenantId: string;
     refreshId: string;
     refreshSecret: string;
@@ -193,6 +196,7 @@ export class AuthService {
         name: params.name,
         email: params.email,
         role: params.role,
+        photoUrl: params.photoUrl,
       },
     };
   }

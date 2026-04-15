@@ -481,6 +481,7 @@ export class UsersService {
       sportType: row.sport_type as VenueSportType,
       matchScheduledAt: row.scheduled_at.toISOString(),
       venueName: row.venue_name,
+      venuePictureUrl: row.venue_picture_url ?? '',
       createdAt: row.created_at.toISOString(),
     };
   }

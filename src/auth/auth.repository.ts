@@ -11,6 +11,7 @@ export type RefreshTokenWithUserRow = {
   name: string;
   email: string;
   role: string;
+  photo_url: string | null;
 };
 
 export type PasswordResetTokenRow = {
@@ -64,7 +65,7 @@ export class AuthRepository extends BaseRepository {
   ): Promise<RefreshTokenWithUserRow | null> {
     const { rows } = await this.query<RefreshTokenWithUserRow>(
       client,
-      `SELECT rt.user_id, rt.token_hash, u.tenant_id, u.name, u.email, u.role
+      `SELECT rt.user_id, rt.token_hash, u.tenant_id, u.name, u.email, u.role, u.photo_url
        FROM refresh_tokens rt
        JOIN users u ON u.id = rt.user_id
        WHERE rt.id = $1 AND rt.expires_at > NOW()

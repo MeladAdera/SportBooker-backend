@@ -26,6 +26,7 @@ export type MyBookingHistoryRow = {
   sport_type: string;
   scheduled_at: Date;
   venue_name: string;
+  venue_picture_url: string | null;
   created_at: Date;
 };
 
@@ -1089,6 +1090,7 @@ export class BookingsRepository extends BaseRepository {
          m.sport_type::text AS sport_type,
          m.scheduled_at,
          v.name AS venue_name,
+         v.picture_url AS venue_picture_url,
          b.created_at
        FROM bookings b
        INNER JOIN matches m ON m.id = b.match_id

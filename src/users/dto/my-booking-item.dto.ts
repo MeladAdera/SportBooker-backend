@@ -30,6 +30,11 @@ export class MyBookingItemDto {
   @ApiProperty()
   venueName!: string;
 
+  @ApiProperty({
+    description: 'Venue cover image URL; empty string when none',
+  })
+  venuePictureUrl!: string;
+
   @ApiProperty({ example: '2026-03-30T12:00:00.000Z' })
   createdAt!: string;
 }

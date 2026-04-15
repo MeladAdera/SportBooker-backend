@@ -21,6 +21,7 @@ export type UserForLoginRow = {
   email: string;
   role: string;
   password_hash: string;
+  photo_url: string | null;
   deleted_at: Date | null;
   is_active: boolean | null;
 };
@@ -338,7 +339,7 @@ export class UsersRepository extends BaseRepository {
   ): Promise<UserForLoginRow | null> {
     const { rows } = await this.query<UserForLoginRow>(
       this.pool,
-      `SELECT id, name, email, role, password_hash, deleted_at, is_active
+      `SELECT id, name, email, role, password_hash, photo_url, deleted_at, is_active
        FROM users
        WHERE tenant_id = $1 AND email = $2`,
       [tenantId, email],

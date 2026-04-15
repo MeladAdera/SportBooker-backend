@@ -12,6 +12,11 @@ export class AuthUserDto {
 
   @ApiProperty()
   role!: string;
+
+  @ApiProperty({
+    description: 'User profile photo URL; empty string when none',
+  })
+  photoUrl!: string;
 }
 
 export class LoginResponseDto {

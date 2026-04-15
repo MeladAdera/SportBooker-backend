@@ -572,6 +572,7 @@ describe('UsersService', () => {
           sport_type: 'football',
           scheduled_at: new Date('2026-12-01T12:00:00.000Z'),
           venue_name: 'Main',
+          venue_picture_url: null,
           created_at: new Date('2026-03-01T12:00:00.000Z'),
         },
       ]);
@@ -590,6 +591,7 @@ describe('UsersService', () => {
         '880e8400-e29b-41d4-a716-446655440003',
       );
       expect(result.items[0]?.matchTitle).toBe('Sunday');
+      expect(result.items[0]?.venuePictureUrl).toBe('');
       expect(bookingsRepository.countMyBookingsForUser).toHaveBeenCalledWith({
         tenantId,
         userId: actorId,
