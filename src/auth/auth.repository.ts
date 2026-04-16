@@ -57,6 +57,7 @@ export class AuthRepository extends BaseRepository {
 
   /**
    * Locks the refresh token row for the duration of the transaction (rotation).
+   * Returns null if the token is expired, the user is soft-deleted, inactive, or actively banned.
    */
   async findRefreshTokenWithUserForUpdate(
     client: PoolClient,
@@ -67,7 +68,11 @@ export class AuthRepository extends BaseRepository {
       `SELECT rt.user_id, rt.token_hash, u.tenant_id, u.name, u.email, u.role
        FROM refresh_tokens rt
        JOIN users u ON u.id = rt.user_id
-       WHERE rt.id = $1 AND rt.expires_at > NOW()
+       WHERE rt.id = $1
+         AND rt.expires_at > NOW()
+         AND u.deleted_at IS NULL
+         AND u.is_active = true
+         AND (u.banned_at IS NULL OR (u.banned_until IS NOT NULL AND u.banned_until <= NOW()))
        FOR UPDATE`,
       [id],
     );

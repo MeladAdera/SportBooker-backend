@@ -8,7 +8,13 @@ import {
 import type { PoolClient } from 'pg';
 import { AuthRepository } from '../auth/auth.repository';
 import { BookingsRepository } from '../bookings/bookings.repository';
+import { EmailService } from '../auth/email.service';
 import { UpdateMyProfileDto } from './dto/update-my-profile.dto';
+import {
+  DominantFoot,
+  PlayerPosition,
+  SkillLevel,
+} from './player-profile.enums';
 import { UserRole } from './user-role';
 import { UsersRepository } from './users.repository';
 import { UsersService } from './users.service';
@@ -32,6 +38,7 @@ describe('UsersService', () => {
       | 'countTenantUsers'
       | 'findTenantUsers'
       | 'findTenantUserDetailById'
+      | 'computePlayerStats'
     >
   >;
   let bookingsRepository: jest.Mocked<
@@ -44,6 +51,9 @@ describe('UsersService', () => {
       | 'countWalletTransactionsForUser'
       | 'findWalletTransactionsForUser'
     >
+  >;
+  let emailService: jest.Mocked<
+    Pick<EmailService, 'sendAccountBannedEmail' | 'sendAccountUnbannedEmail'>
   >;
 
   const tenantId = 'tenant-uuid';
@@ -81,6 +91,15 @@ describe('UsersService', () => {
       countTenantUsers: jest.fn().mockResolvedValue(0),
       findTenantUsers: jest.fn().mockResolvedValue([]),
       findTenantUserDetailById: jest.fn(),
+      computePlayerStats: jest.fn().mockResolvedValue({
+        matches_played: '0',
+        wins: '0',
+        losses: '0',
+        draws: '0',
+        goals_scored: '0',
+        assists: '0',
+        mvp_awards: '0',
+      }),
     };
     bookingsRepository = {
       countMyBookingsForUser: jest.fn().mockResolvedValue(0),
@@ -91,6 +110,10 @@ describe('UsersService', () => {
       countWalletTransactionsForUser: jest.fn().mockResolvedValue(0),
       findWalletTransactionsForUser: jest.fn().mockResolvedValue([]),
     };
+    emailService = {
+      sendAccountBannedEmail: jest.fn().mockResolvedValue(undefined),
+      sendAccountUnbannedEmail: jest.fn().mockResolvedValue(undefined),
+    };
     service = new UsersService(
       repository as unknown as UsersRepository,
       authRepository as unknown as AuthRepository,
@@ -99,6 +122,7 @@ describe('UsersService', () => {
       {
         saveUserPhoto: jest.fn(),
       } as unknown as import('../venues/venue-picture.storage').VenuePictureStorage,
+      emailService as unknown as EmailService,
     );
   });
 
@@ -213,6 +237,8 @@ describe('UsersService', () => {
           role: 'player',
           is_active: true,
           wallet_balance: '10.00',
+          banned_at: null,
+          banned_until: null,
           created_at: new Date('2024-01-01'),
         },
       ]);
@@ -229,7 +255,9 @@ describe('UsersService', () => {
         tenantId,
         role: undefined,
         isActive: undefined,
+        isBanned: undefined,
         includeDeleted: false,
+        search: undefined,
       });
     });
 
@@ -253,6 +281,24 @@ describe('UsersService', () => {
         }),
       ).rejects.toThrow(ForbiddenException);
     });
+
+    it('passes search term to repository', async () => {
+      repository.countTenantUsers.mockResolvedValue(0);
+      repository.findTenantUsers.mockResolvedValue([]);
+
+      await service.listTenantUsers({
+        tenantId,
+        actorRole: UserRole.TenantAdmin,
+        query: { search: 'alice' },
+      });
+
+      expect(repository.countTenantUsers).toHaveBeenCalledWith(
+        expect.objectContaining({ search: 'alice' }),
+      );
+      expect(repository.findTenantUsers).toHaveBeenCalledWith(
+        expect.objectContaining({ search: 'alice' }),
+      );
+    });
   });
 
   describe('getTenantUserById', () => {
@@ -265,6 +311,9 @@ describe('UsersService', () => {
       role: 'player',
       is_active: true,
       wallet_balance: '99.00',
+      banned_at: null,
+      banned_until: null,
+      ban_reason: null,
       created_at: new Date('2024-06-01'),
       updated_at: new Date('2024-06-02'),
     };
@@ -287,6 +336,10 @@ describe('UsersService', () => {
         role: 'player',
         isActive: true,
         walletBalance: 99,
+        isBanned: false,
+        bannedAt: null,
+        bannedUntil: null,
+        banReason: null,
         createdAt: detailRow.created_at,
         updatedAt: detailRow.updated_at,
       });
@@ -333,16 +386,9 @@ describe('UsersService', () => {
   });
 
   describe('getMyProfile', () => {
-    it('returns profile without internal fields', async () => {
+    it('returns profile without internal fields and includes zeroed stats', async () => {
       repository.findByIdForSelfProfile.mockResolvedValue({
-        id: actorId,
-        name: 'Player One',
-        email: 'p@test.com',
-        phone: 15550001,
-        photo_url: 'https://cdn.example/a.png',
-        role: UserRole.Player,
-        wallet_balance: '42.50',
-        created_at: new Date('2024-01-01'),
+        ...profileRow,
         deleted_at: null,
       });
 
@@ -351,7 +397,7 @@ describe('UsersService', () => {
         userId: actorId,
       });
 
-      expect(result).toEqual({
+      expect(result).toMatchObject({
         id: actorId,
         name: 'Player One',
         email: 'p@test.com',
@@ -360,6 +406,65 @@ describe('UsersService', () => {
         role: UserRole.Player,
         walletBalance: 42.5,
         createdAt: new Date('2024-01-01'),
+        dateOfBirth: null,
+        nationality: null,
+        preferredLanguage: null,
+        skillLevel: null,
+        preferredPosition: null,
+        dominantFoot: null,
+      });
+      expect(result.stats).toEqual({
+        matchesPlayed: 0,
+        wins: 0,
+        losses: 0,
+        draws: 0,
+        goalsScored: 0,
+        assists: 0,
+        mvpAwards: 0,
+      });
+      expect(repository.computePlayerStats).toHaveBeenCalledWith(
+        actorId,
+        tenantId,
+      );
+    });
+
+    it('returns profile with player profile fields populated', async () => {
+      repository.findByIdForSelfProfile.mockResolvedValue({
+        ...profileRow,
+        date_of_birth: '1995-03-20',
+        nationality: 'Emirati',
+        preferred_language: 'ar',
+        skill_level: 'advanced',
+        preferred_position: 'midfielder',
+        dominant_foot: 'right',
+        deleted_at: null,
+      });
+      repository.computePlayerStats.mockResolvedValue({
+        matches_played: '12',
+        wins: '7',
+        losses: '3',
+        draws: '2',
+        goals_scored: '9',
+        assists: '4',
+        mvp_awards: '2',
+      });
+
+      const result = await service.getMyProfile({ tenantId, userId: actorId });
+
+      expect(result.dateOfBirth).toBe('1995-03-20');
+      expect(result.nationality).toBe('Emirati');
+      expect(result.preferredLanguage).toBe('ar');
+      expect(result.skillLevel).toBe(SkillLevel.Advanced);
+      expect(result.preferredPosition).toBe(PlayerPosition.Midfielder);
+      expect(result.dominantFoot).toBe(DominantFoot.Right);
+      expect(result.stats).toEqual({
+        matchesPlayed: 12,
+        wins: 7,
+        losses: 3,
+        draws: 2,
+        goalsScored: 9,
+        assists: 4,
+        mvpAwards: 2,
       });
     });
 
@@ -373,14 +478,7 @@ describe('UsersService', () => {
 
     it('throws Unauthorized when user is soft-deleted', async () => {
       repository.findByIdForSelfProfile.mockResolvedValue({
-        id: actorId,
-        name: 'Gone',
-        email: 'g@test.com',
-        phone: null,
-        photo_url: null,
-        role: UserRole.Player,
-        wallet_balance: '0.00',
-        created_at: new Date('2024-01-01'),
+        ...profileRow,
         deleted_at: new Date('2024-06-01'),
       });
 
@@ -400,6 +498,12 @@ describe('UsersService', () => {
     wallet_balance: '42.50',
     created_at: new Date('2024-01-01'),
     deleted_at: null as Date | null,
+    date_of_birth: null as string | null,
+    nationality: null as string | null,
+    preferred_language: null as string | null,
+    skill_level: null as string | null,
+    preferred_position: null as string | null,
+    dominant_foot: null as string | null,
   };
 
   describe('updateMyProfile', () => {
@@ -435,7 +539,52 @@ describe('UsersService', () => {
       expect(result.name).toBe('New Name');
       expect(result.phone).toBe('+97150001999');
       expect(result.photoUrl).toBe('https://cdn.example/b.png');
+      expect(result.stats).toBeDefined();
       expect(repository.findByIdForSelfProfile).not.toHaveBeenCalled();
+    });
+
+    it('maps player profile fields to repository patch', async () => {
+      repository.patchSelfProfile.mockResolvedValue({
+        ...profileRow,
+        date_of_birth: '1992-06-15',
+        nationality: 'British',
+        preferred_language: 'en',
+        skill_level: 'intermediate',
+        preferred_position: 'defender',
+        dominant_foot: 'left',
+      });
+
+      const dto: UpdateMyProfileDto = {
+        dateOfBirth: '1992-06-15',
+        nationality: 'British',
+        preferredLanguage: 'en',
+        skillLevel: SkillLevel.Intermediate,
+        preferredPosition: PlayerPosition.Defender,
+        dominantFoot: DominantFoot.Left,
+      };
+
+      const result = await service.updateMyProfile({
+        tenantId,
+        userId: actorId,
+        dto,
+      });
+
+      expect(repository.patchSelfProfile).toHaveBeenCalledWith(
+        tenantId,
+        actorId,
+        {
+          date_of_birth: '1992-06-15',
+          nationality: 'British',
+          preferred_language: 'en',
+          skill_level: SkillLevel.Intermediate,
+          preferred_position: PlayerPosition.Defender,
+          dominant_foot: DominantFoot.Left,
+        },
+      );
+      expect(result.dateOfBirth).toBe('1992-06-15');
+      expect(result.skillLevel).toBe(SkillLevel.Intermediate);
+      expect(result.preferredPosition).toBe(PlayerPosition.Defender);
+      expect(result.dominantFoot).toBe(DominantFoot.Left);
     });
 
     it('updates email when new and unique (normalized lowercase)', async () => {
@@ -608,6 +757,63 @@ describe('UsersService', () => {
           query: {},
         }),
       ).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
+  describe('listPlayerBookingsForOperator', () => {
+    const targetId = 'target-user-uuid-operator';
+    const bookingRow = {
+      id: 'b1',
+      match_id: 'm1',
+      status: 'confirmed',
+      paid_amount: '20.00',
+      match_title: 'Friday Match',
+      sport_type: 'football',
+      scheduled_at: new Date('2026-06-01T18:00:00.000Z'),
+      venue_name: 'Court A',
+      created_at: new Date('2026-05-01T10:00:00.000Z'),
+    };
+
+    it('returns paginated bookings for the target user', async () => {
+      repository.findByIdInTenant.mockResolvedValue({
+        id: targetId,
+        tenant_id: tenantId,
+        name: 'Player',
+        email: 'p@test.com',
+        role: 'player',
+        is_active: true,
+        deleted_at: null,
+        created_at: new Date(),
+        updated_at: new Date(),
+      });
+      bookingsRepository.countMyBookingsForUser.mockResolvedValue(1);
+      bookingsRepository.findMyBookingsForUser.mockResolvedValue([bookingRow]);
+
+      const result = await service.listPlayerBookingsForOperator({
+        tenantId,
+        targetUserId: targetId,
+        query: { page: 1, limit: 20 },
+      });
+
+      expect(result.total).toBe(1);
+      expect(result.items[0]?.status).toBe('confirmed');
+      expect(result.items[0]?.matchTitle).toBe('Friday Match');
+      expect(bookingsRepository.countMyBookingsForUser).toHaveBeenCalledWith(
+        expect.objectContaining({ tenantId, userId: targetId }),
+      );
+    });
+
+    it('throws NotFound when target user not in tenant', async () => {
+      repository.findByIdInTenant.mockResolvedValue(null);
+
+      await expect(
+        service.listPlayerBookingsForOperator({
+          tenantId,
+          targetUserId: targetId,
+          query: {},
+        }),
+      ).rejects.toThrow(NotFoundException);
+      expect(bookingsRepository.countMyBookingsForUser).not.toHaveBeenCalled();
     });
   });
 

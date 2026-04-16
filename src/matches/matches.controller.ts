@@ -62,7 +62,11 @@ export class MatchesController {
     @TenantDecorator() tenant: Tenant,
     @Query() query: ListMatchesQueryDto,
   ): Promise<PaginatedMatchesListDto> {
-    return this.matchesService.listUpcomingForTenant(tenant.id, query);
+    return this.matchesService.listUpcomingForTenant(
+      tenant.id,
+      query,
+      tenant.timezone,
+    );
   }
 
   @Get(':id')
@@ -91,7 +95,9 @@ export class MatchesController {
   })
   @ApiWrappedOkResponse({ type: CancelMatchResponseDto })
   @ApiNotFoundResponse({ description: 'Match not found for this tenant' })
-  @ApiBadRequestResponse({ description: 'Match is already cancelled' })
+  @ApiBadRequestResponse({
+    description: 'Match is already cancelled or has already ended',
+  })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
   @ApiForbiddenResponse({ description: 'Insufficient role' })
   async cancelMatch(
@@ -151,7 +157,7 @@ export class MatchesController {
   @ApiOperation({
     summary: 'Update a match (partial)',
     description:
-      'Tenant staff only. Cannot update cancelled matches. Capacity cannot drop below confirmed bookings.',
+      'Tenant staff only. Cannot update cancelled or completed matches. Capacity cannot drop below confirmed bookings.',
   })
   @ApiWrappedOkResponse({ type: MatchResponseDto })
   @ApiNotFoundResponse({
@@ -159,7 +165,7 @@ export class MatchesController {
   })
   @ApiBadRequestResponse({
     description:
-      'No fields provided, cancelled match, inactive venue, or validation error',
+      'No fields provided, cancelled or ended match, inactive venue, or validation error',
   })
   @ApiConflictResponse({
     description:

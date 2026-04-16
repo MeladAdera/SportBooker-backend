@@ -32,7 +32,7 @@ export class ListMatchesQueryDto extends PaginationDto {
   @IsUUID('4')
   venueId?: string;
 
-  /** Calendar date in UTC matching the date portion of `scheduled_at`. */
+  /** Calendar date in the tenant's local timezone (YYYY-MM-DD). */
   @ApiPropertyOptional({ example: '2026-06-15' })
   @IsOptional()
   @Matches(/^\d{4}-\d{2}-\d{2}$/)

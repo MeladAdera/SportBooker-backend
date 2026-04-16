@@ -15,8 +15,8 @@ describe('VenuesService', () => {
     Pick<
       VenuesRepository,
       | 'insertVenue'
-      | 'countActiveVenuesForBrowse'
-      | 'findActiveVenuesForBrowse'
+      | 'countVenuesForBrowse'
+      | 'findVenuesForBrowse'
       | 'findActiveVenueByIdForTenant'
       | 'patchVenueForTenant'
       | 'findVenueRowByIdForTenant'
@@ -66,8 +66,8 @@ describe('VenuesService', () => {
   beforeEach(() => {
     repository = {
       insertVenue: jest.fn(),
-      countActiveVenuesForBrowse: jest.fn(),
-      findActiveVenuesForBrowse: jest.fn(),
+      countVenuesForBrowse: jest.fn(),
+      findVenuesForBrowse: jest.fn(),
       findActiveVenueByIdForTenant: jest.fn(),
       patchVenueForTenant: jest.fn(),
       findVenueRowByIdForTenant: jest.fn(),
@@ -277,6 +277,41 @@ describe('VenuesService', () => {
         ),
       ).rejects.toThrow(NotFoundException);
     });
+
+    it('returns inactive venue when includeInactive=true (admin path)', async () => {
+      const inactiveRow = {
+        ...row,
+        id: detailRow.id,
+        is_active: false,
+        address: '99 St',
+        maps_url: 'https://maps.example.com/detail',
+        picture_url: 'https://cdn.example.com/p.jpg',
+        sport_types: ['cricket'],
+      };
+      repository.findVenueRowByIdForTenant.mockResolvedValue(inactiveRow);
+
+      const result = await service.getByIdForTenant(
+        tenantId,
+        detailRow.id,
+        true,
+      );
+
+      expect(repository.findVenueRowByIdForTenant).toHaveBeenCalledWith(
+        detailRow.id,
+        tenantId,
+      );
+      expect(repository.findActiveVenueByIdForTenant).not.toHaveBeenCalled();
+      expect(result.isActive).toBe(false);
+    });
+
+    it('returns 404 for inactive venue when includeInactive=false (default)', async () => {
+      repository.findActiveVenueByIdForTenant.mockResolvedValue(null);
+
+      await expect(
+        service.getByIdForTenant(tenantId, detailRow.id, false),
+      ).rejects.toThrow(NotFoundException);
+      expect(repository.findVenueRowByIdForTenant).not.toHaveBeenCalled();
+    });
   });
 
   describe('deactivateForTenant', () => {
@@ -463,20 +498,22 @@ describe('VenuesService', () => {
 
   describe('listForBrowse', () => {
     it('returns paginated browse items; default page 1, limit 50', async () => {
-      repository.countActiveVenuesForBrowse.mockResolvedValue(1);
-      repository.findActiveVenuesForBrowse.mockResolvedValue([browseRow]);
+      repository.countVenuesForBrowse.mockResolvedValue(1);
+      repository.findVenuesForBrowse.mockResolvedValue([browseRow]);
 
       const result = await service.listForBrowse(tenantId, {});
 
-      expect(repository.countActiveVenuesForBrowse).toHaveBeenCalledWith(
+      expect(repository.countVenuesForBrowse).toHaveBeenCalledWith(
         tenantId,
         undefined,
+        false,
       );
-      expect(repository.findActiveVenuesForBrowse).toHaveBeenCalledWith(
+      expect(repository.findVenuesForBrowse).toHaveBeenCalledWith(
         tenantId,
         undefined,
         50,
         0,
+        false,
       );
       expect(result).toEqual({
         page: 1,
@@ -496,8 +533,8 @@ describe('VenuesService', () => {
     });
 
     it('passes sportType, page, limit and offset to repository', async () => {
-      repository.countActiveVenuesForBrowse.mockResolvedValue(120);
-      repository.findActiveVenuesForBrowse.mockResolvedValue([]);
+      repository.countVenuesForBrowse.mockResolvedValue(120);
+      repository.findVenuesForBrowse.mockResolvedValue([]);
 
       await service.listForBrowse(tenantId, {
         sportType: VenueSportType.Padel,
@@ -505,16 +542,45 @@ describe('VenuesService', () => {
         limit: 20,
       });
 
-      expect(repository.countActiveVenuesForBrowse).toHaveBeenCalledWith(
+      expect(repository.countVenuesForBrowse).toHaveBeenCalledWith(
         tenantId,
         VenueSportType.Padel,
+        false,
       );
-      expect(repository.findActiveVenuesForBrowse).toHaveBeenCalledWith(
+      expect(repository.findVenuesForBrowse).toHaveBeenCalledWith(
         tenantId,
         VenueSportType.Padel,
         20,
         40,
+        false,
       );
+    });
+
+    it('passes includeInactive=true to repository when flag is set', async () => {
+      const inactiveRow = { ...browseRow, is_active: false };
+      repository.countVenuesForBrowse.mockResolvedValue(2);
+      repository.findVenuesForBrowse.mockResolvedValue([
+        browseRow,
+        inactiveRow,
+      ]);
+
+      const result = await service.listForBrowse(tenantId, {}, true);
+
+      expect(repository.countVenuesForBrowse).toHaveBeenCalledWith(
+        tenantId,
+        undefined,
+        true,
+      );
+      expect(repository.findVenuesForBrowse).toHaveBeenCalledWith(
+        tenantId,
+        undefined,
+        50,
+        0,
+        true,
+      );
+      expect(result.total).toBe(2);
+      expect(result.items).toHaveLength(2);
+      expect(result.items[1]?.isActive).toBe(false);
     });
   });
 });

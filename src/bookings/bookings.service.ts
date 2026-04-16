@@ -23,6 +23,7 @@ import { BookingPosition } from './booking-position';
 const FAILURE_MESSAGES: Record<CreateBookingFailureCode, string> = {
   MATCH_NOT_FOUND: 'Match not found',
   USER_NOT_FOUND: 'User not found',
+  USER_BANNED: 'Your account has been suspended and cannot make new bookings',
   MATCH_CANCELLED: 'This match has been cancelled',
   MATCH_PAST: 'Cannot book a match that has already started or finished',
   VENUE_INACTIVE: 'Venue is inactive',
@@ -226,6 +227,8 @@ export class BookingsService {
         return new NotFoundException(message);
       case 'ALREADY_BOOKED':
         return new ConflictException(message);
+      case 'USER_BANNED':
+        return new ForbiddenException(message);
       default:
         return new BadRequestException(message);
     }

@@ -1,8 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
-  ArrayMinSize,
-  IsArray,
-  IsEnum,
   IsOptional,
   IsString,
   IsUrl,
@@ -10,9 +7,8 @@ import {
   MaxLength,
   ValidateIf,
 } from 'class-validator';
-import { VenueSportType } from '../venue-sport-type';
 
-/** Partial update — send only fields to change. */
+/** Partial update — send only fields to change. Sent as multipart/form-data. */
 export class UpdateVenueDto {
   @ApiPropertyOptional()
   @IsOptional()
@@ -41,10 +37,20 @@ export class UpdateVenueDto {
   @MaxLength(2048)
   pictureUrl?: string | null;
 
-  @ApiPropertyOptional({ enum: VenueSportType, isArray: true })
+  @ApiPropertyOptional({
+    description: 'JSON array string, e.g. ["football","padel"]',
+    example: '["football","padel"]',
+  })
   @IsOptional()
-  @IsArray()
-  @ArrayMinSize(1)
-  @IsEnum(VenueSportType, { each: true })
-  sportTypes?: VenueSportType[];
+  @IsString()
+  @Length(2, 500)
+  sportTypes?: string;
+
+  @ApiPropertyOptional({
+    type: 'string',
+    format: 'binary',
+    description:
+      'Optional image file (JPEG, PNG, WebP, GIF), max 5 MB. Takes priority over pictureUrl.',
+  })
+  picture?: unknown;
 }

@@ -18,6 +18,7 @@ type TenantMiddlewareRow = Pick<
   | 'id'
   | 'name'
   | 'slug'
+  | 'timezone'
   | 'cancel_cutoff_hours'
   | 'is_active'
   | 'created_at'
@@ -100,7 +101,7 @@ export class TenantMiddleware implements NestMiddleware {
     let row = getCachedTenant(subdomain);
     if (!row) {
       const { rows } = await this.pool.query<TenantMiddlewareRow>(
-        'SELECT id, name, slug, cancel_cutoff_hours, is_active, created_at, updated_at FROM tenants WHERE slug = $1',
+        'SELECT id, name, slug, timezone, cancel_cutoff_hours, is_active, created_at, updated_at FROM tenants WHERE slug = $1',
         [subdomain],
       );
       row = rows[0];
@@ -120,6 +121,7 @@ export class TenantMiddleware implements NestMiddleware {
       id: row.id,
       name: row.name,
       slug: row.slug,
+      timezone: row.timezone,
       cancel_cutoff_hours: row.cancel_cutoff_hours,
       is_active: row.is_active,
       created_at: row.created_at,

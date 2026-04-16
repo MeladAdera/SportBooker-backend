@@ -32,6 +32,28 @@ export class TenantUserDetailDto {
   @ApiProperty({ example: 0 })
   walletBalance!: number;
 
+  @ApiProperty({ description: 'True when the player has an active ban' })
+  isBanned!: boolean;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'When the ban was applied; null if not banned',
+  })
+  bannedAt!: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'Ban expiry; null = permanent (only set when isBanned is true)',
+  })
+  bannedUntil!: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'Internal ban reason; null if not banned',
+  })
+  banReason!: string | null;
+
   @ApiProperty()
   createdAt!: Date;
 

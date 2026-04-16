@@ -3,18 +3,22 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import type { Express } from 'express';
 import { AuthRepository } from '../auth/auth.repository';
 import { BookingsRepository } from '../bookings/bookings.repository';
+import { EmailService } from '../auth/email.service';
 import { VenuePictureStorage } from '../venues/venue-picture.storage';
 import type { MyBookingHistoryRow } from '../bookings/bookings.repository';
 import type { VenueSportType } from '../venues/venue-sport-type';
 import type { AssignableRole } from './user-role';
 import { roleRank } from './user-role';
 import type { AccountDeletedResponseDto } from './dto/account-deleted-response.dto';
+import type { BanPlayerDto } from './dto/ban-player.dto';
+import type { BanPlayerResponseDto } from './dto/ban-player-response.dto';
 import type { MyBookingItemDto } from './dto/my-booking-item.dto';
 import type { MyBookingsQueryDto } from './dto/my-bookings-query.dto';
 import type { MyProfileResponseDto } from './dto/my-profile-response.dto';
@@ -35,11 +39,18 @@ import type {
   WalletTransactionItemDto,
 } from './dto/wallet-transaction-item.dto';
 import type {
+  PlayerStatsRow,
   TenantUserDetailRow,
   TenantUserListRow,
   UserSelfProfileRow,
 } from './users.repository';
 import { UsersRepository } from './users.repository';
+import type { PlayerStatsDto } from './dto/player-stats.dto';
+import {
+  DominantFoot,
+  PlayerPosition,
+  SkillLevel,
+} from './player-profile.enums';
 import type { WalletTransactionRow } from './wallet.repository';
 import { WalletRepository } from './wallet.repository';
 
@@ -50,12 +61,15 @@ const PG_UNIQUE_VIOLATION = '23505';
 
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(
     private readonly usersRepository: UsersRepository,
     private readonly authRepository: AuthRepository,
     private readonly bookingsRepository: BookingsRepository,
     private readonly walletRepository: WalletRepository,
     private readonly pictureStorage: VenuePictureStorage,
+    private readonly emailService: EmailService,
   ) {}
 
   /**
@@ -150,7 +164,9 @@ export class UsersService {
       tenantId,
       role: query.role,
       isActive: query.isActive,
+      isBanned: query.isBanned,
       includeDeleted,
+      search: query.search,
     };
 
     const [total, rows] = await Promise.all([
@@ -199,15 +215,18 @@ export class UsersService {
     tenantId: string;
     userId: string;
   }): Promise<MyProfileResponseDto> {
-    const row = await this.usersRepository.findByIdForSelfProfile(
-      params.tenantId,
-      params.userId,
-    );
+    const [row, statsRow] = await Promise.all([
+      this.usersRepository.findByIdForSelfProfile(
+        params.tenantId,
+        params.userId,
+      ),
+      this.usersRepository.computePlayerStats(params.userId, params.tenantId),
+    ]);
     if (!row || row.deleted_at != null) {
       throw new UnauthorizedException('Invalid or expired session');
     }
 
-    return this.toMyProfileDto(row);
+    return this.toMyProfileDto(row, statsRow);
   }
 
   /**
@@ -246,6 +265,57 @@ export class UsersService {
       this.bookingsRepository.findMyBookingsForUser({
         tenantId,
         userId,
+        limit,
+        offset,
+        ...filter,
+      }),
+    ]);
+
+    return {
+      page,
+      limit,
+      total,
+      items: rows.map((row) => this.toMyBookingItemDto(row)),
+    };
+  }
+
+  /**
+   * Paginated booking history for a specific player, viewed by tenant admin/staff.
+   * Throws 404 if the target user is not found or doesn't belong to this tenant.
+   */
+  async listPlayerBookingsForOperator(params: {
+    tenantId: string;
+    targetUserId: string;
+    query: MyBookingsQueryDto;
+  }): Promise<PaginatedMyBookingsDto> {
+    const { tenantId, targetUserId, query } = params;
+
+    const user = await this.usersRepository.findByIdInTenant(
+      tenantId,
+      targetUserId,
+    );
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+    const offset = (page - 1) * limit;
+
+    const filter = {
+      status: query.status,
+      upcoming: query.upcoming,
+    };
+
+    const [total, rows] = await Promise.all([
+      this.bookingsRepository.countMyBookingsForUser({
+        tenantId,
+        userId: targetUserId,
+        ...filter,
+      }),
+      this.bookingsRepository.findMyBookingsForUser({
+        tenantId,
+        userId: targetUserId,
         limit,
         offset,
         ...filter,
@@ -320,10 +390,24 @@ export class UsersService {
       phone?: bigint;
       photo_url?: string;
       email?: string;
+      date_of_birth?: string | null;
+      nationality?: string | null;
+      preferred_language?: string | null;
+      skill_level?: string | null;
+      preferred_position?: string | null;
+      dominant_foot?: string | null;
     } = {};
     if (dto.name !== undefined) patch.name = dto.name;
     if (dto.phone !== undefined) patch.phone = parseE164ToBigint(dto.phone);
     if (dto.photoUrl !== undefined) patch.photo_url = dto.photoUrl;
+    if (dto.dateOfBirth !== undefined) patch.date_of_birth = dto.dateOfBirth;
+    if (dto.nationality !== undefined) patch.nationality = dto.nationality;
+    if (dto.preferredLanguage !== undefined)
+      patch.preferred_language = dto.preferredLanguage;
+    if (dto.skillLevel !== undefined) patch.skill_level = dto.skillLevel;
+    if (dto.preferredPosition !== undefined)
+      patch.preferred_position = dto.preferredPosition;
+    if (dto.dominantFoot !== undefined) patch.dominant_foot = dto.dominantFoot;
 
     if (dto.email !== undefined) {
       const normalized = dto.email.trim().toLowerCase();
@@ -336,7 +420,7 @@ export class UsersService {
       }
       const currentNormalized = current.email.trim().toLowerCase();
       if (normalized !== currentNormalized) {
-        const otherId =
+        const otherId: string | null =
           await this.usersRepository.findOtherUserIdByNormalizedEmail(
             tenantId,
             normalized,
@@ -367,7 +451,11 @@ export class UsersService {
       throw new UnauthorizedException('Invalid or expired session');
     }
 
-    return this.toMyProfileDto(row);
+    const statsRow = await this.usersRepository.computePlayerStats(
+      userId,
+      tenantId,
+    );
+    return this.toMyProfileDto(row, statsRow);
   }
 
   /**
@@ -391,6 +479,171 @@ export class UsersService {
     }
 
     return { photoUrl };
+  }
+
+  /**
+   * Bans a player in this tenant.
+   * - Only players may be banned (not admins or staff).
+   * - Actor's role must outrank the target's role.
+   * - Cancels + refunds all upcoming confirmed and waitlisted bookings atomically.
+   * - Revokes all refresh tokens so the session ends immediately.
+   * - Sends a ban notification email after commit.
+   */
+  async banPlayer(params: {
+    actorUserId: string;
+    actorRole: string;
+    tenantId: string;
+    targetUserId: string;
+    dto: BanPlayerDto;
+  }): Promise<BanPlayerResponseDto> {
+    const { actorUserId, actorRole, tenantId, targetUserId, dto } = params;
+
+    if (actorUserId === targetUserId) {
+      throw new BadRequestException('You cannot ban yourself');
+    }
+
+    const target = await this.usersRepository.findByIdInTenant(
+      tenantId,
+      targetUserId,
+    );
+    if (!target) {
+      throw new NotFoundException('User not found in this tenant');
+    }
+    if (target.role !== 'player') {
+      throw new BadRequestException('Only players can be banned');
+    }
+    if (roleRank(actorRole) <= roleRank(target.role)) {
+      throw new ForbiddenException('Insufficient permissions to ban this user');
+    }
+
+    const bannedUntil: Date | null = dto.durationDays
+      ? new Date(Date.now() + dto.durationDays * 24 * 60 * 60 * 1000)
+      : null;
+    const banReason: string | null = dto.reason ?? null;
+    const bannedAt = new Date();
+
+    const cancelledBookings = await this.authRepository.runInTransaction(
+      async (client): Promise<number> => {
+        const updated = await this.usersRepository.banUser(
+          client,
+          tenantId,
+          targetUserId,
+          bannedUntil,
+          banReason,
+        );
+        if (!updated) {
+          throw new NotFoundException('User not found in this tenant');
+        }
+
+        const cancelled =
+          await this.usersRepository.bulkCancelAndRefundBookingsForBan(
+            client,
+            targetUserId,
+            tenantId,
+          );
+
+        await this.authRepository.deleteRefreshTokensByUserId(
+          client,
+          targetUserId,
+        );
+
+        return cancelled.length;
+      },
+    );
+
+    void this.promoteWaitlistAfterBan(tenantId, targetUserId);
+
+    void this.emailService
+      .sendAccountBannedEmail(target.email, bannedUntil)
+      .catch((err: unknown) => {
+        this.logger.warn(
+          `sendAccountBannedEmail failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      });
+
+    return {
+      userId: targetUserId,
+      isBanned: true,
+      bannedAt: bannedAt.toISOString(),
+      bannedUntil: bannedUntil != null ? bannedUntil.toISOString() : null,
+      banReason,
+      cancelledBookings,
+    };
+  }
+
+  private async promoteWaitlistAfterBan(
+    tenantId: string,
+    userId: string,
+  ): Promise<void> {
+    try {
+      const matchIds =
+        await this.bookingsRepository.getMatchIdsWithFreedConfirmedSlotsForUser(
+          tenantId,
+          userId,
+        );
+      await Promise.all(
+        matchIds.map((matchId) =>
+          this.bookingsRepository
+            .promoteWaitlistForMatch({ tenantId, matchId })
+            .catch((err: unknown) => {
+              this.logger.error(
+                `promoteWaitlistForMatch failed after ban (matchId=${matchId}): ${err instanceof Error ? err.message : String(err)}`,
+              );
+            }),
+        ),
+      );
+    } catch (err: unknown) {
+      this.logger.error(
+        `promoteWaitlistAfterBan failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  /**
+   * Lifts a ban on a player. No-op if the player is not currently banned (idempotent).
+   */
+  async unbanPlayer(params: {
+    actorRole: string;
+    tenantId: string;
+    targetUserId: string;
+  }): Promise<BanPlayerResponseDto> {
+    const { tenantId, targetUserId } = params;
+
+    const target = await this.usersRepository.findByIdInTenant(
+      tenantId,
+      targetUserId,
+    );
+    if (!target) {
+      throw new NotFoundException('User not found in this tenant');
+    }
+    if (target.role !== 'player') {
+      throw new BadRequestException('Only players can be unbanned');
+    }
+
+    const updated = await this.usersRepository.unbanUser(
+      tenantId,
+      targetUserId,
+    );
+    if (!updated) {
+      throw new NotFoundException('User not found in this tenant');
+    }
+
+    void this.emailService
+      .sendAccountUnbannedEmail(target.email)
+      .catch((err: unknown) => {
+        this.logger.warn(
+          `sendAccountUnbannedEmail failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      });
+
+    return {
+      userId: targetUserId,
+      isBanned: false,
+      bannedAt: null,
+      bannedUntil: null,
+      banReason: null,
+      cancelledBookings: 0,
+    };
   }
 
   /**
@@ -488,6 +741,7 @@ export class UsersService {
   private toTenantUserListItemDto(
     row: TenantUserListRow,
   ): TenantUserListItemDto {
+    const isBanned = UsersService.isActiveBan(row.banned_at, row.banned_until);
     return {
       id: row.id,
       name: row.name,
@@ -495,11 +749,17 @@ export class UsersService {
       role: row.role,
       isActive: row.is_active,
       walletBalance: Number(row.wallet_balance),
+      isBanned,
+      bannedUntil:
+        isBanned && row.banned_until != null
+          ? row.banned_until.toISOString()
+          : null,
       createdAt: row.created_at.toISOString(),
     };
   }
 
   private toTenantUserDetailDto(row: TenantUserDetailRow): TenantUserDetailDto {
+    const isBanned = UsersService.isActiveBan(row.banned_at, row.banned_until);
     return {
       id: row.id,
       name: row.name,
@@ -509,12 +769,32 @@ export class UsersService {
       role: row.role,
       isActive: row.is_active,
       walletBalance: Number(row.wallet_balance),
+      isBanned,
+      bannedAt:
+        isBanned && row.banned_at != null ? row.banned_at.toISOString() : null,
+      bannedUntil:
+        isBanned && row.banned_until != null
+          ? row.banned_until.toISOString()
+          : null,
+      banReason: isBanned ? (row.ban_reason ?? null) : null,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
   }
 
-  private toMyProfileDto(row: UserSelfProfileRow): MyProfileResponseDto {
+  private static isActiveBan(
+    bannedAt: Date | null,
+    bannedUntil: Date | null,
+  ): boolean {
+    return (
+      bannedAt != null && (bannedUntil == null || bannedUntil > new Date())
+    );
+  }
+
+  private toMyProfileDto(
+    row: UserSelfProfileRow,
+    statsRow: PlayerStatsRow,
+  ): MyProfileResponseDto {
     return {
       id: row.id,
       name: row.name,
@@ -524,6 +804,25 @@ export class UsersService {
       role: row.role,
       walletBalance: Number(row.wallet_balance),
       createdAt: row.created_at,
+      dateOfBirth: row.date_of_birth,
+      nationality: row.nationality,
+      preferredLanguage: row.preferred_language,
+      skillLevel: row.skill_level as SkillLevel | null,
+      preferredPosition: row.preferred_position as PlayerPosition | null,
+      dominantFoot: row.dominant_foot as DominantFoot | null,
+      stats: UsersService.toPlayerStatsDto(statsRow),
+    };
+  }
+
+  private static toPlayerStatsDto(statsRow: PlayerStatsRow): PlayerStatsDto {
+    return {
+      matchesPlayed: parseInt(statsRow.matches_played, 10),
+      wins: parseInt(statsRow.wins, 10),
+      losses: parseInt(statsRow.losses, 10),
+      draws: parseInt(statsRow.draws, 10),
+      goalsScored: parseInt(statsRow.goals_scored, 10),
+      assists: parseInt(statsRow.assists, 10),
+      mvpAwards: parseInt(statsRow.mvp_awards, 10),
     };
   }
 
