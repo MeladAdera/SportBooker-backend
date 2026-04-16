@@ -32,7 +32,9 @@ import {
   ApiWrappedCreatedResponse,
   ApiWrappedOkResponse,
 } from '../common/decorators/api-wrapped-response.decorator';
+import type { AuthenticatedUser } from '../auth/auth.types';
 import type { Tenant } from '../common/tenant.types';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Tenant as TenantDecorator } from '../auth/decorators/tenant.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -79,42 +81,58 @@ export class VenuesController {
 
   @Get()
   @ApiOperation({
-    summary: 'List active venues',
+    summary: 'List venues',
     description:
-      'Any authenticated user in the tenant. Paginated active venues; default page 1, limit 50. Optional sportType filters venues that offer that sport.',
+      'Any authenticated user in the tenant. Paginated active venues; default page 1, limit 50. Optional sportType filters venues that offer that sport. Tenant admins may pass includeInactive=true to include deactivated venues.',
   })
   @ApiWrappedOkResponse({ type: PaginatedVenuesListDto })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
   async list(
     @TenantDecorator() tenant: Tenant,
+    @CurrentUser() user: AuthenticatedUser,
     @Query() query: ListVenuesQueryDto,
   ): Promise<PaginatedVenuesListDto> {
-    return this.venuesService.listForBrowse(tenant.id, query);
+    const role = user.role as UserRole;
+    const isAdmin =
+      role === UserRole.TenantAdmin ||
+      role === UserRole.SuperAdmin ||
+      role === UserRole.PlatformAdmin;
+    const includeInactive = isAdmin && !!query.includeInactive;
+    return this.venuesService.listForBrowse(tenant.id, query, includeInactive);
   }
 
   @Get(':id')
   @ApiOperation({
     summary: 'Get venue details',
     description:
-      'Any authenticated user. Returns one active venue for this tenant; 404 if missing, inactive, or not in this tenant.',
+      'Any authenticated user. Returns the venue for this tenant; 404 if missing or not in this tenant. Non-admins also get 404 for inactive venues. Tenant admins can retrieve inactive venues.',
   })
   @ApiWrappedOkResponse({ type: VenueDetailDto })
   @ApiNotFoundResponse({ description: 'Venue not found for this tenant' })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
   async getById(
     @TenantDecorator() tenant: Tenant,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<VenueDetailDto> {
-    return this.venuesService.getByIdForTenant(tenant.id, id);
+    const role = user.role as UserRole;
+    const isAdmin =
+      role === UserRole.TenantAdmin ||
+      role === UserRole.SuperAdmin ||
+      role === UserRole.PlatformAdmin;
+    return this.venuesService.getByIdForTenant(tenant.id, id, isAdmin);
   }
 
   @Patch(':id')
   @Roles(UserRole.SuperAdmin, UserRole.TenantAdmin, UserRole.TenantStaff)
+  @UseInterceptors(FileInterceptor('picture', venuePictureMulterOptions))
+  @ApiConsumes('multipart/form-data')
   @ApiOperation({
     summary: 'Update a venue (partial)',
     description:
-      'Tenant staff only. Send only fields to change (name, address, mapsUrl, pictureUrl, sportTypes). Does not change activation — use POST /venues/:id/deactivate or POST /venues/:id/activate. Venue must belong to this tenant.',
+      'Tenant staff only. Send as multipart/form-data with only fields to change (name, address, mapsUrl, pictureUrl, sportTypes, picture). Does not change activation — use POST /venues/:id/deactivate or POST /venues/:id/activate. Venue must belong to this tenant.',
   })
+  @ApiBody({ type: UpdateVenueDto })
   @ApiWrappedOkResponse({ type: VenueResponseDto })
   @ApiNotFoundResponse({ description: 'Venue not found for this tenant' })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
@@ -123,8 +141,9 @@ export class VenuesController {
     @TenantDecorator() tenant: Tenant,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateVenueDto,
+    @UploadedFile() picture: Express.Multer.File | undefined,
   ): Promise<VenueResponseDto> {
-    return this.venuesService.updateForTenant(tenant.id, id, dto);
+    return this.venuesService.updateForTenant(tenant.id, id, dto, picture);
   }
 
   @Post(':id/deactivate')

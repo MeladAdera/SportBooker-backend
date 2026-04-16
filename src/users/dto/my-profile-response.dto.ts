@@ -1,4 +1,10 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  DominantFoot,
+  PlayerPosition,
+  SkillLevel,
+} from '../player-profile.enums';
+import { PlayerStatsDto } from './player-stats.dto';
 
 /** GET /users/me — current user profile (no sensitive DB fields). */
 export class MyProfileResponseDto {
@@ -29,6 +35,29 @@ export class MyProfileResponseDto {
   @ApiProperty({ example: 0 })
   walletBalance!: number;
 
+  // Player profile fields
+
+  @ApiPropertyOptional({ nullable: true, type: String, example: '1995-03-20' })
+  dateOfBirth!: string | null;
+
+  @ApiPropertyOptional({ nullable: true, type: String, example: 'Emirati' })
+  nationality!: string | null;
+
+  @ApiPropertyOptional({ nullable: true, type: String, example: 'en' })
+  preferredLanguage!: string | null;
+
+  @ApiPropertyOptional({ nullable: true, enum: SkillLevel })
+  skillLevel!: SkillLevel | null;
+
+  @ApiPropertyOptional({ nullable: true, enum: PlayerPosition })
+  preferredPosition!: PlayerPosition | null;
+
+  @ApiPropertyOptional({ nullable: true, enum: DominantFoot })
+  dominantFoot!: DominantFoot | null;
+
   @ApiProperty()
   createdAt!: Date;
+
+  @ApiProperty({ type: () => PlayerStatsDto })
+  stats!: PlayerStatsDto;
 }

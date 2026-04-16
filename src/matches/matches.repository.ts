@@ -1,7 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { Pool } from 'pg';
-import { BaseRepository } from '../database/base.repository';
+import { BaseRepository, type DbExecutor } from '../database/base.repository';
 import { DB_POOL } from '../database/database.constants';
+import type {
+  MatchSide,
+  PlayerStatEntryDto,
+} from './dto/submit-match-results.dto';
 
 export type MatchRow = {
   id: string;
@@ -68,6 +72,15 @@ export type WaitlistEntryRow = {
   queue_position: number;
 };
 
+/** Row returned by findMatchResult (includes aggregated player stats). */
+export type MatchResultRow = {
+  match_id: string;
+  winning_side: string | null;
+  submitted_by: string;
+  created_at: Date;
+  players: unknown;
+};
+
 /** Row for operator match management list (all statuses). */
 export type MatchOperatorRow = {
   id: string;
@@ -109,6 +122,10 @@ export class MatchesRepository extends BaseRepository {
    * True if another non-cancelled match at this venue overlaps [scheduledAt, scheduledAt + durationMins).
    * Touching endpoints (one ends exactly when the other starts) does not count as overlap.
    */
+  /**
+   * Shared FROM for player browse queries.
+   * Params: $1 tenantId, $2 sportType, $3 venueId, $4 date, $5 available, $6 timezone
+   */
   private static readonly upcomingBrowseFrom = `
     FROM matches m
     INNER JOIN venues v ON v.id = m.venue_id
@@ -132,7 +149,7 @@ export class MatchesRepository extends BaseRepository {
       AND ($3::uuid IS NULL OR m.venue_id = $3)
       AND (
         $4::date IS NULL
-        OR (m.scheduled_at AT TIME ZONE 'UTC')::date = $4::date
+        OR (m.scheduled_at AT TIME ZONE $6)::date = $4::date
       )
       AND (
         $5::boolean IS DISTINCT FROM true
@@ -145,6 +162,7 @@ export class MatchesRepository extends BaseRepository {
     venueId: string | null;
     date: string | null;
     available: boolean | null;
+    timezone: string;
   }): Promise<number> {
     const { rows } = await this.query<{ count: string }>(
       this.pool,
@@ -156,6 +174,7 @@ export class MatchesRepository extends BaseRepository {
         params.venueId,
         params.date,
         params.available,
+        params.timezone,
       ],
     );
     return parseInt(rows[0]?.count ?? '0', 10);
@@ -262,6 +281,7 @@ export class MatchesRepository extends BaseRepository {
     venueId: string | null;
     date: string | null;
     available: boolean | null;
+    timezone: string;
     limit: number;
     offset: number;
   }): Promise<MatchBrowseRow[]> {
@@ -285,13 +305,14 @@ export class MatchesRepository extends BaseRepository {
         COALESCE(wc.waitlist_count, 0) AS waitlist_count
       ${MatchesRepository.upcomingBrowseFrom}
       ORDER BY m.scheduled_at ASC
-      LIMIT $6 OFFSET $7`,
+      LIMIT $7 OFFSET $8`,
       [
         params.tenantId,
         params.sportType,
         params.venueId,
         params.date,
         params.available,
+        params.timezone,
         params.limit,
         params.offset,
       ],
@@ -438,7 +459,7 @@ export class MatchesRepository extends BaseRepository {
 
   /**
    * Shared FROM clause for operator match queries (all statuses, no active-venue restriction).
-   * Params: $1 tenantId, $2 status, $3 dateFrom, $4 dateTo, $5 venueId, $6 sportType, $7 search
+   * Params: $1 tenantId, $2 status, $3 dateFrom, $4 dateTo, $5 venueId, $6 sportType, $7 search, $8 timezone
    */
   private static readonly operatorMatchesFrom = `
     FROM matches m
@@ -455,8 +476,8 @@ export class MatchesRepository extends BaseRepository {
         $2::text IS NULL
         OR (${COMPUTED_STATUS_SQL}) = $2
       )
-      AND ($3::date IS NULL OR (m.scheduled_at AT TIME ZONE 'UTC')::date >= $3::date)
-      AND ($4::date IS NULL OR (m.scheduled_at AT TIME ZONE 'UTC')::date <= $4::date)
+      AND ($3::date IS NULL OR (m.scheduled_at AT TIME ZONE $8)::date >= $3::date)
+      AND ($4::date IS NULL OR (m.scheduled_at AT TIME ZONE $8)::date <= $4::date)
       AND ($5::uuid IS NULL OR m.venue_id = $5)
       AND ($6::text IS NULL OR m.sport_type = $6::sport_type)
       AND ($7::text IS NULL OR m.title ILIKE '%' || $7 || '%')`;
@@ -469,6 +490,7 @@ export class MatchesRepository extends BaseRepository {
     venueId: string | null;
     sportType: string | null;
     search: string | null;
+    timezone: string;
   }): Promise<number> {
     const { rows } = await this.query<{ count: string }>(
       this.pool,
@@ -482,6 +504,7 @@ export class MatchesRepository extends BaseRepository {
         params.venueId,
         params.sportType,
         params.search,
+        params.timezone,
       ],
     );
     return parseInt(rows[0]?.count ?? '0', 10);
@@ -495,6 +518,7 @@ export class MatchesRepository extends BaseRepository {
     venueId: string | null;
     sportType: string | null;
     search: string | null;
+    timezone: string;
     limit: number;
     offset: number;
   }): Promise<MatchOperatorRow[]> {
@@ -521,7 +545,7 @@ export class MatchesRepository extends BaseRepository {
         m.updated_at
       ${MatchesRepository.operatorMatchesFrom}
       ORDER BY m.scheduled_at DESC
-      LIMIT $8 OFFSET $9`,
+      LIMIT $9 OFFSET $10`,
       [
         params.tenantId,
         params.status,
@@ -530,6 +554,7 @@ export class MatchesRepository extends BaseRepository {
         params.venueId,
         params.sportType,
         params.search,
+        params.timezone,
         params.limit,
         params.offset,
       ],
@@ -590,6 +615,84 @@ export class MatchesRepository extends BaseRepository {
       throw new Error('insertMatch: expected one row');
     }
     return row;
+  }
+
+  /**
+   * Inserts match_results + player_match_stats rows atomically.
+   * Throws PG unique violation (23505) on the match_results UNIQUE(match_id) if already submitted.
+   */
+  async insertMatchResults(
+    executor: DbExecutor,
+    params: {
+      matchId: string;
+      winningSide: MatchSide | null;
+      submittedBy: string;
+      players: PlayerStatEntryDto[];
+    },
+  ): Promise<void> {
+    await this.query(
+      executor,
+      `INSERT INTO match_results (match_id, winning_side, submitted_by)
+       VALUES ($1, $2::match_side, $3)`,
+      [params.matchId, params.winningSide ?? null, params.submittedBy],
+    );
+
+    for (const p of params.players) {
+      await this.query(
+        executor,
+        `INSERT INTO player_match_stats (match_id, user_id, team_side, goals, assists, is_mvp)
+         VALUES ($1, $2, $3::match_side, $4, $5, $6)`,
+        [
+          params.matchId,
+          p.userId,
+          p.teamSide,
+          p.goals ?? 0,
+          p.assists ?? 0,
+          p.isMvp ?? false,
+        ],
+      );
+    }
+  }
+
+  /** Fetch submitted result + per-player stats for a match. Returns null if not yet submitted. */
+  async findMatchResult(matchId: string): Promise<MatchResultRow | null> {
+    const { rows } = await this.query<MatchResultRow>(
+      this.pool,
+      `SELECT
+         mr.match_id,
+         mr.winning_side::text  AS winning_side,
+         mr.submitted_by,
+         mr.created_at,
+         COALESCE(
+           json_agg(
+             json_build_object(
+               'userId',   pms.user_id::text,
+               'teamSide', pms.team_side::text,
+               'goals',    pms.goals,
+               'assists',  pms.assists,
+               'isMvp',    pms.is_mvp
+             )
+             ORDER BY pms.user_id
+           ) FILTER (WHERE pms.user_id IS NOT NULL),
+           '[]'::json
+         ) AS players
+       FROM match_results mr
+       LEFT JOIN player_match_stats pms ON pms.match_id = mr.match_id
+       WHERE mr.match_id = $1
+       GROUP BY mr.match_id, mr.winning_side, mr.submitted_by, mr.created_at`,
+      [matchId],
+    );
+    return rows[0] ?? null;
+  }
+
+  /** Returns user IDs of confirmed bookings for a match (used for validation). */
+  async findConfirmedPlayerIdsForMatch(matchId: string): Promise<string[]> {
+    const { rows } = await this.query<{ user_id: string }>(
+      this.pool,
+      `SELECT user_id::text FROM bookings WHERE match_id = $1 AND status = 'confirmed'`,
+      [matchId],
+    );
+    return rows.map((r) => r.user_id);
   }
 
   async findWaitlistForMatch(

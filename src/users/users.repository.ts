@@ -24,6 +24,8 @@ export type UserForLoginRow = {
   photo_url: string | null;
   deleted_at: Date | null;
   is_active: boolean | null;
+  banned_at: Date | null;
+  banned_until: Date | null;
 };
 
 export type RegisteredUserRow = {
@@ -47,6 +49,8 @@ export type TenantUserListRow = {
   role: string;
   is_active: boolean;
   wallet_balance: string;
+  banned_at: Date | null;
+  banned_until: Date | null;
   created_at: Date;
 };
 
@@ -61,6 +65,9 @@ export type TenantUserDetailRow = {
   is_active: boolean;
   /** pg `numeric` — use Number() when mapping to API */
   wallet_balance: string;
+  banned_at: Date | null;
+  banned_until: Date | null;
+  ban_reason: string | null;
   created_at: Date;
   updated_at: Date;
 };
@@ -77,6 +84,40 @@ export type UserSelfProfileRow = {
   wallet_balance: string;
   created_at: Date;
   deleted_at: Date | null;
+  // Player profile fields
+  date_of_birth: string | null;
+  nationality: string | null;
+  preferred_language: string | null;
+  skill_level: string | null;
+  preferred_position: string | null;
+  dominant_foot: string | null;
+};
+
+export type PlayerStatsRow = {
+  matches_played: string;
+  wins: string;
+  losses: string;
+  draws: string;
+  goals_scored: string;
+  assists: string;
+  mvp_awards: string;
+};
+
+/** Returned by banUser / unbanUser. */
+export type BanUserRow = {
+  id: string;
+  banned_at: Date | null;
+  banned_until: Date | null;
+  ban_reason: string | null;
+};
+
+/** A cancelled booking + the email of the affected user, used to drive refunds & emails. */
+export type BanCancelledBookingRow = {
+  booking_id: string;
+  match_id: string;
+  user_email: string;
+  paid_amount: string;
+  was_confirmed: boolean;
 };
 
 @Injectable()
@@ -118,6 +159,9 @@ export class UsersRepository extends BaseRepository {
          role::text AS role,
          is_active,
          wallet_balance::text AS wallet_balance,
+         banned_at,
+         banned_until,
+         ban_reason,
          created_at,
          updated_at
        FROM users
@@ -137,7 +181,14 @@ export class UsersRepository extends BaseRepository {
   ): Promise<UserSelfProfileRow | null> {
     const { rows } = await this.query<UserSelfProfileRow>(
       this.pool,
-      `SELECT id, name, email, phone, photo_url, role, wallet_balance, created_at, deleted_at
+      `SELECT
+         id, name, email, phone, photo_url, role, wallet_balance, created_at, deleted_at,
+         date_of_birth::text AS date_of_birth,
+         nationality,
+         preferred_language,
+         skill_level::text AS skill_level,
+         preferred_position::text AS preferred_position,
+         dominant_foot::text AS dominant_foot
        FROM users
        WHERE id = $1 AND tenant_id = $2`,
       [userId, tenantId],
@@ -220,6 +271,12 @@ export class UsersRepository extends BaseRepository {
       phone?: number | bigint;
       photo_url?: string;
       email?: string;
+      date_of_birth?: string | null;
+      nationality?: string | null;
+      preferred_language?: string | null;
+      skill_level?: string | null;
+      preferred_position?: string | null;
+      dominant_foot?: string | null;
     },
   ): Promise<UserSelfProfileRow | null> {
     const fragments: string[] = [];
@@ -242,6 +299,30 @@ export class UsersRepository extends BaseRepository {
       fragments.push(`email = $${i++}`);
       values.push(fields.email);
     }
+    if (fields.date_of_birth !== undefined) {
+      fragments.push(`date_of_birth = $${i++}`);
+      values.push(fields.date_of_birth);
+    }
+    if (fields.nationality !== undefined) {
+      fragments.push(`nationality = $${i++}`);
+      values.push(fields.nationality);
+    }
+    if (fields.preferred_language !== undefined) {
+      fragments.push(`preferred_language = $${i++}`);
+      values.push(fields.preferred_language);
+    }
+    if (fields.skill_level !== undefined) {
+      fragments.push(`skill_level = $${i++}::skill_level`);
+      values.push(fields.skill_level);
+    }
+    if (fields.preferred_position !== undefined) {
+      fragments.push(`preferred_position = $${i++}::player_position`);
+      values.push(fields.preferred_position);
+    }
+    if (fields.dominant_foot !== undefined) {
+      fragments.push(`dominant_foot = $${i++}::dominant_foot`);
+      values.push(fields.dominant_foot);
+    }
 
     if (fragments.length === 0) {
       return this.findByIdForSelfProfile(tenantId, userId);
@@ -257,7 +338,14 @@ export class UsersRepository extends BaseRepository {
       `UPDATE users
        SET ${fragments.join(', ')}
        WHERE id = $${idParam} AND tenant_id = $${tenantParam} AND deleted_at IS NULL
-       RETURNING id, name, email, phone, photo_url, role, wallet_balance, created_at, deleted_at`,
+       RETURNING
+         id, name, email, phone, photo_url, role, wallet_balance, created_at, deleted_at,
+         date_of_birth::text AS date_of_birth,
+         nationality,
+         preferred_language,
+         skill_level::text AS skill_level,
+         preferred_position::text AS preferred_position,
+         dominant_foot::text AS dominant_foot`,
       values,
     );
     return rows[0] ?? null;
@@ -339,7 +427,7 @@ export class UsersRepository extends BaseRepository {
   ): Promise<UserForLoginRow | null> {
     const { rows } = await this.query<UserForLoginRow>(
       this.pool,
-      `SELECT id, name, email, role, password_hash, photo_url, deleted_at, is_active
+      `SELECT id, name, email, role, password_hash, photo_url, deleted_at, is_active, banned_at, banned_until
        FROM users
        WHERE tenant_id = $1 AND email = $2`,
       [tenantId, email],
@@ -388,7 +476,9 @@ export class UsersRepository extends BaseRepository {
     tenantId: string;
     role?: string;
     isActive?: boolean;
+    isBanned?: boolean;
     includeDeleted: boolean;
+    search?: string;
   }): Promise<number> {
     const { whereSql, values } =
       UsersRepository.buildTenantUserListWhere(params);
@@ -404,7 +494,9 @@ export class UsersRepository extends BaseRepository {
     tenantId: string;
     role?: string;
     isActive?: boolean;
+    isBanned?: boolean;
     includeDeleted: boolean;
+    search?: string;
     limit: number;
     offset: number;
   }): Promise<TenantUserListRow[]> {
@@ -421,6 +513,8 @@ export class UsersRepository extends BaseRepository {
          role::text AS role,
          is_active,
          wallet_balance::text AS wallet_balance,
+         banned_at,
+         banned_until,
          created_at
        FROM users
        WHERE ${whereSql}
@@ -431,11 +525,57 @@ export class UsersRepository extends BaseRepository {
     return rows;
   }
 
+  /**
+   * Aggregates player stats from player_match_stats + match_results for a user within a tenant.
+   * Draws are matches where a result was submitted but winning_side IS NULL.
+   */
+  async computePlayerStats(
+    userId: string,
+    tenantId: string,
+  ): Promise<PlayerStatsRow> {
+    const { rows } = await this.query<PlayerStatsRow>(
+      this.pool,
+      `SELECT
+         COUNT(pms.id)::text                                                  AS matches_played,
+         COUNT(*) FILTER (WHERE mr.winning_side::text = pms.team_side::text)::text AS wins,
+         COUNT(*) FILTER (
+           WHERE mr.winning_side IS NOT NULL
+             AND mr.winning_side::text <> pms.team_side::text
+         )::text                                                              AS losses,
+         COUNT(*) FILTER (
+           WHERE mr.match_id IS NOT NULL AND mr.winning_side IS NULL
+         )::text                                                              AS draws,
+         COALESCE(SUM(pms.goals), 0)::text                                   AS goals_scored,
+         COALESCE(SUM(pms.assists), 0)::text                                 AS assists,
+         COUNT(*) FILTER (WHERE pms.is_mvp = true)::text                     AS mvp_awards
+       FROM player_match_stats pms
+       INNER JOIN matches m ON m.id = pms.match_id
+       INNER JOIN venues v  ON v.id = m.venue_id
+       LEFT JOIN  match_results mr ON mr.match_id = pms.match_id
+       WHERE pms.user_id = $1
+         AND v.tenant_id = $2`,
+      [userId, tenantId],
+    );
+    return (
+      rows[0] ?? {
+        matches_played: '0',
+        wins: '0',
+        losses: '0',
+        draws: '0',
+        goals_scored: '0',
+        assists: '0',
+        mvp_awards: '0',
+      }
+    );
+  }
+
   private static buildTenantUserListWhere(params: {
     tenantId: string;
     role?: string;
     isActive?: boolean;
+    isBanned?: boolean;
     includeDeleted: boolean;
+    search?: string;
   }): { whereSql: string; values: unknown[] } {
     const values: unknown[] = [];
     const parts: string[] = [];
@@ -455,7 +595,128 @@ export class UsersRepository extends BaseRepository {
       parts.push(`is_active = $${n++}`);
       values.push(params.isActive);
     }
+    if (params.isBanned === true) {
+      parts.push(
+        `(banned_at IS NOT NULL AND (banned_until IS NULL OR banned_until > NOW()))`,
+      );
+    } else if (params.isBanned === false) {
+      parts.push(
+        `(banned_at IS NULL OR (banned_until IS NOT NULL AND banned_until <= NOW()))`,
+      );
+    }
+    if (params.search !== undefined && params.search.trim().length > 0) {
+      const pattern = `%${params.search.trim()}%`;
+      parts.push(`(name ILIKE $${n} OR email ILIKE $${n})`);
+      values.push(pattern);
+      n++;
+    }
 
     return { whereSql: parts.join(' AND '), values };
+  }
+
+  /**
+   * Sets ban fields atomically. Returns null if user not found in tenant or is soft-deleted.
+   */
+  async banUser(
+    executor: DbExecutor,
+    tenantId: string,
+    userId: string,
+    bannedUntil: Date | null,
+    banReason: string | null,
+  ): Promise<BanUserRow | null> {
+    const { rows } = await this.query<BanUserRow>(
+      executor,
+      `UPDATE users
+       SET banned_at = NOW(), banned_until = $3, ban_reason = $4, updated_at = NOW()
+       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
+       RETURNING id, banned_at, banned_until, ban_reason`,
+      [userId, tenantId, bannedUntil, banReason],
+    );
+    return rows[0] ?? null;
+  }
+
+  /**
+   * Clears ban fields. Returns null if user not found in tenant or is soft-deleted.
+   */
+  async unbanUser(
+    tenantId: string,
+    userId: string,
+  ): Promise<BanUserRow | null> {
+    const { rows } = await this.query<BanUserRow>(
+      this.pool,
+      `UPDATE users
+       SET banned_at = NULL, banned_until = NULL, ban_reason = NULL, updated_at = NOW()
+       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
+       RETURNING id, banned_at, banned_until, ban_reason`,
+      [userId, tenantId],
+    );
+    return rows[0] ?? null;
+  }
+
+  /**
+   * Cancels all upcoming confirmed + pending bookings for a user and refunds paid amounts.
+   * Returns one row per cancelled booking. Caller must run waitlist promotion for confirmed ones.
+   * Must run within a transaction that also sets banned_at.
+   */
+  async bulkCancelAndRefundBookingsForBan(
+    executor: DbExecutor,
+    userId: string,
+    tenantId: string,
+  ): Promise<BanCancelledBookingRow[]> {
+    const { rows } = await this.query<BanCancelledBookingRow>(
+      executor,
+      `WITH target_bookings AS (
+         SELECT b.id AS booking_id,
+                b.match_id,
+                b.paid_amount,
+                b.status,
+                u.email AS user_email
+         FROM bookings b
+         INNER JOIN matches m  ON m.id  = b.match_id
+         INNER JOIN venues  v  ON v.id  = m.venue_id
+         INNER JOIN users   u  ON u.id  = b.user_id
+         WHERE b.user_id   = $1
+           AND v.tenant_id = $2
+           AND b.status IN ('confirmed', 'pending')
+           AND m.scheduled_at > NOW()
+         FOR UPDATE OF b
+       ),
+       cancelled AS (
+         UPDATE bookings
+         SET    status       = 'cancelled'::booking_status,
+                cancelled_at = NOW(),
+                refunded_at  = CASE WHEN paid_amount > 0 THEN NOW() ELSE refunded_at END,
+                updated_at   = NOW()
+         WHERE  id IN (SELECT booking_id FROM target_bookings)
+         RETURNING id
+       ),
+       refunded AS (
+         UPDATE users
+         SET    wallet_balance = wallet_balance + tb.total_refund,
+                updated_at     = NOW()
+         FROM (
+           SELECT SUM(paid_amount) AS total_refund
+           FROM target_bookings
+           WHERE paid_amount > 0
+         ) tb
+         WHERE  users.id = $1
+           AND  tb.total_refund > 0
+       ),
+       tx_insert AS (
+         INSERT INTO wallet_transactions (user_id, amount, type, reference_id)
+         SELECT $1, tb.paid_amount, 'refund'::wallet_tx_type, tb.booking_id
+         FROM   target_bookings tb
+         WHERE  tb.paid_amount > 0
+       )
+       SELECT
+         booking_id,
+         match_id,
+         user_email,
+         paid_amount::text AS paid_amount,
+         (status = 'confirmed') AS was_confirmed
+       FROM target_bookings`,
+      [userId, tenantId],
+    );
+    return rows;
   }
 }

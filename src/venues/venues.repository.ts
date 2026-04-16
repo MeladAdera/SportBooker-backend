@@ -92,32 +92,36 @@ export class VenuesRepository extends BaseRepository {
   }
 
   /**
-   * Count active venues for the tenant; optional sportType filters with sport_types @> ARRAY[$sport].
+   * Count venues for the tenant; optional sportType filter.
+   * When includeInactive is false (default) only active venues are counted.
    */
-  async countActiveVenuesForBrowse(
+  async countVenuesForBrowse(
     tenantId: string,
     sportType: VenueSportType | undefined,
+    includeInactive = false,
   ): Promise<number> {
     const { rows } = await this.query<{ count: string }>(
       this.pool,
       `SELECT COUNT(*)::text AS count
       FROM venues
       WHERE tenant_id = $1
-        AND is_active = true
-        AND ($2::text IS NULL OR sport_types @> ARRAY[$2]::text[])`,
-      [tenantId, sportType ?? null],
+        AND ($2::boolean OR is_active = true)
+        AND ($3::text IS NULL OR sport_types @> ARRAY[$3]::text[])`,
+      [tenantId, includeInactive, sportType ?? null],
     );
     return parseInt(rows[0]?.count ?? '0', 10);
   }
 
   /**
-   * Active venues for the tenant; optional sportType filters with sport_types @> ARRAY[$sport].
+   * Venues for the tenant; optional sportType filter.
+   * When includeInactive is false (default) only active venues are returned.
    */
-  async findActiveVenuesForBrowse(
+  async findVenuesForBrowse(
     tenantId: string,
     sportType: VenueSportType | undefined,
     limit: number,
     offset: number,
+    includeInactive = false,
   ): Promise<VenueBrowseRow[]> {
     const { rows } = await this.query<VenueBrowseRow>(
       this.pool,
@@ -130,11 +134,11 @@ export class VenuesRepository extends BaseRepository {
         is_active
       FROM venues
       WHERE tenant_id = $1
-        AND is_active = true
-        AND ($2::text IS NULL OR sport_types @> ARRAY[$2]::text[])
+        AND ($2::boolean OR is_active = true)
+        AND ($3::text IS NULL OR sport_types @> ARRAY[$3]::text[])
       ORDER BY name ASC
-      LIMIT $3 OFFSET $4`,
-      [tenantId, sportType ?? null, limit, offset],
+      LIMIT $4 OFFSET $5`,
+      [tenantId, includeInactive, sportType ?? null, limit, offset],
     );
     return rows;
   }

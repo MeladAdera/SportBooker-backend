@@ -1,7 +1,15 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsOptional } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { IsBoolean, IsEnum, IsOptional } from 'class-validator';
 import { PaginationDto } from '../../common/dto/pagination.dto';
 import { VenueSportType } from '../venue-sport-type';
+
+function parseOptionalBoolean(value: unknown): boolean | undefined {
+  if (value === undefined || value === '' || value === null) return undefined;
+  if (value === 'true' || value === true) return true;
+  if (value === 'false' || value === false) return false;
+  return undefined;
+}
 
 export class ListVenuesQueryDto extends PaginationDto {
   @ApiPropertyOptional({
@@ -12,4 +20,13 @@ export class ListVenuesQueryDto extends PaginationDto {
   @IsOptional()
   @IsEnum(VenueSportType)
   sportType?: VenueSportType;
+
+  @ApiPropertyOptional({
+    description:
+      'Tenant admin only. When true, includes deactivated venues in the response.',
+  })
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) => parseOptionalBoolean(value))
+  @IsBoolean()
+  includeInactive?: boolean;
 }

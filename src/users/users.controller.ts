@@ -4,6 +4,7 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -30,6 +31,8 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import type { AuthenticatedUser } from '../auth/auth.types';
 import { AccountDeletedResponseDto } from './dto/account-deleted-response.dto';
+import { BanPlayerDto } from './dto/ban-player.dto';
+import { BanPlayerResponseDto } from './dto/ban-player-response.dto';
 import { UploadPhotoResponseDto } from './dto/upload-photo-response.dto';
 import { AssignRoleDto } from './dto/assign-role.dto';
 import { ListTenantUsersQueryDto } from './dto/list-tenant-users-query.dto';
@@ -323,6 +326,30 @@ export class UsersController {
     });
   }
 
+  @Get(':userId/bookings')
+  @Roles(UserRole.SuperAdmin, UserRole.TenantAdmin, UserRole.TenantStaff)
+  @ApiOperation({
+    summary: "List a player's booking history (operator)",
+    description:
+      'Tenant admin or staff. Returns paginated booking history for the specified user in this tenant. Same filters as GET /users/me/bookings. 404 if user not found.',
+  })
+  @ApiWrappedOkResponse({
+    description: 'Booking history',
+    type: PaginatedMyBookingsDto,
+  })
+  @ApiResponse({ status: 404, description: 'User not found in this tenant' })
+  async listPlayerBookings(
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: MyBookingsQueryDto,
+  ): Promise<PaginatedMyBookingsDto> {
+    return this.usersService.listPlayerBookingsForOperator({
+      tenantId: user.tenantId,
+      targetUserId: userId,
+      query,
+    });
+  }
+
   @Patch(':userId/role')
   @ApiOperation({
     summary: 'Assign role to a user in the current tenant',
@@ -350,6 +377,67 @@ export class UsersController {
       tenantId: user.tenantId,
       targetUserId: userId,
       newRole: dto.role,
+    });
+  }
+
+  @Post(':userId/ban')
+  @HttpCode(200)
+  @Roles(UserRole.SuperAdmin, UserRole.TenantAdmin)
+  @ApiOperation({
+    summary: 'Ban a player in this tenant',
+    description:
+      'super_admin or tenant_admin only. Target must be a player in this tenant. ' +
+      'Cancels and refunds all upcoming bookings (confirmed + waitlisted), revokes refresh tokens immediately. ' +
+      'Omit durationDays for a permanent ban. Sends a suspension email to the player.',
+  })
+  @ApiWrappedOkResponse({
+    description: 'Ban applied',
+    type: BanPlayerResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Target is not a player, or self-ban attempted',
+  })
+  @ApiResponse({ status: 403, description: 'Insufficient role' })
+  @ApiResponse({ status: 404, description: 'User not found in tenant' })
+  async banPlayer(
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @Body() dto: BanPlayerDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<BanPlayerResponseDto> {
+    return this.usersService.banPlayer({
+      actorUserId: user.sub,
+      actorRole: user.role,
+      tenantId: user.tenantId,
+      targetUserId: userId,
+      dto,
+    });
+  }
+
+  @Post(':userId/unban')
+  @HttpCode(200)
+  @Roles(UserRole.SuperAdmin, UserRole.TenantAdmin)
+  @ApiOperation({
+    summary: 'Lift the ban on a player',
+    description:
+      'super_admin or tenant_admin only. Idempotent — no error if the player is not currently banned. ' +
+      'Sends a suspension-lifted email to the player.',
+  })
+  @ApiWrappedOkResponse({
+    description: 'Ban lifted',
+    type: BanPlayerResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Target is not a player' })
+  @ApiResponse({ status: 403, description: 'Insufficient role' })
+  @ApiResponse({ status: 404, description: 'User not found in tenant' })
+  async unbanPlayer(
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<BanPlayerResponseDto> {
+    return this.usersService.unbanPlayer({
+      actorRole: user.role,
+      tenantId: user.tenantId,
+      targetUserId: userId,
     });
   }
 }

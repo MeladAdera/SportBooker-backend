@@ -122,4 +122,38 @@ export class EmailService {
       to,
     );
   }
+
+  async sendAccountBannedEmail(
+    to: string,
+    bannedUntil: Date | null,
+  ): Promise<void> {
+    const expiry = bannedUntil
+      ? `Your suspension is in effect until ${bannedUntil.toUTCString()}.`
+      : 'Your suspension is permanent until reviewed by the club.';
+    await this.send(
+      {
+        to,
+        from: this.from,
+        subject: 'Account suspended — Sportbooker',
+        text: `Your account has been suspended by the club administrator. ${expiry} Any upcoming bookings have been cancelled and refunded to your wallet.`,
+        html: `<p>Your account has been suspended by the club administrator. ${expiry}</p><p>Any upcoming bookings have been cancelled and refunded to your wallet.</p>`,
+      },
+      'Account banned (dev), to:',
+      to,
+    );
+  }
+
+  async sendAccountUnbannedEmail(to: string): Promise<void> {
+    await this.send(
+      {
+        to,
+        from: this.from,
+        subject: 'Account suspension lifted — Sportbooker',
+        text: 'Your account suspension has been lifted. You can now log in and make bookings again.',
+        html: '<p>Your account suspension has been lifted. You can now log in and make bookings again.</p>',
+      },
+      'Account unbanned (dev), to:',
+      to,
+    );
+  }
 }

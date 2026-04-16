@@ -4,7 +4,8 @@
 -- Description: All application enums in final state.
 --   user_role, sport_type, match_status, booking_status,
 --   booking_position, wallet_tx_type, payment_intent_status,
---   notification_type, notification_channel
+--   notification_type, notification_channel,
+--   skill_level, player_position, dominant_foot, match_side
 -- Dependencies: none
 -- =========================
 
@@ -106,6 +107,42 @@ $$;
 DO $$
 BEGIN
   CREATE TYPE notification_channel AS ENUM ('email', 'sms', 'push');
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END
+$$;
+
+-- Player skill level
+DO $$
+BEGIN
+  CREATE TYPE skill_level AS ENUM ('beginner', 'intermediate', 'advanced');
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END
+$$;
+
+-- Player preferred position (football-style)
+DO $$
+BEGIN
+  CREATE TYPE player_position AS ENUM ('goalkeeper', 'defender', 'midfielder', 'forward');
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END
+$$;
+
+-- Player dominant foot
+DO $$
+BEGIN
+  CREATE TYPE dominant_foot AS ENUM ('left', 'right', 'both');
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END
+$$;
+
+-- Match team side for match results
+DO $$
+BEGIN
+  CREATE TYPE match_side AS ENUM ('team_a', 'team_b');
 EXCEPTION
   WHEN duplicate_object THEN NULL;
 END

@@ -3,6 +3,7 @@ import {
   ConflictException,
   NotFoundException,
 } from '@nestjs/common';
+import type { PoolClient } from 'pg';
 import { EmailService } from '../auth/email.service';
 import { BookingPosition } from '../bookings/booking-position';
 import { BookingsRepository } from '../bookings/bookings.repository';
@@ -10,6 +11,7 @@ import { VenueSportType } from '../venues/venue-sport-type';
 import { MatchesRepository } from './matches.repository';
 import { MatchesService } from './matches.service';
 import { VenuesRepository } from '../venues/venues.repository';
+import { MatchSide } from './dto/submit-match-results.dto';
 
 describe('MatchesService', () => {
   let service: MatchesService;
@@ -19,14 +21,17 @@ describe('MatchesService', () => {
       | 'countConfirmedBookingsForMatch'
       | 'countUpcomingMatchesForBrowse'
       | 'findMatchDetailForTenant'
+      | 'findMatchResult'
       | 'findMatchRowForTenant'
+      | 'findConfirmedPlayerIdsForMatch'
       | 'findUpcomingMatchesForBrowse'
       | 'findWaitlistForMatch'
       | 'hasOverlappingMatchAtVenue'
       | 'insertMatch'
+      | 'insertMatchResults'
       | 'patchMatchForTenant'
     >
-  >;
+  > & { withTransaction: jest.Mock };
   let venuesRepo: jest.Mocked<
     Pick<VenuesRepository, 'findVenueRowByIdForTenant'>
   >;
@@ -57,17 +62,44 @@ describe('MatchesService', () => {
     updated_at: new Date('2026-01-01T12:00:00.000Z'),
   };
 
+  const completedMatchRow = {
+    ...{
+      id: '770e8400-e29b-41d4-a716-446655440002',
+      venue_id: venueId,
+      title: 'Sunday league',
+      sport_type: 'football',
+      scheduled_at: new Date('2026-01-01T18:00:00.000Z'),
+      duration_mins: 90,
+      price_per_player: '15.50',
+      status: 'completed',
+      max_players: 22,
+      created_at: new Date('2026-01-01T12:00:00.000Z'),
+      updated_at: new Date('2026-01-01T12:00:00.000Z'),
+    },
+  };
+
+  const operatorId = 'aa0e8400-e29b-41d4-a716-446655440099';
+  const player1Id = 'bb0e8400-e29b-41d4-a716-000000000001';
+  const player2Id = 'bb0e8400-e29b-41d4-a716-000000000002';
+
   beforeEach(() => {
     matchesRepo = {
       countConfirmedBookingsForMatch: jest.fn(),
       countUpcomingMatchesForBrowse: jest.fn(),
       findMatchDetailForTenant: jest.fn(),
+      findMatchResult: jest.fn(),
       findMatchRowForTenant: jest.fn(),
+      findConfirmedPlayerIdsForMatch: jest.fn(),
       findUpcomingMatchesForBrowse: jest.fn(),
       findWaitlistForMatch: jest.fn().mockResolvedValue([]),
       hasOverlappingMatchAtVenue: jest.fn().mockResolvedValue(false),
       insertMatch: jest.fn(),
+      insertMatchResults: jest.fn().mockResolvedValue(undefined),
       patchMatchForTenant: jest.fn(),
+      withTransaction: jest.fn(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call
+        async (fn: any) => fn({} as PoolClient),
+      ),
     };
     venuesRepo = {
       findVenueRowByIdForTenant: jest.fn(),
@@ -107,7 +139,11 @@ describe('MatchesService', () => {
       },
     ]);
 
-    const result = await service.listUpcomingForTenant(tenantId, {});
+    const result = await service.listUpcomingForTenant(
+      tenantId,
+      {},
+      'Asia/Dubai',
+    );
 
     expect(matchesRepo.countUpcomingMatchesForBrowse).toHaveBeenCalledWith({
       tenantId,
@@ -115,6 +151,7 @@ describe('MatchesService', () => {
       venueId: null,
       date: null,
       available: null,
+      timezone: 'Asia/Dubai',
     });
     expect(matchesRepo.findUpcomingMatchesForBrowse).toHaveBeenCalledWith({
       tenantId,
@@ -122,6 +159,7 @@ describe('MatchesService', () => {
       venueId: null,
       date: null,
       available: null,
+      timezone: 'Asia/Dubai',
       limit: 20,
       offset: 0,
     });
@@ -393,6 +431,18 @@ describe('MatchesService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
+    it('throws BadRequestException when match is completed', async () => {
+      matchesRepo.findMatchRowForTenant.mockResolvedValue({
+        ...matchRow,
+        status: 'completed',
+      });
+
+      await expect(
+        service.updateForTenant(tenantId, matchId, { title: 'x' }),
+      ).rejects.toThrow(BadRequestException);
+      expect(matchesRepo.patchMatchForTenant).not.toHaveBeenCalled();
+    });
+
     it('throws ConflictException when maxCapacity below confirmed count', async () => {
       matchesRepo.findMatchRowForTenant.mockResolvedValue(matchRow);
       matchesRepo.countConfirmedBookingsForMatch.mockResolvedValue(5);
@@ -452,6 +502,18 @@ describe('MatchesService', () => {
       await expect(
         service.cancelMatchForTenant(tenantId, matchId),
       ).rejects.toThrow(BadRequestException);
+    });
+
+    it('throws BadRequestException when match has already ended', async () => {
+      bookingsRepo.cancelMatchForTenant.mockResolvedValue({
+        success: false,
+        code: 'MATCH_ALREADY_ENDED',
+      });
+
+      await expect(
+        service.cancelMatchForTenant(tenantId, matchId),
+      ).rejects.toThrow(BadRequestException);
+      expect(emailService.sendMatchCancelledEmail).not.toHaveBeenCalled();
     });
   });
 
@@ -517,6 +579,256 @@ describe('MatchesService', () => {
 
       const result = await service.getWaitlistForMatch(tenantId, matchId);
       expect(result).toEqual([]);
+    });
+  });
+
+  describe('submitMatchResults', () => {
+    const matchId = completedMatchRow.id;
+
+    const baseResultRow = {
+      match_id: matchId,
+      winning_side: 'team_a',
+      submitted_by: operatorId,
+      created_at: new Date('2026-01-01T20:00:00.000Z'),
+      players: [
+        {
+          userId: player1Id,
+          teamSide: 'team_a',
+          goals: 2,
+          assists: 1,
+          isMvp: true,
+        },
+        {
+          userId: player2Id,
+          teamSide: 'team_b',
+          goals: 0,
+          assists: 0,
+          isMvp: false,
+        },
+      ],
+    };
+
+    it('submits results for a completed match and returns response', async () => {
+      matchesRepo.findMatchRowForTenant.mockResolvedValue(completedMatchRow);
+      matchesRepo.findConfirmedPlayerIdsForMatch.mockResolvedValue([
+        player1Id,
+        player2Id,
+      ]);
+      matchesRepo.findMatchResult.mockResolvedValue(baseResultRow);
+
+      const dto = {
+        winningSide: MatchSide.TeamA,
+        players: [
+          {
+            userId: player1Id,
+            teamSide: MatchSide.TeamA,
+            goals: 2,
+            assists: 1,
+            isMvp: true,
+          },
+          {
+            userId: player2Id,
+            teamSide: MatchSide.TeamB,
+            goals: 0,
+            assists: 0,
+            isMvp: false,
+          },
+        ],
+      };
+
+      const result = await service.submitMatchResults(
+        tenantId,
+        matchId,
+        dto,
+        operatorId,
+      );
+
+      expect(matchesRepo.withTransaction).toHaveBeenCalled();
+      expect(matchesRepo.insertMatchResults).toHaveBeenCalledWith(
+        {},
+        expect.objectContaining({
+          matchId,
+          winningSide: MatchSide.TeamA,
+          submittedBy: operatorId,
+        }),
+      );
+      expect(result.matchId).toBe(matchId);
+      expect(result.winningSide).toBe('team_a');
+      expect(result.players).toHaveLength(2);
+      expect(result.players[0]).toMatchObject({
+        userId: player1Id,
+        isMvp: true,
+        goals: 2,
+      });
+    });
+
+    it('submits results as draw when winningSide is omitted', async () => {
+      matchesRepo.findMatchRowForTenant.mockResolvedValue(completedMatchRow);
+      matchesRepo.findConfirmedPlayerIdsForMatch.mockResolvedValue([player1Id]);
+      matchesRepo.findMatchResult.mockResolvedValue({
+        ...baseResultRow,
+        winning_side: null,
+        players: [
+          {
+            userId: player1Id,
+            teamSide: 'team_a',
+            goals: 1,
+            assists: 0,
+            isMvp: false,
+          },
+        ],
+      });
+
+      const result = await service.submitMatchResults(
+        tenantId,
+        matchId,
+        { players: [{ userId: player1Id, teamSide: MatchSide.TeamA }] },
+        operatorId,
+      );
+
+      expect(matchesRepo.insertMatchResults).toHaveBeenCalledWith(
+        {},
+        expect.objectContaining({ winningSide: null }),
+      );
+      expect(result.winningSide).toBeNull();
+    });
+
+    it('throws NotFoundException when match not found', async () => {
+      matchesRepo.findMatchRowForTenant.mockResolvedValue(null);
+
+      await expect(
+        service.submitMatchResults(
+          tenantId,
+          matchId,
+          { players: [] },
+          operatorId,
+        ),
+      ).rejects.toThrow(NotFoundException);
+      expect(matchesRepo.withTransaction).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException when match is not completed', async () => {
+      matchesRepo.findMatchRowForTenant.mockResolvedValue({
+        ...completedMatchRow,
+        status: 'upcoming',
+      });
+
+      await expect(
+        service.submitMatchResults(
+          tenantId,
+          matchId,
+          { players: [{ userId: player1Id, teamSide: MatchSide.TeamA }] },
+          operatorId,
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(matchesRepo.withTransaction).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException when more than one MVP is set', async () => {
+      matchesRepo.findMatchRowForTenant.mockResolvedValue(completedMatchRow);
+      matchesRepo.findConfirmedPlayerIdsForMatch.mockResolvedValue([
+        player1Id,
+        player2Id,
+      ]);
+
+      await expect(
+        service.submitMatchResults(
+          tenantId,
+          matchId,
+          {
+            players: [
+              { userId: player1Id, teamSide: MatchSide.TeamA, isMvp: true },
+              { userId: player2Id, teamSide: MatchSide.TeamB, isMvp: true },
+            ],
+          },
+          operatorId,
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(matchesRepo.withTransaction).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException when a player has no confirmed booking', async () => {
+      const unknownId = 'cc000000-e29b-41d4-a716-000000000099';
+      matchesRepo.findMatchRowForTenant.mockResolvedValue(completedMatchRow);
+      matchesRepo.findConfirmedPlayerIdsForMatch.mockResolvedValue([player1Id]);
+
+      await expect(
+        service.submitMatchResults(
+          tenantId,
+          matchId,
+          { players: [{ userId: unknownId, teamSide: MatchSide.TeamA }] },
+          operatorId,
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(matchesRepo.withTransaction).not.toHaveBeenCalled();
+    });
+
+    it('throws ConflictException when results already submitted (PG unique violation)', async () => {
+      matchesRepo.findMatchRowForTenant.mockResolvedValue(completedMatchRow);
+      matchesRepo.findConfirmedPlayerIdsForMatch.mockResolvedValue([player1Id]);
+      matchesRepo.withTransaction.mockRejectedValue({ code: '23505' });
+
+      await expect(
+        service.submitMatchResults(
+          tenantId,
+          matchId,
+          { players: [{ userId: player1Id, teamSide: MatchSide.TeamA }] },
+          operatorId,
+        ),
+      ).rejects.toThrow(ConflictException);
+    });
+  });
+
+  describe('getMatchResults', () => {
+    const matchId = completedMatchRow.id;
+
+    it('returns submitted results for a completed match', async () => {
+      matchesRepo.findMatchRowForTenant.mockResolvedValue(completedMatchRow);
+      matchesRepo.findMatchResult.mockResolvedValue({
+        match_id: matchId,
+        winning_side: 'team_b',
+        submitted_by: operatorId,
+        created_at: new Date('2026-01-01T20:00:00.000Z'),
+        players: [
+          {
+            userId: player1Id,
+            teamSide: 'team_a',
+            goals: 0,
+            assists: 1,
+            isMvp: false,
+          },
+          {
+            userId: player2Id,
+            teamSide: 'team_b',
+            goals: 1,
+            assists: 0,
+            isMvp: true,
+          },
+        ],
+      });
+
+      const result = await service.getMatchResults(tenantId, matchId);
+
+      expect(result.matchId).toBe(matchId);
+      expect(result.winningSide).toBe('team_b');
+      expect(result.players).toHaveLength(2);
+    });
+
+    it('throws NotFoundException when match not found', async () => {
+      matchesRepo.findMatchRowForTenant.mockResolvedValue(null);
+
+      await expect(service.getMatchResults(tenantId, matchId)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('throws NotFoundException when results not yet submitted', async () => {
+      matchesRepo.findMatchRowForTenant.mockResolvedValue(completedMatchRow);
+      matchesRepo.findMatchResult.mockResolvedValue(null);
+
+      await expect(service.getMatchResults(tenantId, matchId)).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 

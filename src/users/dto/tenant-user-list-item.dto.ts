@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class TenantUserListItemDto {
   @ApiProperty({ format: 'uuid' })
@@ -21,6 +21,16 @@ export class TenantUserListItemDto {
 
   @ApiProperty({ example: 42.5 })
   walletBalance!: number;
+
+  @ApiProperty({ description: 'True when the player has an active ban' })
+  isBanned!: boolean;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'Ban expiry; null = permanent (only set when isBanned is true)',
+  })
+  bannedUntil!: string | null;
 
   @ApiProperty({ example: '2024-01-01T00:00:00.000Z' })
   createdAt!: string;

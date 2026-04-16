@@ -101,6 +101,13 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
+    const isActiveBan =
+      user.banned_at != null &&
+      (user.banned_until == null || user.banned_until > new Date());
+    if (isActiveBan) {
+      throw new UnauthorizedException('Your account has been suspended');
+    }
+
     const refreshSecret = randomBytes(32).toString('hex');
     const refreshHash = await bcrypt.hash(refreshSecret, BCRYPT_ROUNDS);
     const refreshId = await this.authRepository.createRefreshToken(

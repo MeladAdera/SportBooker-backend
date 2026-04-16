@@ -1,6 +1,12 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { IsBoolean, IsEnum, IsOptional } from 'class-validator';
+import {
+  IsBoolean,
+  IsEnum,
+  IsOptional,
+  IsString,
+  MaxLength,
+} from 'class-validator';
 import { PaginationDto } from '../../common/dto/pagination.dto';
 
 function parseOptionalBoolean(value: unknown): boolean | undefined {
@@ -20,6 +26,15 @@ export enum TenantUserRoleFilter {
 }
 
 export class ListTenantUsersQueryDto extends PaginationDto {
+  @ApiPropertyOptional({
+    description: 'Case-insensitive substring match on name or email.',
+    maxLength: 100,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  search?: string;
+
   @ApiPropertyOptional({ enum: TenantUserRoleFilter })
   @IsOptional()
   @IsEnum(TenantUserRoleFilter)
@@ -39,4 +54,13 @@ export class ListTenantUsersQueryDto extends PaginationDto {
   @Transform(({ value }: { value: unknown }) => parseOptionalBoolean(value))
   @IsBoolean()
   includeDeleted?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Filter by ban status. true = only currently banned players; false = only non-banned players; omit = all.',
+  })
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) => parseOptionalBoolean(value))
+  @IsBoolean()
+  isBanned?: boolean;
 }

@@ -14,6 +14,10 @@ import type { CancelMatchResponseDto } from './dto/cancel-match-response.dto';
 import type { UpdateMatchDto } from './dto/update-match.dto';
 import type { MatchBrowseItemDto } from './dto/match-browse-item.dto';
 import type { MatchDetailResponseDto } from './dto/match-detail-response.dto';
+import type {
+  MatchResultsResponseDto,
+  PlayerStatItemDto,
+} from './dto/match-results-response.dto';
 import type { MatchRosterPlayerDto } from './dto/match-roster-player.dto';
 import type { MatchWaitlistPlayerDto } from './dto/match-waitlist-player.dto';
 import type { OperatorWaitlistEntryDto } from './dto/operator-waitlist-entry.dto';
@@ -24,10 +28,15 @@ import type { PaginatedOperatorMatchesDto } from './dto/paginated-operator-match
 import type { MatchResponseDto } from './dto/match-response.dto';
 import type { PaginatedMatchesListDto } from './dto/paginated-matches-list.dto';
 import {
+  MatchSide,
+  type SubmitMatchResultsDto,
+} from './dto/submit-match-results.dto';
+import {
   MatchesRepository,
   type MatchBrowseRow,
   type MatchDetailRow,
   type MatchOperatorRow,
+  type MatchResultRow,
   type MatchRow,
   type WaitlistEntryRow,
 } from './matches.repository';
@@ -64,6 +73,7 @@ export class MatchesService {
   async listUpcomingForTenant(
     tenantId: string,
     query: ListMatchesQueryDto,
+    timezone: string,
   ): Promise<PaginatedMatchesListDto> {
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
@@ -75,6 +85,7 @@ export class MatchesService {
       venueId: query.venueId ?? null,
       date: query.date ?? null,
       available: query.available ?? null,
+      timezone,
     };
 
     const [total, rows] = await Promise.all([
@@ -97,6 +108,7 @@ export class MatchesService {
   async listForOperator(
     tenantId: string,
     query: ListTenantMatchesQueryDto,
+    timezone: string,
   ): Promise<PaginatedOperatorMatchesDto> {
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
@@ -110,6 +122,7 @@ export class MatchesService {
       venueId: query.venueId ?? null,
       sportType: query.sportType ?? null,
       search: query.search ?? null,
+      timezone,
     };
 
     const [total, rows] = await Promise.all([
@@ -147,6 +160,11 @@ export class MatchesService {
     }
     if (existing.status === 'cancelled') {
       throw new BadRequestException('Cannot update a cancelled match');
+    }
+    if (existing.status === 'completed') {
+      throw new BadRequestException(
+        'Cannot update a match that has already ended',
+      );
     }
 
     const confirmed =
@@ -313,6 +331,11 @@ export class MatchesService {
       if (result.code === 'MATCH_NOT_FOUND') {
         throw new NotFoundException('Match not found');
       }
+      if (result.code === 'MATCH_ALREADY_ENDED') {
+        throw new BadRequestException(
+          'Cannot cancel a match that has already ended',
+        );
+      }
       throw new BadRequestException('Match is already cancelled');
     }
     const uniqueEmails = [...new Set(result.emailsForMatchCancelled)];
@@ -377,6 +400,119 @@ export class MatchesService {
       removed: true,
       refundAmount: result.refundAmount,
     };
+  }
+
+  async submitMatchResults(
+    tenantId: string,
+    matchId: string,
+    dto: SubmitMatchResultsDto,
+    operatorId: string,
+  ): Promise<MatchResultsResponseDto> {
+    const match = await this.matchesRepository.findMatchRowForTenant(
+      matchId,
+      tenantId,
+    );
+    if (!match) {
+      throw new NotFoundException('Match not found');
+    }
+    if (match.status !== 'completed') {
+      throw new BadRequestException(
+        'Results can only be submitted for completed matches',
+      );
+    }
+
+    const mvpEntries = dto.players.filter((p) => p.isMvp === true);
+    if (mvpEntries.length > 1) {
+      throw new BadRequestException(
+        'At most one player can be awarded MVP per match',
+      );
+    }
+
+    const confirmedIds =
+      await this.matchesRepository.findConfirmedPlayerIdsForMatch(matchId);
+    const confirmedSet = new Set(confirmedIds);
+    const invalidIds = dto.players.filter((p) => !confirmedSet.has(p.userId));
+    if (invalidIds.length > 0) {
+      throw new BadRequestException(
+        `The following player IDs do not have a confirmed booking for this match: ${invalidIds.map((p) => p.userId).join(', ')}`,
+      );
+    }
+
+    try {
+      await this.matchesRepository.withTransaction(async (client) => {
+        await this.matchesRepository.insertMatchResults(client, {
+          matchId,
+          winningSide: dto.winningSide ?? null,
+          submittedBy: operatorId,
+          players: dto.players,
+        });
+      });
+    } catch (err: unknown) {
+      const pgErr = err as { code?: string };
+      if (pgErr?.code === PG_UNIQUE_VIOLATION) {
+        throw new ConflictException(
+          'Results have already been submitted for this match',
+        );
+      }
+      throw err;
+    }
+
+    const result = await this.matchesRepository.findMatchResult(matchId);
+    if (!result) {
+      throw new NotFoundException('Match result not found after insert');
+    }
+    return this.toMatchResultsDto(result);
+  }
+
+  async getMatchResults(
+    tenantId: string,
+    matchId: string,
+  ): Promise<MatchResultsResponseDto> {
+    const match = await this.matchesRepository.findMatchRowForTenant(
+      matchId,
+      tenantId,
+    );
+    if (!match) {
+      throw new NotFoundException('Match not found');
+    }
+
+    const result = await this.matchesRepository.findMatchResult(matchId);
+    if (!result) {
+      throw new NotFoundException(
+        'No results have been submitted for this match yet',
+      );
+    }
+    return this.toMatchResultsDto(result);
+  }
+
+  private toMatchResultsDto(row: MatchResultRow): MatchResultsResponseDto {
+    return {
+      matchId: row.match_id,
+      winningSide: row.winning_side as MatchSide | null,
+      players: MatchesService.parseMatchResultPlayers(row.players),
+      submittedBy: row.submitted_by,
+      createdAt: new Date(row.created_at).toISOString(),
+    };
+  }
+
+  private static parseMatchResultPlayers(raw: unknown): PlayerStatItemDto[] {
+    if (!Array.isArray(raw)) return [];
+    return raw.map((item) => {
+      const r = item as {
+        userId?: string;
+        teamSide?: string;
+        goals?: number;
+        assists?: number;
+        isMvp?: boolean;
+      };
+      return {
+        userId: String(r.userId ?? ''),
+        teamSide: (r.teamSide ?? MatchSide.TeamA) as MatchSide,
+        goals: Number(r.goals ?? 0),
+        assists: Number(r.assists ?? 0),
+        isMvp: Boolean(r.isMvp ?? false),
+      };
+    });
   }
 
   private toDetailDto(row: MatchDetailRow): MatchDetailResponseDto {

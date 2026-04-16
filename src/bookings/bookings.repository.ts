@@ -67,6 +67,7 @@ export type BookingDetailRow = {
 export type CreateBookingFailureCode =
   | 'MATCH_NOT_FOUND'
   | 'USER_NOT_FOUND'
+  | 'USER_BANNED'
   | 'MATCH_CANCELLED'
   | 'MATCH_PAST'
   | 'VENUE_INACTIVE'
@@ -87,7 +88,10 @@ export type CreateBookingResult =
     }
   | { success: false; code: CreateBookingFailureCode };
 
-export type CancelMatchFailureCode = 'MATCH_NOT_FOUND' | 'ALREADY_CANCELLED';
+export type CancelMatchFailureCode =
+  | 'MATCH_NOT_FOUND'
+  | 'ALREADY_CANCELLED'
+  | 'MATCH_ALREADY_ENDED';
 
 export type CancelMatchResult =
   | {
@@ -213,9 +217,11 @@ export class BookingsRepository extends BaseRepository {
     const { rows: userRows } = await this.query<{
       id: string;
       email: string;
+      banned_at: Date | null;
+      banned_until: Date | null;
     }>(
       client,
-      `SELECT id, email
+      `SELECT id, email, banned_at, banned_until
        FROM users
        WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND is_active = true
        FOR UPDATE`,
@@ -224,6 +230,13 @@ export class BookingsRepository extends BaseRepository {
     const user = userRows[0];
     if (!user) {
       return { success: false, code: 'USER_NOT_FOUND' };
+    }
+
+    const isActiveBan =
+      user.banned_at != null &&
+      (user.banned_until == null || user.banned_until > new Date());
+    if (isActiveBan) {
+      return { success: false, code: 'USER_BANNED' };
     }
 
     const { rows: existing } = await this.query<{ id: string }>(
@@ -411,9 +424,12 @@ export class BookingsRepository extends BaseRepository {
     const { rows: matchRows } = await this.query<{
       id: string;
       status: string;
+      has_ended: boolean;
     }>(
       client,
-      `SELECT m.id, m.status
+      `SELECT m.id, m.status,
+        (m.status = 'scheduled'::match_status
+          AND now() >= m.scheduled_at + (m.duration_mins * interval '1 minute')) AS has_ended
        FROM matches m
        INNER JOIN venues v ON v.id = m.venue_id
        WHERE m.id = $1 AND v.tenant_id = $2
@@ -426,6 +442,9 @@ export class BookingsRepository extends BaseRepository {
     }
     if (match.status === 'cancelled') {
       return { success: false, code: 'ALREADY_CANCELLED' };
+    }
+    if (match.has_ended) {
+      return { success: false, code: 'MATCH_ALREADY_ENDED' };
     }
 
     await this.query(
@@ -1184,5 +1203,31 @@ export class BookingsRepository extends BaseRepository {
     }
 
     return { whereSql: parts.join(' AND '), values };
+  }
+
+  /**
+   * Returns distinct match IDs where the given user had confirmed bookings that were cancelled
+   * (used after a ban to trigger waitlist promotion per match).
+   * Looks for bookings cancelled within the last 10 seconds scoped to future matches.
+   */
+  async getMatchIdsWithFreedConfirmedSlotsForUser(
+    tenantId: string,
+    userId: string,
+  ): Promise<string[]> {
+    const { rows } = await this.query<{ match_id: string }>(
+      this.pool,
+      `SELECT DISTINCT b.match_id
+       FROM bookings b
+       INNER JOIN matches m ON m.id = b.match_id
+       INNER JOIN venues  v ON v.id = m.venue_id
+       WHERE b.user_id     = $1
+         AND v.tenant_id   = $2
+         AND b.status      = 'cancelled'
+         AND b.cancelled_at >= NOW() - INTERVAL '10 seconds'
+         AND m.scheduled_at > NOW()
+         AND m.status <> 'cancelled'`,
+      [userId, tenantId],
+    );
+    return rows.map((r) => r.match_id);
   }
 }

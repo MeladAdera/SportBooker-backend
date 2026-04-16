@@ -33,21 +33,24 @@ export class VenuesService {
   async listForBrowse(
     tenantId: string,
     query: ListVenuesQueryDto,
+    includeInactive = false,
   ): Promise<PaginatedVenuesListDto> {
     const page = query.page ?? 1;
     const limit = query.limit ?? DEFAULT_VENUE_LIST_LIMIT;
     const offset = (page - 1) * limit;
 
     const [total, rows] = await Promise.all([
-      this.venuesRepository.countActiveVenuesForBrowse(
+      this.venuesRepository.countVenuesForBrowse(
         tenantId,
         query.sportType,
+        includeInactive,
       ),
-      this.venuesRepository.findActiveVenuesForBrowse(
+      this.venuesRepository.findVenuesForBrowse(
         tenantId,
         query.sportType,
         limit,
         offset,
+        includeInactive,
       ),
     ]);
 
@@ -66,19 +69,23 @@ export class VenuesService {
   async getByIdForTenant(
     tenantId: string,
     venueId: string,
+    includeInactive = false,
   ): Promise<VenueDetailDto> {
-    const row = await this.venuesRepository.findActiveVenueByIdForTenant(
-      venueId,
-      tenantId,
-    );
+    const row = includeInactive
+      ? await this.venuesRepository.findVenueRowByIdForTenant(venueId, tenantId)
+      : await this.venuesRepository.findActiveVenueByIdForTenant(
+          venueId,
+          tenantId,
+        );
     if (!row) {
       throw new NotFoundException('Venue not found');
     }
     return {
       id: row.id,
       name: row.name,
-      address: row.address,
-      mapsUrl: row.maps_url,
+      // address and maps_url are required at creation and cannot be set to null
+      address: row.address ?? '',
+      mapsUrl: row.maps_url ?? '',
       sportTypes: row.sport_types as VenueDetailDto['sportTypes'],
       isActive: row.is_active,
       pictureUrl: row.picture_url,
@@ -89,11 +96,12 @@ export class VenuesService {
     tenantId: string,
     venueId: string,
     dto: UpdateVenueDto,
+    pictureFile?: Express.Multer.File,
   ): Promise<VenueResponseDto> {
-    if (!this.hasPatchFields(dto)) {
+    if (!this.hasPatchFields(dto, pictureFile)) {
       throw new BadRequestException('At least one field must be provided');
     }
-    const patch = this.buildVenuePatch(dto);
+    const patch = await this.buildVenuePatch(dto, tenantId, pictureFile);
     try {
       const row = await this.venuesRepository.patchVenueForTenant(
         tenantId,
@@ -228,8 +236,12 @@ export class VenuesService {
     };
   }
 
-  private hasPatchFields(dto: UpdateVenueDto): boolean {
+  private hasPatchFields(
+    dto: UpdateVenueDto,
+    pictureFile?: Express.Multer.File,
+  ): boolean {
     return (
+      pictureFile !== undefined ||
       dto.name !== undefined ||
       dto.address !== undefined ||
       dto.mapsUrl !== undefined ||
@@ -238,13 +250,17 @@ export class VenuesService {
     );
   }
 
-  private buildVenuePatch(dto: UpdateVenueDto): {
+  private async buildVenuePatch(
+    dto: UpdateVenueDto,
+    tenantId: string,
+    pictureFile?: Express.Multer.File,
+  ): Promise<{
     name?: string;
     address?: string;
     mapsUrl?: string;
     pictureUrl?: string | null;
     sportTypes?: VenueSportType[];
-  } {
+  }> {
     const patch: {
       name?: string;
       address?: string;
@@ -261,7 +277,12 @@ export class VenuesService {
     if (dto.mapsUrl !== undefined) {
       patch.mapsUrl = dto.mapsUrl;
     }
-    if (dto.pictureUrl !== undefined) {
+    if (pictureFile) {
+      patch.pictureUrl = await this.venuePictureStorage.saveVenuePicture(
+        tenantId,
+        pictureFile,
+      );
+    } else if (dto.pictureUrl !== undefined) {
       if (dto.pictureUrl === null) {
         patch.pictureUrl = null;
       } else {
@@ -270,7 +291,7 @@ export class VenuesService {
       }
     }
     if (dto.sportTypes !== undefined) {
-      patch.sportTypes = dto.sportTypes;
+      patch.sportTypes = parseSportTypesJson(dto.sportTypes);
     }
     return patch;
   }

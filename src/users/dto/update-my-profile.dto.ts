@@ -1,14 +1,22 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import {
+  IsDateString,
   IsEmail,
+  IsEnum,
   IsOptional,
   IsString,
   IsUrl,
   Matches,
+  MaxLength,
   MinLength,
 } from 'class-validator';
 import { E164_STRING_REGEX } from '../../auth/register-phone.util';
+import {
+  DominantFoot,
+  PlayerPosition,
+  SkillLevel,
+} from '../player-profile.enums';
 
 /** PATCH /users/me — only these fields; others stripped by ValidationPipe whitelist. */
 export class UpdateMyProfileDto {
@@ -57,4 +65,49 @@ export class UpdateMyProfileDto {
   @IsOptional()
   @IsUrl({ require_protocol: true })
   photoUrl?: string;
+
+  @ApiPropertyOptional({
+    description: 'Date of birth in ISO 8601 format (YYYY-MM-DD)',
+    example: '1995-03-20',
+  })
+  @IsOptional()
+  @IsDateString()
+  dateOfBirth?: string;
+
+  @ApiPropertyOptional({
+    description: 'Nationality (e.g. "Emirati", "British")',
+    maxLength: 100,
+    example: 'Emirati',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  nationality?: string;
+
+  @ApiPropertyOptional({
+    description: 'Preferred language code (BCP-47, e.g. "en", "ar")',
+    example: 'en',
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(/^[a-z]{2,3}(-[A-Z]{2})?$/, {
+    message:
+      'preferredLanguage must be a BCP-47 language tag (e.g. "en", "ar", "en-US")',
+  })
+  preferredLanguage?: string;
+
+  @ApiPropertyOptional({ enum: SkillLevel })
+  @IsOptional()
+  @IsEnum(SkillLevel)
+  skillLevel?: SkillLevel;
+
+  @ApiPropertyOptional({ enum: PlayerPosition })
+  @IsOptional()
+  @IsEnum(PlayerPosition)
+  preferredPosition?: PlayerPosition;
+
+  @ApiPropertyOptional({ enum: DominantFoot })
+  @IsOptional()
+  @IsEnum(DominantFoot)
+  dominantFoot?: DominantFoot;
 }
