@@ -68,15 +68,32 @@ export class AuthService {
         email: dto.email,
         passwordHash,
         phone,
+        dateOfBirth: dto.dateOfBirth,
+        nationality: dto.nationality,
+        preferredLanguage: dto.preferredLanguage,
+        skillLevel: dto.skillLevel,
+        preferredPosition: dto.preferredPosition,
+        dominantFoot: dto.dominantFoot,
+        photoUrl: dto.photoUrl,
       });
 
-      return {
-        id: row.id,
+      const refreshSecret = randomBytes(32).toString('hex');
+      const refreshHash = await bcrypt.hash(refreshSecret, BCRYPT_ROUNDS);
+      const refreshId = await this.authRepository.createRefreshToken(
+        row.id,
+        refreshHash,
+      );
+
+      return this.buildLoginResponse({
+        userId: row.id,
         name: row.name,
         email: row.email,
         role: row.role,
-        createdAt: row.created_at,
-      };
+        photoUrl: dto.photoUrl ?? '',
+        tenantId,
+        refreshId,
+        refreshSecret,
+      });
     } catch (err: unknown) {
       const pgErr = err as { code?: string };
       if (pgErr?.code === '23505') {
