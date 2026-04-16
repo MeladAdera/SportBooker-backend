@@ -28,6 +28,7 @@ export function getPoolConfigFromEnv(
   const database = env.DB_NAME;
   const user = env.DB_USER;
   const password = env.DB_PASSWORD;
+  console.log(host, portStr, database, user, password);
 
   if (!host || !database || !user || !password) {
     throw new Error(
