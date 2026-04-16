@@ -18,7 +18,7 @@ import type { ResetPasswordDto } from './dto/reset-password.dto';
 import type { ChangePasswordDto } from './dto/change-password.dto';
 import type { RegisterDto } from './dto/register.dto';
 import type { RegisterResponseDto } from './dto/register-response.dto';
-import { parseE164ToBigint } from './register-phone.util';
+import { parseE164ToBigint, E164_STRING_REGEX } from './register-phone.util';
 
 const BCRYPT_ROUNDS = 12;
 
@@ -104,7 +104,13 @@ export class AuthService {
   }
 
   async login(dto: LoginDto, tenantId: string): Promise<LoginResponseDto> {
-    const user = await this.usersRepository.findForLogin(tenantId, dto.email);
+    const isPhone = E164_STRING_REGEX.test(dto.identifier);
+    const user = isPhone
+      ? await this.usersRepository.findForLoginByPhone(
+          tenantId,
+          parseE164ToBigint(dto.identifier),
+        )
+      : await this.usersRepository.findForLogin(tenantId, dto.identifier);
     const hashToCompare = user?.password_hash ?? DUMMY_HASH;
 
     const valid = await bcrypt.compare(dto.password, hashToCompare);

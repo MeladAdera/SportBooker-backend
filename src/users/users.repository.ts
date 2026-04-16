@@ -453,6 +453,23 @@ export class UsersRepository extends BaseRepository {
     return rows[0] ?? null;
   }
 
+  /**
+   * Looks up a user by phone (stored as BIGINT — digits only, no leading +).
+   */
+  async findForLoginByPhone(
+    tenantId: string,
+    phoneDigits: bigint,
+  ): Promise<UserForLoginRow | null> {
+    const { rows } = await this.query<UserForLoginRow>(
+      this.pool,
+      `SELECT id, name, email, role, password_hash, photo_url, deleted_at, is_active, banned_at, banned_until
+       FROM users
+       WHERE tenant_id = $1 AND phone = $2`,
+      [tenantId, phoneDigits],
+    );
+    return rows[0] ?? null;
+  }
+
   async findActiveByEmailForTenant(
     tenantId: string,
     email: string,
