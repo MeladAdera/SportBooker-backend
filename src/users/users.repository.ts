@@ -373,11 +373,22 @@ export class UsersRepository extends BaseRepository {
     email: string;
     passwordHash: string;
     phone: bigint;
+    dateOfBirth?: string;
+    nationality?: string;
+    preferredLanguage?: string;
+    skillLevel?: string;
+    preferredPosition?: string;
+    dominantFoot?: string;
+    photoUrl?: string;
   }): Promise<RegisteredUserRow> {
     const { rows } = await this.query<RegisteredUserRow>(
       this.pool,
-      `INSERT INTO users (tenant_id, name, email, password_hash, phone, role)
-       VALUES ($1, $2, $3, $4, $5, 'player')
+      `INSERT INTO users (
+         tenant_id, name, email, password_hash, phone, role,
+         date_of_birth, nationality, preferred_language,
+         skill_level, preferred_position, dominant_foot, photo_url
+       )
+       VALUES ($1, $2, $3, $4, $5, 'player', $6, $7, $8, $9, $10, $11, $12)
        RETURNING id, name, email, role, created_at`,
       [
         params.tenantId,
@@ -385,6 +396,13 @@ export class UsersRepository extends BaseRepository {
         params.email,
         params.passwordHash,
         params.phone,
+        params.dateOfBirth ?? null,
+        params.nationality ?? null,
+        params.preferredLanguage ?? null,
+        params.skillLevel ?? null,
+        params.preferredPosition ?? null,
+        params.dominantFoot ?? null,
+        params.photoUrl ?? '',
       ],
     );
     const row = rows[0];

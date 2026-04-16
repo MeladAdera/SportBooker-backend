@@ -1,18 +1,16 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { AuthUserDto } from './login-response.dto';
 
 export class RegisterResponseDto {
-  @ApiProperty({ example: 'uuid' })
-  id!: string;
+  @ApiProperty({ description: 'JWT access token for Authorization header' })
+  accessToken!: string;
 
-  @ApiProperty({ example: 'John Doe' })
-  name!: string;
+  @ApiProperty({ description: 'Refresh token for obtaining new access token' })
+  refreshToken!: string;
 
-  @ApiProperty({ example: 'john@acfc.test' })
-  email!: string;
+  @ApiProperty({ description: 'Access token expiry in seconds', example: 900 })
+  expiresIn!: number;
 
-  @ApiProperty({ example: 'player', enum: ['player'] })
-  role!: string;
-
-  @ApiProperty()
-  createdAt!: Date;
+  @ApiProperty({ type: AuthUserDto })
+  user!: AuthUserDto;
 }

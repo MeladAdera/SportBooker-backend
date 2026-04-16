@@ -28,6 +28,7 @@ export class UpdateVenueDto {
   mapsUrl?: string;
 
   @ApiPropertyOptional({
+    type: 'string',
     nullable: true,
     description: 'Set to null to clear the venue image URL',
   })
