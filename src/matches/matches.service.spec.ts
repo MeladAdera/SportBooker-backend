@@ -12,6 +12,7 @@ import { MatchesRepository } from './matches.repository';
 import { MatchesService } from './matches.service';
 import { VenuesRepository } from '../venues/venues.repository';
 import { MatchSide } from './dto/submit-match-results.dto';
+import { MatchSortBy } from './match-sort-by';
 
 describe('MatchesService', () => {
   let service: MatchesService;
@@ -152,6 +153,8 @@ describe('MatchesService', () => {
       date: null,
       available: null,
       timezone: 'Asia/Dubai',
+      sortBy: null,
+      dayOfWeek: null,
     });
     expect(matchesRepo.findUpcomingMatchesForBrowse).toHaveBeenCalledWith({
       tenantId,
@@ -160,6 +163,8 @@ describe('MatchesService', () => {
       date: null,
       available: null,
       timezone: 'Asia/Dubai',
+      sortBy: null,
+      dayOfWeek: null,
       limit: 20,
       offset: 0,
     });
@@ -177,6 +182,48 @@ describe('MatchesService', () => {
       maxCapacity: 22,
       status: 'upcoming',
     });
+  });
+
+  it('forwards sortBy and dayOfWeek to repository', async () => {
+    matchesRepo.countUpcomingMatchesForBrowse.mockResolvedValue(3);
+    matchesRepo.findUpcomingMatchesForBrowse.mockResolvedValue([]);
+
+    await service.listUpcomingForTenant(
+      tenantId,
+      { sortBy: MatchSortBy.PriceAsc, dayOfWeek: [6, 7] },
+      'Asia/Dubai',
+    );
+
+    expect(matchesRepo.countUpcomingMatchesForBrowse).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sortBy: MatchSortBy.PriceAsc,
+        dayOfWeek: [6, 7],
+      }),
+    );
+    expect(matchesRepo.findUpcomingMatchesForBrowse).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sortBy: MatchSortBy.PriceAsc,
+        dayOfWeek: [6, 7],
+      }),
+    );
+  });
+
+  it('coerces empty dayOfWeek array to null', async () => {
+    matchesRepo.countUpcomingMatchesForBrowse.mockResolvedValue(0);
+    matchesRepo.findUpcomingMatchesForBrowse.mockResolvedValue([]);
+
+    await service.listUpcomingForTenant(
+      tenantId,
+      { dayOfWeek: [] },
+      'Asia/Dubai',
+    );
+
+    expect(matchesRepo.countUpcomingMatchesForBrowse).toHaveBeenCalledWith(
+      expect.objectContaining({ dayOfWeek: null }),
+    );
+    expect(matchesRepo.findUpcomingMatchesForBrowse).toHaveBeenCalledWith(
+      expect.objectContaining({ dayOfWeek: null }),
+    );
   });
 
   it('returns match detail with roster and spotsRemaining', async () => {

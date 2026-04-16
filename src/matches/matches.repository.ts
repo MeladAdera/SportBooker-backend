@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import type { Pool } from 'pg';
 import { BaseRepository, type DbExecutor } from '../database/base.repository';
 import { DB_POOL } from '../database/database.constants';
+import { DEFAULT_MATCH_SORT, MatchSortBy, SORT_BY_SQL } from './match-sort-by';
 import type {
   MatchSide,
   PlayerStatEntryDto,
@@ -123,10 +124,18 @@ export class MatchesRepository extends BaseRepository {
    * Touching endpoints (one ends exactly when the other starts) does not count as overlap.
    */
   /**
-   * Shared FROM for player browse queries.
-   * Params: $1 tenantId, $2 sportType, $3 venueId, $4 date, $5 available, $6 timezone
+   * Builds the shared FROM + WHERE fragment for player browse queries.
+   * Fixed params: $1 tenantId, $2 sportType, $3 venueId, $4 date, $5 available, $6 timezone.
+   * dayOfWeek values are inlined as integer literals (validated 1–7; no injection risk).
    */
-  private static readonly upcomingBrowseFrom = `
+  private static buildBrowseFrom(dayOfWeek: number[] | null): string {
+    const dowClause =
+      dayOfWeek && dayOfWeek.length > 0
+        ? `AND EXTRACT(ISODOW FROM m.scheduled_at AT TIME ZONE $6)::int
+        IN (${dayOfWeek.join(', ')})`
+        : '';
+
+    return `
     FROM matches m
     INNER JOIN venues v ON v.id = m.venue_id
     LEFT JOIN (
@@ -154,7 +163,9 @@ export class MatchesRepository extends BaseRepository {
       AND (
         $5::boolean IS DISTINCT FROM true
         OR (COALESCE(m.max_players, 0) - COALESCE(bc.confirmed_count, 0)) > 0
-      )`;
+      )
+      ${dowClause}`;
+  }
 
   async countUpcomingMatchesForBrowse(params: {
     tenantId: string;
@@ -163,11 +174,12 @@ export class MatchesRepository extends BaseRepository {
     date: string | null;
     available: boolean | null;
     timezone: string;
+    dayOfWeek: number[] | null;
   }): Promise<number> {
     const { rows } = await this.query<{ count: string }>(
       this.pool,
       `SELECT COUNT(*)::text AS count
-      ${MatchesRepository.upcomingBrowseFrom}`,
+      ${MatchesRepository.buildBrowseFrom(params.dayOfWeek)}`,
       [
         params.tenantId,
         params.sportType,
@@ -282,9 +294,12 @@ export class MatchesRepository extends BaseRepository {
     date: string | null;
     available: boolean | null;
     timezone: string;
+    sortBy: MatchSortBy | null;
+    dayOfWeek: number[] | null;
     limit: number;
     offset: number;
   }): Promise<MatchBrowseRow[]> {
+    const primarySort = SORT_BY_SQL[params.sortBy ?? DEFAULT_MATCH_SORT];
     const { rows } = await this.query<MatchBrowseRow>(
       this.pool,
       `SELECT
@@ -303,8 +318,8 @@ export class MatchesRepository extends BaseRepository {
           COALESCE(m.max_players, 0) - COALESCE(bc.confirmed_count, 0)
         ) AS spots_remaining,
         COALESCE(wc.waitlist_count, 0) AS waitlist_count
-      ${MatchesRepository.upcomingBrowseFrom}
-      ORDER BY m.scheduled_at ASC
+      ${MatchesRepository.buildBrowseFrom(params.dayOfWeek)}
+      ORDER BY ${primarySort}, m.id ASC
       LIMIT $7 OFFSET $8`,
       [
         params.tenantId,

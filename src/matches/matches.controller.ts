@@ -54,7 +54,10 @@ export class MatchesController {
   @ApiOperation({
     summary: 'List upcoming matches',
     description:
-      'Any authenticated user in the tenant. Returns status upcoming only, ordered by scheduled time. Filters: sportType, venueId, date (UTC calendar day), available (spots left).',
+      'Any authenticated user in the tenant. Returns upcoming matches only. ' +
+      'Filters (sportType, venueId, date in tenant-local day, available, dayOfWeek) apply first; ' +
+      'sortBy is applied on the full filtered set; page/limit slice that list. ' +
+      'total counts rows after filters only. dayOfWeek uses ISO 1=Mon…7=Sun in tenant timezone; repeat param or comma-separated list (OR).',
   })
   @ApiWrappedOkResponse({ type: PaginatedMatchesListDto })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })

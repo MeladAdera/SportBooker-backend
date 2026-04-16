@@ -86,6 +86,9 @@ export class MatchesService {
       date: query.date ?? null,
       available: query.available ?? null,
       timezone,
+      sortBy: query.sortBy ?? null,
+      dayOfWeek:
+        query.dayOfWeek && query.dayOfWeek.length > 0 ? query.dayOfWeek : null,
     };
 
     const [total, rows] = await Promise.all([

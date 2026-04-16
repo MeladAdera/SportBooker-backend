@@ -104,6 +104,29 @@ Player-facing browse. Tenant Host required.
 | `POST`  | `/matches/:id/cancel` | tenant_admin                 | Cancel + refunds                                                       |
 | `POST`  | `/matches`            | tenant_admin, tenant_staff   | Create match                                                           |
 
+### `GET /matches` — query parameters
+
+Filters are applied first, then **server-side** `sortBy`, then `page` / `limit`. The `total` field is the row count **after filters** (sort does not change `total`). Clients should not re-sort or re-filter `items` for pagination to stay correct.
+
+| Param        | Type                                                                 | Default              | Description |
+| ------------ | -------------------------------------------------------------------- | -------------------- | ----------- |
+| `page`       | integer ≥ 1                                                          | `1`                  | Page index. |
+| `limit`      | integer 1–100                                                        | `20`                 | Page size. |
+| `sportType`  | `football` \| `padel` \| `cricket` \| `generic`                      | _(none)_             | Filter by sport. |
+| `venueId`    | UUID                                                                 | _(none)_             | Filter by venue. |
+| `date`       | `YYYY-MM-DD`                                                         | _(none)_             | Tenant-local calendar day of `scheduled_at`. |
+| `available`  | boolean                                                              | _(none)_             | If `true`, only matches with at least one spot left. |
+| `sortBy`     | see below                                                            | `scheduled_at_asc`   | Sort the **full** filtered set before slicing the page. |
+| `dayOfWeek`  | integer(s) **1–7** (ISO weekday), repeatable or comma-separated      | _(none)_             | **1 = Monday … 7 = Sunday** in the tenant timezone. Multiple values are **OR** (match on any listed day). Not the same as JavaScript `Date.getDay()` (0 = Sunday); map e.g. `js === 0 ? 7 : js`. |
+
+**`sortBy` values** (stable tie-break: `match.id` ascending):
+
+- `scheduled_at_asc` / `scheduled_at_desc`
+- `price_asc` / `price_desc`
+- `spots_remaining_asc` / `spots_remaining_desc`
+
+**Examples:** `GET /matches?sortBy=price_asc&limit=12` — page 1 is the 12 cheapest in the filtered universe. `GET /matches?dayOfWeek=6&dayOfWeek=7` or `?dayOfWeek=6,7` — Saturdays or Sundays only.
+
 ---
 
 ## Tenant — Matches (`/tenant/matches`)
