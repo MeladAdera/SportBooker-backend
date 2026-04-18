@@ -18,6 +18,8 @@ import type { ResetPasswordDto } from './dto/reset-password.dto';
 import type { ChangePasswordDto } from './dto/change-password.dto';
 import type { RegisterDto } from './dto/register.dto';
 import type { RegisterResponseDto } from './dto/register-response.dto';
+import type { VerifyEmailDto } from './dto/verify-email.dto';
+import type { ResendVerificationEmailDto } from './dto/resend-verification-email.dto';
 import { parseE164ToBigint, E164_STRING_REGEX } from './register-phone.util';
 
 const BCRYPT_ROUNDS = 12;
@@ -56,6 +58,7 @@ export class AuthService {
   async register(
     dto: RegisterDto,
     tenantId: string,
+    tenantSlug: string,
   ): Promise<RegisterResponseDto> {
     const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
 
@@ -76,24 +79,17 @@ export class AuthService {
         dominantFoot: dto.dominantFoot,
         photoUrl: dto.photoUrl,
       });
-
-      const refreshSecret = randomBytes(32).toString('hex');
-      const refreshHash = await bcrypt.hash(refreshSecret, BCRYPT_ROUNDS);
-      const refreshId = await this.authRepository.createRefreshToken(
+      await this.sendEmailVerificationLink(
         row.id,
-        refreshHash,
+        row.email,
+        row.name,
+        tenantSlug,
       );
-
-      return this.buildLoginResponse({
-        userId: row.id,
-        name: row.name,
-        email: row.email,
-        role: row.role,
-        photoUrl: dto.photoUrl ?? '',
-        tenantId,
-        refreshId,
-        refreshSecret,
-      });
+      return {
+        message:
+          'Registration successful. Please verify your email to continue.',
+        emailVerificationRequired: true,
+      };
     } catch (err: unknown) {
       const pgErr = err as { code?: string };
       if (pgErr?.code === '23505') {
@@ -129,6 +125,11 @@ export class AuthService {
       (user.banned_until == null || user.banned_until > new Date());
     if (isActiveBan) {
       throw new UnauthorizedException('Your account has been suspended');
+    }
+    if (user.email_verified_at == null) {
+      throw new UnauthorizedException(
+        'Please verify your email before logging in',
+      );
     }
 
     const refreshSecret = randomBytes(32).toString('hex');
@@ -266,7 +267,33 @@ export class AuthService {
     const protocol = appDomain.includes('localhost') ? 'http' : 'https';
     const resetLink = `${protocol}://${tenantSlug}.${appDomain}/reset-password?token=${encodeURIComponent(fullToken)}`;
 
-    await this.emailService.sendPasswordResetEmail(user.email, resetLink);
+    await this.emailService.sendPasswordResetEmail(
+      user.email,
+      user.name,
+      resetLink,
+    );
+  }
+
+  async resendVerificationEmail(
+    dto: ResendVerificationEmailDto,
+    tenantId: string,
+    tenantSlug: string,
+  ): Promise<void> {
+    const user =
+      await this.usersRepository.findActiveUnverifiedByEmailForTenant(
+        tenantId,
+        dto.email,
+      );
+    if (!user) {
+      return;
+    }
+
+    await this.sendEmailVerificationLink(
+      user.id,
+      user.email,
+      user.name,
+      tenantSlug,
+    );
   }
 
   async changePassword(
@@ -336,5 +363,65 @@ export class AuthService {
 
       return { message: 'Password reset successfully' };
     });
+  }
+
+  async verifyEmail(dto: VerifyEmailDto): Promise<{ message: string }> {
+    const parts = dto.token.split('.');
+    if (parts.length !== 2) {
+      throw new BadRequestException('Invalid or expired verification token');
+    }
+
+    const [id, secret] = parts;
+
+    return this.authRepository.runInTransaction(async (client) => {
+      const row = await this.authRepository.findEmailVerificationTokenForUpdate(
+        client,
+        id,
+      );
+      if (!row) {
+        throw new BadRequestException('Invalid or expired verification token');
+      }
+
+      const hashValid = await bcrypt.compare(secret, row.token_hash);
+      if (!hashValid) {
+        throw new BadRequestException('Invalid or expired verification token');
+      }
+
+      await this.usersRepository.markEmailVerified(client, row.user_id);
+      await this.authRepository.markEmailVerificationTokenUsed(client, id);
+      await this.authRepository.deleteEmailVerificationTokensByUserId(
+        client,
+        row.user_id,
+      );
+
+      return { message: 'Email verified successfully' };
+    });
+  }
+
+  private async sendEmailVerificationLink(
+    userId: string,
+    email: string,
+    userName: string,
+    tenantSlug: string,
+  ): Promise<void> {
+    await this.authRepository.deleteEmailVerificationTokensForUser(userId);
+
+    const plainToken = randomBytes(32).toString('hex');
+    const tokenHash = await bcrypt.hash(plainToken, BCRYPT_ROUNDS);
+    const verifyId = await this.authRepository.createEmailVerificationToken(
+      userId,
+      tokenHash,
+    );
+    const fullToken = `${verifyId}.${plainToken}`;
+
+    const appDomain = this.config.getOrThrow<string>('TENANT_HOST_SUFFIX');
+    const protocol = appDomain.includes('localhost') ? 'http' : 'https';
+    const verificationLink = `${protocol}://${tenantSlug}.${appDomain}/verify-email?token=${encodeURIComponent(fullToken)}`;
+
+    await this.emailService.sendEmailVerificationEmail(
+      email,
+      userName,
+      verificationLink,
+    );
   }
 }

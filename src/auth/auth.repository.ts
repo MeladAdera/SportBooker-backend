@@ -19,6 +19,11 @@ export type PasswordResetTokenRow = {
   token_hash: string;
 };
 
+export type EmailVerificationTokenRow = {
+  user_id: string;
+  token_hash: string;
+};
+
 @Injectable()
 export class AuthRepository extends BaseRepository {
   constructor(@Inject(DB_POOL) pool: Pool) {
@@ -160,6 +165,73 @@ export class AuthRepository extends BaseRepository {
     await this.query(
       client,
       'UPDATE password_reset_tokens SET used_at = NOW(), updated_at = NOW() WHERE id = $1',
+      [id],
+    );
+  }
+
+  async deleteEmailVerificationTokensByUserId(
+    db: DbExecutor,
+    userId: string,
+  ): Promise<void> {
+    await this.query(
+      db,
+      'DELETE FROM email_verification_tokens WHERE user_id = $1',
+      [userId],
+    );
+  }
+
+  async deleteEmailVerificationTokensForUser(userId: string): Promise<void> {
+    await this.deleteEmailVerificationTokensByUserId(this.pool, userId);
+  }
+
+  async createEmailVerificationToken(
+    userId: string,
+    tokenHash: string,
+  ): Promise<string> {
+    return this.insertEmailVerificationToken(this.pool, userId, tokenHash);
+  }
+
+  async insertEmailVerificationToken(
+    db: DbExecutor,
+    userId: string,
+    tokenHash: string,
+  ): Promise<string> {
+    const { rows } = await this.query<{ id: string }>(
+      db,
+      `INSERT INTO email_verification_tokens (user_id, token_hash, expires_at)
+       VALUES ($1, $2, NOW() + INTERVAL '24 HOURS')
+       RETURNING id`,
+      [userId, tokenHash],
+    );
+    const id = rows[0]?.id;
+    if (!id) {
+      throw new Error('Failed to create email verification token');
+    }
+    return id;
+  }
+
+  async findEmailVerificationTokenForUpdate(
+    client: PoolClient,
+    id: string,
+  ): Promise<EmailVerificationTokenRow | null> {
+    const { rows } = await this.query<EmailVerificationTokenRow>(
+      client,
+      `SELECT user_id, token_hash
+       FROM email_verification_tokens
+       WHERE id = $1 AND expires_at > NOW() AND used_at IS NULL
+       FOR UPDATE`,
+      [id],
+    );
+    return rows[0] ?? null;
+  }
+
+  async markEmailVerificationTokenUsed(
+    client: PoolClient,
+    id: string,
+  ): Promise<void> {
+    await this.query(
+      client,
+      'UPDATE email_verification_tokens SET used_at = NOW(), updated_at = NOW() WHERE id = $1',
       [id],
     );
   }

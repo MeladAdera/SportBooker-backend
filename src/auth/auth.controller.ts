@@ -26,6 +26,8 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { RegisterDto } from './dto/register.dto';
 import { RegisterResponseDto } from './dto/register-response.dto';
+import { VerifyEmailDto } from './dto/verify-email.dto';
+import { ResendVerificationEmailDto } from './dto/resend-verification-email.dto';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -60,7 +62,7 @@ export class AuthController {
         'Tenant is required. Use Host header with tenant subdomain (e.g. acfc.localhost:3000).',
       );
     }
-    return this.authService.register(dto, tenant.id);
+    return this.authService.register(dto, tenant.id, tenant.slug);
   }
 
   @Post('login')
@@ -119,6 +121,52 @@ export class AuthController {
       message:
         'If an account exists with that email, a reset link has been sent.',
     };
+  }
+
+  @Post('resend-verification-email')
+  @Public()
+  @Throttle({ default: { limit: 3, ttl: 60_000 } })
+  @ApiWrappedOkResponse({
+    description:
+      'If account exists and is not verified, verification email is sent. Always 200 (anti-enumeration).',
+    schema: { type: 'object', properties: { message: { type: 'string' } } },
+  })
+  @ApiResponse({ status: 400, description: 'Missing or invalid subdomain' })
+  @ApiResponse({ status: 403, description: 'Tenant is inactive' })
+  @ApiResponse({ status: 422, description: 'Validation failed' })
+  @ApiResponse({
+    status: 429,
+    description: 'Too Many Requests - rate limit exceeded',
+  })
+  async resendVerificationEmail(
+    @Body() dto: ResendVerificationEmailDto,
+    @TenantDecorator() tenant: Tenant,
+  ): Promise<{ message: string }> {
+    if (!tenant) {
+      throw new BadRequestException(
+        'Tenant is required. Use Host header with tenant subdomain (e.g. acfc.localhost:3000).',
+      );
+    }
+    await this.authService.resendVerificationEmail(dto, tenant.id, tenant.slug);
+    return {
+      message:
+        'If an unverified account exists with that email, a verification link has been sent.',
+    };
+  }
+
+  @Post('verify-email')
+  @Public()
+  @ApiWrappedOkResponse({
+    description: 'Email verified successfully',
+    schema: { type: 'object', properties: { message: { type: 'string' } } },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid or expired verification token',
+  })
+  @ApiResponse({ status: 422, description: 'Validation failed' })
+  async verifyEmail(@Body() dto: VerifyEmailDto): Promise<{ message: string }> {
+    return this.authService.verifyEmail(dto);
   }
 
   @Post('reset-password')

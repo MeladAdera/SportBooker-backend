@@ -63,8 +63,8 @@ async function bootstrap(): Promise<void> {
   }
 
   const openApiToken = (config.get<string>('OPENAPI_DOCS_TOKEN') ?? '').trim();
-  const enableOpenApi =
-    process.env.NODE_ENV !== 'production' || openApiToken.length > 0;
+  const nodeEnv = config.getOrThrow<string>('NODE_ENV');
+  const enableOpenApi = nodeEnv !== 'production' || openApiToken.length > 0;
 
   if (enableOpenApi) {
     app.use(openApiAuthMiddleware(openApiToken || undefined));

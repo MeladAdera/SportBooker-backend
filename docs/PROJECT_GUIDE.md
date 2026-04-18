@@ -115,7 +115,7 @@ Study and understand every file and feature in this project, letter by letter.
 | `JWT_ACCESS_EXPIRES_IN`                                   | Access token TTL (default `15m`).                                         |
 | `API_PUBLIC_ORIGIN`                                       | Optional. Public API origin (uploads, Ziina webhooks). Default `http://localhost:{PORT}`. |
 | `WEB_APP_PUBLIC_ORIGIN`                                   | Optional. Browser app origin (scheme for Ziina redirects); defaults to API origin.          |
-| `STRIPE_*`, `SENDGRID_*`, `EMAIL_FROM`                    | Optional; for future integrations.                                        |
+| `STRIPE_*`, `RESEND_API_KEY`, `EMAIL_FROM`                | Optional; transactional email via Resend.                                 |
 
 ---
 

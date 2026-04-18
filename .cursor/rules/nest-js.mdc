@@ -221,7 +221,7 @@ export class UsersController {
 - `src/auth/auth.controller.ts` — HTTP endpoints
 - `src/auth/auth.types.ts` — `JwtPayload`, `AuthenticatedUser` types
 - `src/auth/strategies/jwt.strategy.ts` — Passport JWT strategy (Bearer extraction + validation)
-- `src/auth/email.service.ts` — Password reset email via SendGrid
+- `src/auth/email.service.ts` — Transactional email via Resend
 
 # ========================================
 

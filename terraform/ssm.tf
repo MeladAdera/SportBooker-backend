@@ -14,10 +14,26 @@ resource "aws_ssm_parameter" "jwt_access_secret" {
   value = var.jwt_access_secret
 }
 
-resource "aws_ssm_parameter" "sendgrid_api_key" {
-  name  = "${local.ssm_prefix}/SENDGRID_API_KEY"
+resource "aws_ssm_parameter" "resend_api_key" {
+  name  = "${local.ssm_prefix}/RESEND_API_KEY"
   type  = "SecureString"
-  value = var.sendgrid_api_key != "" ? var.sendgrid_api_key : "placeholder"
+  value = var.resend_api_key != "" ? var.resend_api_key : "placeholder"
+
+  lifecycle { ignore_changes = [value] }
+}
+
+resource "aws_ssm_parameter" "resend_template_password_reset_id" {
+  name  = "${local.ssm_prefix}/RESEND_TEMPLATE_PASSWORD_RESET_ID"
+  type  = "SecureString"
+  value = var.resend_template_password_reset_id != "" ? var.resend_template_password_reset_id : "placeholder"
+
+  lifecycle { ignore_changes = [value] }
+}
+
+resource "aws_ssm_parameter" "resend_template_email_verification_id" {
+  name  = "${local.ssm_prefix}/RESEND_TEMPLATE_EMAIL_VERIFICATION_ID"
+  type  = "SecureString"
+  value = var.resend_template_email_verification_id != "" ? var.resend_template_email_verification_id : "placeholder"
 
   lifecycle { ignore_changes = [value] }
 }

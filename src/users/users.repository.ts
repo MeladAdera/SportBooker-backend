@@ -21,6 +21,7 @@ export type UserForLoginRow = {
   email: string;
   role: string;
   password_hash: string;
+  email_verified_at: Date | null;
   photo_url: string | null;
   deleted_at: Date | null;
   is_active: boolean | null;
@@ -38,6 +39,13 @@ export type RegisteredUserRow = {
 
 export type ForgotPasswordUserRow = {
   id: string;
+  name: string;
+  email: string;
+};
+
+export type UnverifiedUserRow = {
+  id: string;
+  name: string;
   email: string;
 };
 
@@ -385,10 +393,10 @@ export class UsersRepository extends BaseRepository {
       this.pool,
       `INSERT INTO users (
          tenant_id, name, email, password_hash, phone, role,
-         date_of_birth, nationality, preferred_language,
+         email_verified_at, date_of_birth, nationality, preferred_language,
          skill_level, preferred_position, dominant_foot, photo_url
        )
-       VALUES ($1, $2, $3, $4, $5, 'player', $6, $7, $8, $9, $10, $11, $12)
+       VALUES ($1, $2, $3, $4, $5, 'player', NULL, $6, $7, $8, $9, $10, $11, $12)
        RETURNING id, name, email, role, created_at`,
       [
         params.tenantId,
@@ -446,6 +454,7 @@ export class UsersRepository extends BaseRepository {
     const { rows } = await this.query<UserForLoginRow>(
       this.pool,
       `SELECT id, name, email, role, password_hash, photo_url, deleted_at, is_active, banned_at, banned_until
+             , email_verified_at
        FROM users
        WHERE tenant_id = $1 AND email = $2`,
       [tenantId, email],
@@ -463,6 +472,7 @@ export class UsersRepository extends BaseRepository {
     const { rows } = await this.query<UserForLoginRow>(
       this.pool,
       `SELECT id, name, email, role, password_hash, photo_url, deleted_at, is_active, banned_at, banned_until
+             , email_verified_at
        FROM users
        WHERE tenant_id = $1 AND phone = $2`,
       [tenantId, phoneDigits],
@@ -476,8 +486,26 @@ export class UsersRepository extends BaseRepository {
   ): Promise<ForgotPasswordUserRow | null> {
     const { rows } = await this.query<ForgotPasswordUserRow>(
       this.pool,
-      `SELECT id, email FROM users
+      `SELECT id, name, email FROM users
        WHERE tenant_id = $1 AND email = $2 AND deleted_at IS NULL AND is_active = true`,
+      [tenantId, email],
+    );
+    return rows[0] ?? null;
+  }
+
+  async findActiveUnverifiedByEmailForTenant(
+    tenantId: string,
+    email: string,
+  ): Promise<UnverifiedUserRow | null> {
+    const { rows } = await this.query<UnverifiedUserRow>(
+      this.pool,
+      `SELECT id, name, email
+       FROM users
+       WHERE tenant_id = $1
+         AND email = $2
+         AND deleted_at IS NULL
+         AND is_active = true
+         AND email_verified_at IS NULL`,
       [tenantId, email],
     );
     return rows[0] ?? null;
@@ -492,6 +520,14 @@ export class UsersRepository extends BaseRepository {
       db,
       'UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2',
       [passwordHash, userId],
+    );
+  }
+
+  async markEmailVerified(db: DbExecutor, userId: string): Promise<void> {
+    await this.query(
+      db,
+      'UPDATE users SET email_verified_at = NOW(), updated_at = NOW() WHERE id = $1',
+      [userId],
     );
   }
 

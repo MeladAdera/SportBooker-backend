@@ -876,7 +876,7 @@ body: { email }
         ▼
   Anti-enumeration: always returns 200
   If user found: create password_reset_token
-  Send email via SendGrid (or log to console if unconfigured)
+  Send email via Resend (or log to console if unconfigured)
 
 RESET PASSWORD:
 POST /auth/reset-password (no tenant Host needed)
@@ -1085,7 +1085,7 @@ Schema: links a user to a match, with a rating and comment. Enums for review typ
 
 Schema: notification records with type, channel, recipient, content, read status. Enums for `notification_type` and `notification_channel` exist.
 
-**Intended purpose:** In-app or push notifications for events like booking confirmation, waitlist promotion, match cancellation. Currently the system sends emails directly (SendGrid) from service methods without persisting a notification record.
+**Intended purpose:** In-app or push notifications for events like booking confirmation, waitlist promotion, match cancellation. Currently the system sends emails directly (Resend) from service methods without persisting a notification record.
 
 ### Wallet Top-Up
 

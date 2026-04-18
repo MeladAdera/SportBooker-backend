@@ -56,8 +56,12 @@ export const envSchema = Joi.object({
    * Generate with: openssl rand -hex 32
    */
   ZIINA_ENCRYPTION_KEY: Joi.string().length(64).optional().allow(''),
-  SENDGRID_API_KEY: Joi.string().optional().allow(''),
-  EMAIL_FROM: Joi.string().email().optional().allow(''),
+  RESEND_API_KEY: Joi.string().optional().allow(''),
+  EMAIL_FROM: Joi.string().optional().allow(''),
+  EMAIL_APP_NAME: Joi.string().optional().allow(''),
+  EMAIL_SUPPORT_EMAIL: Joi.string().optional().allow(''),
+  RESEND_TEMPLATE_PASSWORD_RESET_ID: Joi.string().optional().allow(''),
+  RESEND_TEMPLATE_EMAIL_VERIFICATION_ID: Joi.string().optional().allow(''),
   /**
    * When set (min 32 chars), enables OpenAPI in production and requires
    * `Authorization: Bearer <token>` for `/api/docs` and `/api/docs-json`.

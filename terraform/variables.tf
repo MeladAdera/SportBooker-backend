@@ -93,8 +93,8 @@ variable "jwt_access_expires_in" {
   default     = "15m"
 }
 
-variable "sendgrid_api_key" {
-  description = "SendGrid API key (optional)"
+variable "resend_api_key" {
+  description = "Resend API key (optional)"
   type        = string
   default     = ""
   sensitive   = true
@@ -104,6 +104,32 @@ variable "email_from" {
   description = "Sender email address for transactional emails"
   type        = string
   default     = ""
+}
+
+variable "email_app_name" {
+  description = "Brand name used in transactional email templates"
+  type        = string
+  default     = "SportBooker"
+}
+
+variable "email_support_email" {
+  description = "Support email shown in transactional email templates"
+  type        = string
+  default     = ""
+}
+
+variable "resend_template_password_reset_id" {
+  description = "Resend template ID for password reset emails"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "resend_template_email_verification_id" {
+  description = "Resend template ID for email verification emails"
+  type        = string
+  default     = ""
+  sensitive   = true
 }
 
 variable "stripe_secret_key" {

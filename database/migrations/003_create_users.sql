@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS users (
   photo_url     VARCHAR(2048)   NOT NULL DEFAULT '',
   role               user_role       NOT NULL,
   is_active          BOOLEAN         NOT NULL DEFAULT true,
+  email_verified_at  TIMESTAMPTZ     DEFAULT now(),
   wallet_balance     NUMERIC(10, 2)  NOT NULL DEFAULT 0,
   -- Ban fields: banned_at non-null means a ban is active.
   -- banned_until null = permanent; non-null = auto-expires when NOW() > banned_until.
@@ -39,3 +40,4 @@ CREATE INDEX IF NOT EXISTS idx_users_tenant_id  ON users(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_users_email       ON users(email);
 CREATE INDEX IF NOT EXISTS idx_users_deleted_at  ON users(deleted_at);
 CREATE INDEX IF NOT EXISTS idx_users_banned_at   ON users(banned_at) WHERE banned_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_users_email_verified_at ON users(email_verified_at);

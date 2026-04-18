@@ -132,8 +132,24 @@ Secrets are stored in SSM Parameter Store under `/sportbooker/production/`.
 ```bash
 # Update a secret
 aws ssm put-parameter \
-  --name "/sportbooker/production/SENDGRID_API_KEY" \
-  --value "SG.your-new-key" \
+  --name "/sportbooker/production/RESEND_API_KEY" \
+  --value "re_your-new-key" \
+  --type SecureString \
+  --overwrite \
+  --region ap-south-1
+
+# Update password-reset template ID
+aws ssm put-parameter \
+  --name "/sportbooker/production/RESEND_TEMPLATE_PASSWORD_RESET_ID" \
+  --value "432bfd62-0d5e-48cf-ad61-fd3d782b6698" \
+  --type SecureString \
+  --overwrite \
+  --region ap-south-1
+
+# Update email-verification template ID
+aws ssm put-parameter \
+  --name "/sportbooker/production/RESEND_TEMPLATE_EMAIL_VERIFICATION_ID" \
+  --value "672a13df-d7f1-499e-9449-d55fb02d26a8" \
   --type SecureString \
   --overwrite \
   --region ap-south-1

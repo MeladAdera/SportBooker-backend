@@ -122,21 +122,21 @@ export class PaymentsService {
       return;
     }
 
-    // Verify HMAC if secret is configured
-    if (tenantCreds.ziina_webhook_secret) {
-      if (
-        !hmacSignature ||
-        !this.verifyHmac(
-          rawBody,
-          hmacSignature,
-          tenantCreds.ziina_webhook_secret,
-        )
-      ) {
-        this.logger.warn(
-          `Webhook HMAC verification failed for payment ${ziinaPaymentId}`,
-        );
-        return;
-      }
+    if (!tenantCreds.ziina_webhook_secret) {
+      this.logger.warn(
+        `Webhook rejected for payment ${ziinaPaymentId}: tenant has no webhook secret configured`,
+      );
+      return;
+    }
+
+    if (
+      !hmacSignature ||
+      !this.verifyHmac(rawBody, hmacSignature, tenantCreds.ziina_webhook_secret)
+    ) {
+      this.logger.warn(
+        `Webhook HMAC verification failed for payment ${ziinaPaymentId}`,
+      );
+      return;
     }
 
     const status: string = payload.data?.status;
