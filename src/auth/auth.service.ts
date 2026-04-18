@@ -208,7 +208,7 @@ export class AuthService {
   }): LoginResponseDto {
     const expiresInStr = this.config.get<string>(
       'JWT_ACCESS_EXPIRES_IN',
-      '15m',
+      '10m',
     );
     const expiresIn = parseExpiresInToSeconds(expiresInStr);
 
