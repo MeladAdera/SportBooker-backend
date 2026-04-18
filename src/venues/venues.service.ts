@@ -14,11 +14,30 @@ import type { VenueDetailDto } from './dto/venue-detail.dto';
 import type { VenueActivatedResponseDto } from './dto/venue-activated-response.dto';
 import type { VenueDeactivatedResponseDto } from './dto/venue-deactivated-response.dto';
 import type { VenueResponseDto } from './dto/venue-response.dto';
-import type { VenueSportType } from './venue-sport-type';
+import { VenueSportType } from './venue-sport-type';
 import { VenuesRepository, type VenueRow } from './venues.repository';
 import { VenuePictureStorage } from './venue-picture.storage';
 
 const PG_UNIQUE_VIOLATION = '23505';
+
+const SPORT_DEFAULT_PICTURE_URLS: Partial<Record<VenueSportType, string>> = {
+  [VenueSportType.Football]:
+    'https://diamondfootball.com/news/birds-eye-view-of-a-football-pitch.jpg',
+};
+
+/** Returns the stored URL, falling back to a sport-specific default when null. */
+function resolveVenuePictureUrl(
+  pictureUrl: string | null,
+  sportTypes: string[],
+): string | null {
+  if (pictureUrl !== null) return pictureUrl;
+  for (const sport of sportTypes) {
+    const defaultUrl =
+      SPORT_DEFAULT_PICTURE_URLS[sport as VenueSportType] ?? null;
+    if (defaultUrl) return defaultUrl;
+  }
+  return null;
+}
 
 /** Default page size for GET /venues (matches use 20). */
 const DEFAULT_VENUE_LIST_LIMIT = 50;
@@ -88,7 +107,7 @@ export class VenuesService {
       mapsUrl: row.maps_url ?? '',
       sportTypes: row.sport_types as VenueDetailDto['sportTypes'],
       isActive: row.is_active,
-      pictureUrl: row.picture_url,
+      pictureUrl: resolveVenuePictureUrl(row.picture_url, row.sport_types),
     };
   }
 
@@ -313,9 +332,12 @@ export class VenuesService {
     } else if (trimmedPictureUrl && trimmedPictureUrl.length > 0) {
       pictureUrl = trimmedPictureUrl;
     } else {
-      throw new BadRequestException(
-        'Either a picture file or pictureUrl must be provided',
-      );
+      pictureUrl = resolveVenuePictureUrl(null, sportTypes);
+      if (pictureUrl === null) {
+        throw new BadRequestException(
+          'Either a picture file or pictureUrl must be provided',
+        );
+      }
     }
 
     try {
@@ -345,7 +367,7 @@ export class VenuesService {
       name: row.name,
       address: row.address,
       mapsUrl: row.maps_url,
-      pictureUrl: row.picture_url,
+      pictureUrl: resolveVenuePictureUrl(row.picture_url, row.sport_types),
       sportTypes: row.sport_types as VenueResponseDto['sportTypes'],
       isActive: row.is_active,
       createdAt: row.created_at.toISOString(),
