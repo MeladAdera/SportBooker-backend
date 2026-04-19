@@ -16,3 +16,13 @@ export enum DominantFoot {
   Right = 'right',
   Both = 'both',
 }
+
+export enum DayOfWeek {
+  Monday = 'monday',
+  Tuesday = 'tuesday',
+  Wednesday = 'wednesday',
+  Thursday = 'thursday',
+  Friday = 'friday',
+  Saturday = 'saturday',
+  Sunday = 'sunday',
+}

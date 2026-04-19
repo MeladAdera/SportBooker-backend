@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  DayOfWeek,
   DominantFoot,
   PlayerPosition,
   SkillLevel,
@@ -54,6 +55,14 @@ export class MyProfileResponseDto {
 
   @ApiPropertyOptional({ nullable: true, enum: DominantFoot })
   dominantFoot!: DominantFoot | null;
+
+  @ApiProperty({
+    description: 'Days of the week the player prefers to play',
+    enum: Object.values(DayOfWeek),
+    isArray: true,
+    example: ['monday', 'friday'],
+  })
+  preferredDays!: DayOfWeek[];
 
   @ApiProperty()
   createdAt!: Date;

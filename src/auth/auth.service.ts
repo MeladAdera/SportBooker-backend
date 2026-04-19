@@ -78,6 +78,7 @@ export class AuthService {
         preferredPosition: dto.preferredPosition,
         dominantFoot: dto.dominantFoot,
         photoUrl: dto.photoUrl,
+        preferredDays: dto.preferredDays,
       });
       await this.sendEmailVerificationLink(
         row.id,

@@ -1,6 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import {
+  IsArray,
   IsDateString,
   IsEmail,
   IsEnum,
@@ -13,6 +14,7 @@ import {
 } from 'class-validator';
 import { E164_STRING_REGEX } from '../../auth/register-phone.util';
 import {
+  DayOfWeek,
   DominantFoot,
   PlayerPosition,
   SkillLevel,
@@ -110,4 +112,15 @@ export class UpdateMyProfileDto {
   @IsOptional()
   @IsEnum(DominantFoot)
   dominantFoot?: DominantFoot;
+
+  @ApiPropertyOptional({
+    description: 'Days of the week the player prefers to play',
+    enum: DayOfWeek,
+    isArray: true,
+    example: ['monday', 'wednesday', 'friday'],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsEnum(DayOfWeek, { each: true })
+  preferredDays?: DayOfWeek[];
 }

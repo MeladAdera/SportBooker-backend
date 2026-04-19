@@ -59,6 +59,13 @@ export class VenuePictureStorage {
     return this.savePicture(`users/${userId}`, file);
   }
 
+  async saveTenantLogo(
+    tenantId: string,
+    file: Express.Multer.File,
+  ): Promise<string> {
+    return this.savePicture(`tenants/${tenantId}/logo`, file);
+  }
+
   private async savePicture(
     folder: string,
     file: Express.Multer.File,

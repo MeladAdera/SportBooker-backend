@@ -99,6 +99,7 @@ export type UserSelfProfileRow = {
   skill_level: string | null;
   preferred_position: string | null;
   dominant_foot: string | null;
+  preferred_days: string[];
 };
 
 export type PlayerStatsRow = {
@@ -196,7 +197,8 @@ export class UsersRepository extends BaseRepository {
          preferred_language,
          skill_level::text AS skill_level,
          preferred_position::text AS preferred_position,
-         dominant_foot::text AS dominant_foot
+         dominant_foot::text AS dominant_foot,
+         preferred_days
        FROM users
        WHERE id = $1 AND tenant_id = $2`,
       [userId, tenantId],
@@ -285,6 +287,7 @@ export class UsersRepository extends BaseRepository {
       skill_level?: string | null;
       preferred_position?: string | null;
       dominant_foot?: string | null;
+      preferred_days?: string[];
     },
   ): Promise<UserSelfProfileRow | null> {
     const fragments: string[] = [];
@@ -331,6 +334,10 @@ export class UsersRepository extends BaseRepository {
       fragments.push(`dominant_foot = $${i++}::dominant_foot`);
       values.push(fields.dominant_foot);
     }
+    if (fields.preferred_days !== undefined) {
+      fragments.push(`preferred_days = $${i++}::day_of_week[]`);
+      values.push(fields.preferred_days);
+    }
 
     if (fragments.length === 0) {
       return this.findByIdForSelfProfile(tenantId, userId);
@@ -353,7 +360,8 @@ export class UsersRepository extends BaseRepository {
          preferred_language,
          skill_level::text AS skill_level,
          preferred_position::text AS preferred_position,
-         dominant_foot::text AS dominant_foot`,
+         dominant_foot::text AS dominant_foot,
+         preferred_days`,
       values,
     );
     return rows[0] ?? null;
@@ -388,15 +396,16 @@ export class UsersRepository extends BaseRepository {
     preferredPosition?: string;
     dominantFoot?: string;
     photoUrl?: string;
+    preferredDays?: string[];
   }): Promise<RegisteredUserRow> {
     const { rows } = await this.query<RegisteredUserRow>(
       this.pool,
       `INSERT INTO users (
          tenant_id, name, email, password_hash, phone, role,
          email_verified_at, date_of_birth, nationality, preferred_language,
-         skill_level, preferred_position, dominant_foot, photo_url
+         skill_level, preferred_position, dominant_foot, photo_url, preferred_days
        )
-       VALUES ($1, $2, $3, $4, $5, 'player', NULL, $6, $7, $8, $9, $10, $11, $12)
+       VALUES ($1, $2, $3, $4, $5, 'player', NULL, $6, $7, $8, $9, $10, $11, $12, $13::day_of_week[])
        RETURNING id, name, email, role, created_at`,
       [
         params.tenantId,
@@ -411,6 +420,7 @@ export class UsersRepository extends BaseRepository {
         params.preferredPosition ?? null,
         params.dominantFoot ?? null,
         params.photoUrl ?? '',
+        params.preferredDays ?? [],
       ],
     );
     const row = rows[0];

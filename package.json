@@ -21,11 +21,10 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "migrate": "ts-node database/migrate.ts",
     "seed": "ts-node database/seed.ts",
-    "db:reset": "ts-node database/reset.ts && ts-node database/migrate.ts && ts-node database/seed.ts",
+    "db:reset": "ts-node database/reset.ts && ts-node database/migrate.ts",
     "db:up": "docker compose up -d db pgadmin --wait && npm run migrate",
     "docker:up": "docker compose up",
-    "prepare": "husky",
-    "g": "node g.js"
+    "prepare": "husky"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1027.0",

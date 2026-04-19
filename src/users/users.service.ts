@@ -47,6 +47,7 @@ import type {
 import { UsersRepository } from './users.repository';
 import type { PlayerStatsDto } from './dto/player-stats.dto';
 import {
+  DayOfWeek,
   DominantFoot,
   PlayerPosition,
   SkillLevel,
@@ -396,6 +397,7 @@ export class UsersService {
       skill_level?: string | null;
       preferred_position?: string | null;
       dominant_foot?: string | null;
+      preferred_days?: string[];
     } = {};
     if (dto.name !== undefined) patch.name = dto.name;
     if (dto.phone !== undefined) patch.phone = parseE164ToBigint(dto.phone);
@@ -408,6 +410,8 @@ export class UsersService {
     if (dto.preferredPosition !== undefined)
       patch.preferred_position = dto.preferredPosition;
     if (dto.dominantFoot !== undefined) patch.dominant_foot = dto.dominantFoot;
+    if (dto.preferredDays !== undefined)
+      patch.preferred_days = dto.preferredDays;
 
     if (dto.email !== undefined) {
       const normalized = dto.email.trim().toLowerCase();
@@ -811,6 +815,7 @@ export class UsersService {
       skillLevel: row.skill_level as SkillLevel | null,
       preferredPosition: row.preferred_position as PlayerPosition | null,
       dominantFoot: row.dominant_foot as DominantFoot | null,
+      preferredDays: (row.preferred_days ?? []) as DayOfWeek[],
       stats: UsersService.toPlayerStatsDto(statsRow),
     };
   }

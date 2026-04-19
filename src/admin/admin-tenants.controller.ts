@@ -1,17 +1,26 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseUUIDPipe,
   Patch,
   Post,
   Query,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import {
   ApiBearerAuth,
+  ApiBody,
   ApiConflictResponse,
+  ApiConsumes,
   ApiNotFoundResponse,
   ApiOperation,
   ApiResponse,
@@ -32,6 +41,29 @@ import { TenantDeactivatedResponseDto } from '../tenants/dto/tenant-deactivated-
 import { TenantResponseDto } from '../tenants/dto/tenant-response.dto';
 import { UpdateTenantDto } from '../tenants/dto/update-tenant.dto';
 import { TenantsService } from '../tenants/tenants.service';
+import { VenuePictureStorage } from '../venues/venue-picture.storage';
+
+const LOGO_MAX_BYTES = 2 * 1024 * 1024;
+
+const logoMulterOptions = {
+  storage: memoryStorage(),
+  limits: { fileSize: LOGO_MAX_BYTES },
+  fileFilter: (
+    _req: unknown,
+    file: Express.Multer.File,
+    cb: (e: Error | null, accept: boolean) => void,
+  ): void => {
+    const ok = /^image\/(jpeg|png|webp|gif)$/.test(file.mimetype);
+    if (!ok) {
+      cb(
+        new BadRequestException('Logo must be JPEG, PNG, WebP, or GIF'),
+        false,
+      );
+      return;
+    }
+    cb(null, true);
+  },
+};
 
 @ApiTags('Admin — Tenants')
 @ApiBearerAuth()
@@ -39,7 +71,10 @@ import { TenantsService } from '../tenants/tenants.service';
 @UseGuards(RolesGuard)
 @Roles(UserRole.PlatformAdmin)
 export class AdminTenantsController {
-  constructor(private readonly tenantsService: TenantsService) {}
+  constructor(
+    private readonly tenantsService: TenantsService,
+    private readonly pictureStorage: VenuePictureStorage,
+  ) {}
 
   @Get()
   @ApiOperation({
@@ -125,5 +160,37 @@ export class AdminTenantsController {
   @ApiConflictResponse({ description: 'Slug already exists' })
   async create(@Body() dto: CreateTenantDto): Promise<TenantResponseDto> {
     return this.tenantsService.createTenant(dto);
+  }
+
+  @Post(':id/logo')
+  @HttpCode(HttpStatus.OK)
+  @UseInterceptors(FileInterceptor('logo', logoMulterOptions))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({
+    summary: 'Upload tenant logo',
+    description:
+      'Platform super admin only. Uploads a logo image (JPEG, PNG, WebP, or GIF; max 2 MB) for the given tenant. ' +
+      'Saves the file and updates logoUrl automatically. Returns updated tenant.',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['logo'],
+      properties: {
+        logo: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  @ApiWrappedOkResponse({ type: TenantResponseDto })
+  @ApiNotFoundResponse({ description: 'Tenant not found' })
+  async uploadLogo(
+    @Param('id', ParseUUIDPipe) id: string,
+    @UploadedFile() file: Express.Multer.File | undefined,
+  ): Promise<TenantResponseDto> {
+    if (!file) {
+      throw new BadRequestException('Logo file is required');
+    }
+    const logoUrl = await this.pictureStorage.saveTenantLogo(id, file);
+    return this.tenantsService.updateTenantForAdmin(id, { logoUrl });
   }
 }

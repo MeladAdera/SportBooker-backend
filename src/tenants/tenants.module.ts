@@ -7,6 +7,7 @@ import { TenantsRepository } from './tenants.repository';
 import { TenantsService } from './tenants.service';
 import { PaymentsModule } from '../payments/payments.module';
 import { CryptoService } from '../common/crypto/crypto.service';
+import { VenuePictureStorage } from '../venues/venue-picture.storage';
 
 @Module({
   imports: [PaymentsModule],
@@ -18,6 +19,7 @@ import { CryptoService } from '../common/crypto/crypto.service';
     RolesGuard,
     TenantRequiredGuard,
     CryptoService,
+    VenuePictureStorage,
   ],
   exports: [TenantsService],
 })
