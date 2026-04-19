@@ -9,6 +9,7 @@ import { EmailService } from '../auth/email.service';
 import { BookingPosition } from '../bookings/booking-position';
 import { BookingsRepository } from '../bookings/bookings.repository';
 import type { RemoveFromWaitlistResponseDto } from '../bookings/dto/remove-from-waitlist-response.dto';
+import type { AutoFillFakeMatchResponseDto } from './dto/auto-fill-fake-match-response.dto';
 import type { CreateMatchDto } from './dto/create-match.dto';
 import type { CancelMatchResponseDto } from './dto/cancel-match-response.dto';
 import type { UpdateMatchDto } from './dto/update-match.dto';
@@ -42,8 +43,25 @@ import {
 } from './matches.repository';
 import { VenuesRepository } from '../venues/venues.repository';
 import type { VenueSportType } from '../venues/venue-sport-type';
+import { UserRole } from '../users/user-role';
 
 const PG_UNIQUE_VIOLATION = '23505';
+
+/**
+ * Roles allowed to see fake-match metadata (`isFake`, `minRealSpots`,
+ * `fakeBookingsCount`). Players never see these so demo matches stay
+ * indistinguishable from real ones.
+ */
+const OPERATOR_ROLES: ReadonlySet<string> = new Set<string>([
+  UserRole.SuperAdmin,
+  UserRole.PlatformAdmin,
+  UserRole.TenantAdmin,
+  UserRole.TenantStaff,
+]);
+
+function isOperator(role: string | null | undefined): boolean {
+  return role != null && OPERATOR_ROLES.has(role);
+}
 
 @Injectable()
 export class MatchesService {
@@ -59,6 +77,7 @@ export class MatchesService {
   async getDetailForTenant(
     tenantId: string,
     matchId: string,
+    actorRole: string,
   ): Promise<MatchDetailResponseDto> {
     const row = await this.matchesRepository.findMatchDetailForTenant(
       matchId,
@@ -67,13 +86,14 @@ export class MatchesService {
     if (!row) {
       throw new NotFoundException('Match not found');
     }
-    return this.toDetailDto(row);
+    return this.toDetailDto(row, actorRole);
   }
 
   async listUpcomingForTenant(
     tenantId: string,
     query: ListMatchesQueryDto,
     timezone: string,
+    actorRole: string,
   ): Promise<PaginatedMatchesListDto> {
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
@@ -104,7 +124,7 @@ export class MatchesService {
       page,
       limit,
       total,
-      items: rows.map((row) => this.toBrowseItemDto(row)),
+      items: rows.map((row) => this.toBrowseItemDto(row, actorRole)),
     };
   }
 
@@ -178,6 +198,18 @@ export class MatchesService {
       );
     }
 
+    if (dto.minRealSpots !== undefined) {
+      if (!existing.is_fake) {
+        throw new BadRequestException(
+          'minRealSpots can only be set on fake matches',
+        );
+      }
+      const effectiveMaxCapacity = dto.maxCapacity ?? existing.max_players ?? 0;
+      if (dto.minRealSpots > effectiveMaxCapacity) {
+        throw new BadRequestException('minRealSpots cannot exceed maxCapacity');
+      }
+    }
+
     let effectiveVenueId = existing.venue_id;
     if (dto.venueId !== undefined) {
       effectiveVenueId = dto.venueId;
@@ -229,6 +261,7 @@ export class MatchesService {
       durationMins?: number;
       maxPlayers?: number;
       pricePerPlayer?: number;
+      minRealSpots?: number;
     } = {};
     if (dto.title !== undefined) {
       patch.title = dto.title.trim();
@@ -250,6 +283,9 @@ export class MatchesService {
     }
     if (dto.pricePerPlayer !== undefined) {
       patch.pricePerPlayer = dto.pricePerPlayer;
+    }
+    if (dto.minRealSpots !== undefined) {
+      patch.minRealSpots = dto.minRealSpots;
     }
 
     try {
@@ -288,6 +324,17 @@ export class MatchesService {
       throw new BadRequestException('Venue is inactive');
     }
 
+    const isFake = dto.isFake === true;
+    const minRealSpots = dto.minRealSpots ?? 0;
+    if (!isFake && minRealSpots > 0) {
+      throw new BadRequestException(
+        'minRealSpots can only be set on fake matches',
+      );
+    }
+    if (minRealSpots > dto.maxCapacity) {
+      throw new BadRequestException('minRealSpots cannot exceed maxCapacity');
+    }
+
     const scheduledAt = new Date(dto.scheduledAt);
     const overlaps = await this.matchesRepository.hasOverlappingMatchAtVenue(
       dto.venueId,
@@ -309,6 +356,8 @@ export class MatchesService {
         durationMins: dto.durationMins,
         maxPlayers: dto.maxCapacity,
         pricePerPlayer: dto.pricePerPlayer,
+        isFake,
+        minRealSpots,
       });
       return this.toResponseDto(row);
     } catch (err: unknown) {
@@ -354,6 +403,38 @@ export class MatchesService {
     return {
       cancelledBookings: result.cancelledBookings,
       refundedAmount: result.refundedAmount,
+    };
+  }
+
+  async autoFillFakeMatch(params: {
+    tenantId: string;
+    matchId: string;
+    count: number | null;
+  }): Promise<AutoFillFakeMatchResponseDto> {
+    const result = await this.matchesRepository.autoFillFakeMatch(params);
+    if (!result.success) {
+      switch (result.code) {
+        case 'MATCH_NOT_FOUND':
+          throw new NotFoundException('Match not found');
+        case 'MATCH_NOT_FAKE':
+          throw new BadRequestException(
+            'Auto-fill is only available for fake matches',
+          );
+        case 'MATCH_NOT_UPCOMING':
+          throw new BadRequestException(
+            'Auto-fill is only available for upcoming, non-cancelled matches',
+          );
+        case 'MATCH_FULL_FOR_FAKES':
+          throw new ConflictException(
+            'No room for additional fake players (capacity reached or fake quota exhausted)',
+          );
+      }
+    }
+    return {
+      filled: result.filled,
+      confirmedCount: result.confirmedCount,
+      fakeBookingsCount: result.fakeBookingsCount,
+      spotsRemaining: result.spotsRemaining,
     };
   }
 
@@ -518,8 +599,11 @@ export class MatchesService {
     });
   }
 
-  private toDetailDto(row: MatchDetailRow): MatchDetailResponseDto {
-    return {
+  private toDetailDto(
+    row: MatchDetailRow,
+    actorRole: string,
+  ): MatchDetailResponseDto {
+    const dto: MatchDetailResponseDto = {
       id: row.id,
       title: row.title,
       sportType: row.sport_type as VenueSportType,
@@ -539,6 +623,12 @@ export class MatchesService {
       createdAt: row.created_at.toISOString(),
       updatedAt: row.updated_at.toISOString(),
     };
+    if (isOperator(actorRole)) {
+      dto.isFake = row.is_fake;
+      dto.minRealSpots = Number(row.min_real_spots);
+      dto.fakeBookingsCount = Number(row.fake_bookings_count);
+    }
+    return dto;
   }
 
   private static parseRoster(raw: unknown): MatchRosterPlayerDto[] {
@@ -587,8 +677,11 @@ export class MatchesService {
     });
   }
 
-  private toBrowseItemDto(row: MatchBrowseRow): MatchBrowseItemDto {
-    return {
+  private toBrowseItemDto(
+    row: MatchBrowseRow,
+    actorRole: string,
+  ): MatchBrowseItemDto {
+    const dto: MatchBrowseItemDto = {
       id: row.id,
       title: row.title,
       sportType: row.sport_type as VenueSportType,
@@ -602,6 +695,10 @@ export class MatchesService {
       venueName: row.venue_name,
       venuePictureUrl: row.venue_picture_url ?? '',
     };
+    if (isOperator(actorRole)) {
+      dto.isFake = row.is_fake;
+    }
+    return dto;
   }
 
   private toOperatorItemDto(row: MatchOperatorRow): OperatorMatchItemDto {
@@ -619,6 +716,9 @@ export class MatchesService {
       confirmedCount: row.confirmed_count,
       waitlistCount: row.waitlist_count,
       spotsRemaining: Number(row.spots_remaining),
+      isFake: row.is_fake,
+      minRealSpots: Number(row.min_real_spots),
+      fakeBookingsCount: Number(row.fake_bookings_count),
       createdAt: row.created_at.toISOString(),
       updatedAt: row.updated_at.toISOString(),
     };
@@ -632,7 +732,8 @@ export class MatchesService {
       dto.scheduledAt !== undefined ||
       dto.durationMins !== undefined ||
       dto.maxCapacity !== undefined ||
-      dto.pricePerPlayer !== undefined
+      dto.pricePerPlayer !== undefined ||
+      dto.minRealSpots !== undefined
     );
   }
 
@@ -647,6 +748,8 @@ export class MatchesService {
       maxCapacity: row.max_players ?? 0,
       pricePerPlayer: Number(row.price_per_player),
       status: row.status,
+      isFake: row.is_fake,
+      minRealSpots: Number(row.min_real_spots),
       createdAt: row.created_at.toISOString(),
       updatedAt: row.updated_at.toISOString(),
     };

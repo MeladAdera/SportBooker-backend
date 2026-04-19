@@ -59,6 +59,8 @@ describe('MatchesService', () => {
     price_per_player: '15.00',
     status: 'upcoming',
     max_players: 22,
+    is_fake: false,
+    min_real_spots: 0,
     created_at: new Date('2026-01-01T12:00:00.000Z'),
     updated_at: new Date('2026-01-01T12:00:00.000Z'),
   };
@@ -74,6 +76,8 @@ describe('MatchesService', () => {
       price_per_player: '15.50',
       status: 'completed',
       max_players: 22,
+      is_fake: false,
+      min_real_spots: 0,
       created_at: new Date('2026-01-01T12:00:00.000Z'),
       updated_at: new Date('2026-01-01T12:00:00.000Z'),
     },
@@ -135,6 +139,7 @@ describe('MatchesService', () => {
         status: 'upcoming',
         venue_name: 'Main Pitch',
         venue_picture_url: null,
+        is_fake: false,
         spots_remaining: 20,
         waitlist_count: 2,
       },
@@ -144,6 +149,7 @@ describe('MatchesService', () => {
       tenantId,
       {},
       'Asia/Dubai',
+      'player',
     );
 
     expect(matchesRepo.countUpcomingMatchesForBrowse).toHaveBeenCalledWith({
@@ -192,6 +198,7 @@ describe('MatchesService', () => {
       tenantId,
       { sortBy: MatchSortBy.PriceAsc, dayOfWeek: [6, 7] },
       'Asia/Dubai',
+      'player',
     );
 
     expect(matchesRepo.countUpcomingMatchesForBrowse).toHaveBeenCalledWith(
@@ -208,6 +215,89 @@ describe('MatchesService', () => {
     );
   });
 
+  it('omits isFake on browse items for player role and includes it for tenant_admin', async () => {
+    const fakeMatchRow = {
+      id: '770e8400-e29b-41d4-a716-446655440099',
+      title: 'Demo league',
+      sport_type: 'football',
+      scheduled_at: new Date('2026-06-01T18:00:00.000Z'),
+      duration_mins: 90,
+      price_per_player: '10.00',
+      max_players: 22,
+      status: 'upcoming',
+      venue_name: 'Main Pitch',
+      venue_picture_url: null,
+      is_fake: true,
+      spots_remaining: 20,
+      waitlist_count: 0,
+    };
+    matchesRepo.countUpcomingMatchesForBrowse.mockResolvedValue(1);
+    matchesRepo.findUpcomingMatchesForBrowse.mockResolvedValue([fakeMatchRow]);
+
+    const playerResult = await service.listUpcomingForTenant(
+      tenantId,
+      {},
+      'Asia/Dubai',
+      'player',
+    );
+    expect(playerResult.items[0]).not.toHaveProperty('isFake');
+
+    matchesRepo.findUpcomingMatchesForBrowse.mockResolvedValue([fakeMatchRow]);
+    const adminResult = await service.listUpcomingForTenant(
+      tenantId,
+      {},
+      'Asia/Dubai',
+      'tenant_admin',
+    );
+    expect(adminResult.items[0].isFake).toBe(true);
+  });
+
+  it('omits isFake / minRealSpots / fakeBookingsCount on detail for player role and includes them for staff', async () => {
+    const matchId = '770e8400-e29b-41d4-a716-446655440098';
+    const detailRow = {
+      id: matchId,
+      venue_id: venueId,
+      venue_name: 'Main Pitch',
+      venue_address: '1 Example Rd',
+      venue_picture_url: 'https://cdn.example.com/venue.jpg',
+      title: 'Demo Cup',
+      sport_type: 'football',
+      scheduled_at: new Date('2026-07-01T12:00:00.000Z'),
+      duration_mins: 60,
+      price_per_player: '12.00',
+      status: 'upcoming',
+      max_players: 10,
+      is_fake: true,
+      min_real_spots: 4,
+      fake_bookings_count: 3,
+      created_at: new Date(),
+      updated_at: new Date(),
+      spots_remaining: 7,
+      roster: [],
+      waitlist: [],
+      waitlist_count: 0,
+    };
+    matchesRepo.findMatchDetailForTenant.mockResolvedValue(detailRow);
+    const playerResult = await service.getDetailForTenant(
+      tenantId,
+      matchId,
+      'player',
+    );
+    expect(playerResult).not.toHaveProperty('isFake');
+    expect(playerResult).not.toHaveProperty('minRealSpots');
+    expect(playerResult).not.toHaveProperty('fakeBookingsCount');
+
+    matchesRepo.findMatchDetailForTenant.mockResolvedValue(detailRow);
+    const staffResult = await service.getDetailForTenant(
+      tenantId,
+      matchId,
+      'tenant_staff',
+    );
+    expect(staffResult.isFake).toBe(true);
+    expect(staffResult.minRealSpots).toBe(4);
+    expect(staffResult.fakeBookingsCount).toBe(3);
+  });
+
   it('coerces empty dayOfWeek array to null', async () => {
     matchesRepo.countUpcomingMatchesForBrowse.mockResolvedValue(0);
     matchesRepo.findUpcomingMatchesForBrowse.mockResolvedValue([]);
@@ -216,6 +306,7 @@ describe('MatchesService', () => {
       tenantId,
       { dayOfWeek: [] },
       'Asia/Dubai',
+      'player',
     );
 
     expect(matchesRepo.countUpcomingMatchesForBrowse).toHaveBeenCalledWith(
@@ -242,6 +333,9 @@ describe('MatchesService', () => {
       price_per_player: '12.00',
       status: 'upcoming',
       max_players: 10,
+      is_fake: false,
+      min_real_spots: 0,
+      fake_bookings_count: 0,
       created_at: new Date(),
       updated_at: new Date(),
       spots_remaining: 8,
@@ -266,7 +360,11 @@ describe('MatchesService', () => {
       waitlist_count: 1,
     });
 
-    const result = await service.getDetailForTenant(tenantId, matchId);
+    const result = await service.getDetailForTenant(
+      tenantId,
+      matchId,
+      'player',
+    );
 
     expect(matchesRepo.findMatchDetailForTenant).toHaveBeenCalledWith(
       matchId,
@@ -302,6 +400,7 @@ describe('MatchesService', () => {
       service.getDetailForTenant(
         tenantId,
         '770e8400-e29b-41d4-a716-446655440002',
+        'player',
       ),
     ).rejects.toThrow(NotFoundException);
   });
@@ -346,6 +445,8 @@ describe('MatchesService', () => {
       durationMins: 90,
       maxPlayers: 22,
       pricePerPlayer: 15,
+      isFake: false,
+      minRealSpots: 0,
     });
     expect(result).toMatchObject({
       id: matchRow.id,

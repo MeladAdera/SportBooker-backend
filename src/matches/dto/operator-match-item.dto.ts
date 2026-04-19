@@ -44,6 +44,26 @@ export class OperatorMatchItemDto {
   @ApiProperty({ description: 'maxCapacity minus confirmedCount' })
   spotsRemaining!: number;
 
+  @ApiProperty({
+    description: 'True when this is a demo match seeded with fake players',
+    example: false,
+  })
+  isFake!: boolean;
+
+  @ApiProperty({
+    description:
+      'Reserved seats for real players (only meaningful when isFake = true). 0 otherwise.',
+    example: 0,
+  })
+  minRealSpots!: number;
+
+  @ApiProperty({
+    description:
+      'Number of confirmed bookings held by fake players. Always 0 for non-fake matches.',
+    example: 0,
+  })
+  fakeBookingsCount!: number;
+
   @ApiProperty({ example: '2026-05-01T10:00:00.000Z' })
   createdAt!: string;
 

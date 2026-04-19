@@ -28,6 +28,8 @@ import {
 } from '../common/decorators/api-wrapped-response.decorator';
 import type { Tenant } from '../common/tenant.types';
 import { Tenant as TenantDecorator } from '../auth/decorators/tenant.decorator';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import type { AuthenticatedUser } from '../auth/auth.types';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { TenantRequiredGuard } from '../auth/guards/tenant-required.guard';
@@ -63,12 +65,14 @@ export class MatchesController {
   @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
   async list(
     @TenantDecorator() tenant: Tenant,
+    @CurrentUser() user: AuthenticatedUser,
     @Query() query: ListMatchesQueryDto,
   ): Promise<PaginatedMatchesListDto> {
     return this.matchesService.listUpcomingForTenant(
       tenant.id,
       query,
       tenant.timezone,
+      user.role,
     );
   }
 
@@ -83,9 +87,10 @@ export class MatchesController {
   @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
   async getById(
     @TenantDecorator() tenant: Tenant,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<MatchDetailResponseDto> {
-    return this.matchesService.getDetailForTenant(tenant.id, id);
+    return this.matchesService.getDetailForTenant(tenant.id, id, user.role);
   }
 
   @Post(':id/cancel')

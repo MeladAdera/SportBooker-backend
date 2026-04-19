@@ -35,6 +35,13 @@ export class TenantUserDetailDto {
   @ApiProperty({ description: 'True when the player has an active ban' })
   isBanned!: boolean;
 
+  @ApiProperty({
+    description:
+      'True when this user is a synthetic fake/demo player (admin-generated). Fake users cannot log in and are excluded from notifications.',
+    example: false,
+  })
+  isFake!: boolean;
+
   @ApiPropertyOptional({
     nullable: true,
     description: 'When the ban was applied; null if not banned',

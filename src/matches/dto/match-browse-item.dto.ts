@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { VenueSportType } from '../../venues/venue-sport-type';
 
 export class MatchBrowseItemDto {
@@ -41,4 +41,13 @@ export class MatchBrowseItemDto {
     description: 'Venue cover image URL; empty string when none',
   })
   venuePictureUrl!: string;
+
+  @ApiPropertyOptional({
+    description:
+      'True when this is a demo match seeded with fake players. ' +
+      'ONLY returned for tenant_staff / tenant_admin / super_admin callers. ' +
+      'Players never see this field.',
+    example: false,
+  })
+  isFake?: boolean;
 }

@@ -32,6 +32,8 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { TenantRequiredGuard } from '../auth/guards/tenant-required.guard';
 import { UserRole } from '../users/user-role';
+import { AutoFillFakeMatchDto } from './dto/auto-fill-fake-match.dto';
+import { AutoFillFakeMatchResponseDto } from './dto/auto-fill-fake-match-response.dto';
 import { ListTenantMatchesQueryDto } from './dto/list-tenant-matches-query.dto';
 import { PaginatedOperatorMatchesDto } from './dto/paginated-operator-matches.dto';
 import { SubmitMatchResultsDto } from './dto/submit-match-results.dto';
@@ -91,6 +93,45 @@ export class TenantMatchesController {
     @Body() dto: SubmitMatchResultsDto,
   ): Promise<MatchResultsResponseDto> {
     return this.matchesService.submitMatchResults(tenant.id, id, dto, user.sub);
+  }
+
+  @Post(':id/auto-fill-fake')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.SuperAdmin, UserRole.TenantAdmin)
+  @ApiOperation({
+    summary: 'Auto-fill a fake match with random fake players',
+    description:
+      'Tenant admin only. Picks random fake players (users.is_fake = true) ' +
+      'who are not already booked on this match and creates confirmed bookings ' +
+      'for them at price 0. Caps the insert at (maxCapacity - minRealSpots) so ' +
+      'real players always have at least minRealSpots free seats. ' +
+      'When `count` is omitted, fills as many seats as the fake quota allows.',
+  })
+  @ApiWrappedOkResponse({
+    description: 'Auto-fill summary',
+    type: AutoFillFakeMatchResponseDto,
+  })
+  @ApiNotFoundResponse({ description: 'Match not found for this tenant' })
+  @ApiBadRequestResponse({
+    description:
+      'Match is not fake, has been cancelled, or is not in the future',
+  })
+  @ApiConflictResponse({
+    description:
+      'No fake quota left for this match (capacity reached or already at the fake cap)',
+  })
+  @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
+  @ApiForbiddenResponse({ description: 'Insufficient role' })
+  async autoFillFake(
+    @TenantDecorator() tenant: Tenant,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AutoFillFakeMatchDto,
+  ): Promise<AutoFillFakeMatchResponseDto> {
+    return this.matchesService.autoFillFakeMatch({
+      tenantId: tenant.id,
+      matchId: id,
+      count: dto.count ?? null,
+    });
   }
 
   @Get(':id/results')

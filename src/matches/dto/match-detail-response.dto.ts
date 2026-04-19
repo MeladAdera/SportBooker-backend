@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { VenueSportType } from '../../venues/venue-sport-type';
 import { MatchRosterPlayerDto } from './match-roster-player.dto';
 import { MatchWaitlistPlayerDto } from './match-waitlist-player.dto';
@@ -65,6 +65,31 @@ export class MatchDetailResponseDto {
 
   @ApiProperty({ description: 'Number of players on the waitlist' })
   waitlistCount!: number;
+
+  @ApiPropertyOptional({
+    description:
+      'True when this is a demo match seeded with fake players. ' +
+      'ONLY returned for tenant_staff / tenant_admin / super_admin callers. ' +
+      'Players never see this field.',
+    example: false,
+  })
+  isFake?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Reserved seats for real players (only meaningful when isFake = true). ' +
+      'ONLY returned for tenant_staff / tenant_admin / super_admin callers.',
+    example: 0,
+  })
+  minRealSpots?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Number of confirmed bookings held by fake players. ' +
+      'ONLY returned for tenant_staff / tenant_admin / super_admin callers.',
+    example: 0,
+  })
+  fakeBookingsCount?: number;
 
   @ApiProperty()
   createdAt!: string;

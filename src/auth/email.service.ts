@@ -35,11 +35,24 @@ export class EmailService {
     this.resend = this.enabled ? new Resend(apiKey) : null;
   }
 
+  /**
+   * Centralised guard that drops any outbound email targeted at a synthetic
+   * fake-player address (`fake+<uuid>@fake.local`). Fake users exist purely
+   * to populate demo matches; they must never receive notifications.
+   * Returns true when the address is fake and the message should be skipped.
+   */
+  private isFakeRecipient(to: string): boolean {
+    return /^fake\+[^@]+@fake\.local$/i.test(to.trim());
+  }
+
   private async send(
     params: { to: string; subject: string; text: string; html: string },
     fallbackLabel: string,
     fallbackDetail?: string,
   ): Promise<void> {
+    if (this.isFakeRecipient(params.to)) {
+      return;
+    }
     if (this.enabled && this.resend) {
       const { error } = await this.resend.emails.send({
         from: this.from,
@@ -225,6 +238,9 @@ export class EmailService {
     fallbackLabel: string,
     fallbackDetail?: string,
   ): Promise<void> {
+    if (this.isFakeRecipient(templateParams.to)) {
+      return;
+    }
     if (
       this.enabled &&
       this.resend &&

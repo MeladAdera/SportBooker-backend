@@ -31,6 +31,19 @@ export class MatchResponseDto {
   })
   status!: string;
 
+  @ApiProperty({
+    description: 'True when this is a demo match seeded with fake players',
+    example: false,
+  })
+  isFake!: boolean;
+
+  @ApiProperty({
+    description:
+      'Reserved seats for real players (only meaningful when isFake = true). 0 otherwise.',
+    example: 0,
+  })
+  minRealSpots!: number;
+
   @ApiProperty()
   createdAt!: string;
 

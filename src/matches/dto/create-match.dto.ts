@@ -1,10 +1,12 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  IsBoolean,
   IsDateString,
   IsEnum,
   IsInt,
   IsNotEmpty,
+  IsOptional,
   IsString,
   IsUUID,
   MaxLength,
@@ -53,4 +55,28 @@ export class CreateMatchDto {
   @IsInt()
   @Min(1)
   pricePerPlayer!: number;
+
+  @ApiPropertyOptional({
+    example: false,
+    description:
+      'Marks this match as a demo match seeded with fake players. ' +
+      'Defaults to false. Real players can still book it normally; ' +
+      'fake bookings will be bumped to make space when needed.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  isFake?: boolean;
+
+  @ApiPropertyOptional({
+    example: 4,
+    description:
+      'Only meaningful when isFake = true. Minimum number of seats reserved ' +
+      'for real players: auto-fill with fake players is capped at ' +
+      '(maxCapacity - minRealSpots). Must be between 0 and maxCapacity. Defaults to 0.',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  minRealSpots?: number;
 }

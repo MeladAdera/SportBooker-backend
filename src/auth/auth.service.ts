@@ -116,7 +116,9 @@ export class AuthService {
       !valid ||
       !user ||
       user.deleted_at != null ||
-      user.is_active === false
+      user.is_active === false ||
+      user.is_fake === true ||
+      user.password_hash == null
     ) {
       throw new UnauthorizedException('Invalid credentials');
     }

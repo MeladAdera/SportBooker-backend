@@ -146,6 +146,7 @@ type MatchLockRow = {
   scheduled_at: Date;
   price_per_player: string;
   max_players: number | null;
+  is_fake: boolean;
   is_active: boolean;
   is_future: boolean;
 };
@@ -191,6 +192,7 @@ export class BookingsRepository extends BaseRepository {
         m.scheduled_at,
         m.price_per_player,
         m.max_players,
+        m.is_fake,
         v.is_active,
         (m.scheduled_at > now()) AS is_future
       FROM matches m
@@ -250,14 +252,21 @@ export class BookingsRepository extends BaseRepository {
       return { success: false, code: 'ALREADY_BOOKED' };
     }
 
-    const { rows: countRows } = await this.query<{ count: string }>(
+    const { rows: countRows } = await this.query<{
+      count: string;
+      fake_count: string;
+    }>(
       client,
-      `SELECT COUNT(*)::text AS count
-       FROM bookings
-       WHERE match_id = $1 AND status = 'confirmed'`,
+      `SELECT
+         COUNT(*)::text AS count,
+         COUNT(*) FILTER (WHERE u.is_fake = true)::text AS fake_count
+       FROM bookings b
+       INNER JOIN users u ON u.id = b.user_id
+       WHERE b.match_id = $1 AND b.status = 'confirmed'`,
       [matchId],
     );
-    const confirmedCount = parseInt(countRows[0]?.count ?? '0', 10);
+    let confirmedCount = parseInt(countRows[0]?.count ?? '0', 10);
+    const fakeConfirmedCount = parseInt(countRows[0]?.fake_count ?? '0', 10);
 
     const { rows: gkRows } = await this.query<{ count: string }>(
       client,
@@ -271,10 +280,39 @@ export class BookingsRepository extends BaseRepository {
     const confirmedGkCount = parseInt(gkRows[0]?.count ?? '0', 10);
 
     const maxPlayers = match.max_players;
-    const isFull =
+    let isFull =
       maxPlayers !== null &&
       maxPlayers !== undefined &&
       confirmedCount >= maxPlayers;
+
+    if (
+      isFull &&
+      match.is_fake &&
+      fakeConfirmedCount > 0 &&
+      maxPlayers !== null &&
+      maxPlayers !== undefined
+    ) {
+      const { rows: bumpRows } = await this.query<{ id: string }>(
+        client,
+        `DELETE FROM bookings
+         WHERE id = (
+           SELECT b.id
+           FROM bookings b
+           INNER JOIN users u ON u.id = b.user_id
+           WHERE b.match_id = $1
+             AND b.status = 'confirmed'
+             AND u.is_fake = true
+           ORDER BY b.created_at DESC
+           LIMIT 1
+         )
+         RETURNING id`,
+        [matchId],
+      );
+      if (bumpRows[0]) {
+        confirmedCount -= 1;
+        isFull = confirmedCount >= maxPlayers;
+      }
+    }
 
     const goalkeeperSlotsFull = confirmedGkCount >= MAX_GOALKEEPERS_PER_MATCH;
     const wantsGoalkeeper = position === BookingPosition.Goalkeeper;
@@ -467,9 +505,10 @@ export class BookingsRepository extends BaseRepository {
       user_id: string;
       paid_amount: string;
       email: string;
+      is_fake: boolean;
     }>(
       client,
-      `SELECT b.id, b.user_id, b.paid_amount::text AS paid_amount, u.email
+      `SELECT b.id, b.user_id, b.paid_amount::text AS paid_amount, u.email, u.is_fake
        FROM bookings b
        INNER JOIN users u ON u.id = b.user_id
        WHERE b.match_id = $1 AND b.status = 'confirmed'
@@ -477,7 +516,9 @@ export class BookingsRepository extends BaseRepository {
       [matchId],
     );
 
-    const emailsForMatchCancelled = confirmedRows.map((r) => r.email);
+    const emailsForMatchCancelled = confirmedRows
+      .filter((r) => !r.is_fake)
+      .map((r) => r.email);
 
     if (confirmedRows.length > 0) {
       // Bulk-refund wallets (one UPDATE with JOIN from bookings confirmed set).

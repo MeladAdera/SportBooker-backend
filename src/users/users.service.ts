@@ -166,6 +166,7 @@ export class UsersService {
       role: query.role,
       isActive: query.isActive,
       isBanned: query.isBanned,
+      isFake: query.isFake,
       includeDeleted,
       search: query.search,
     };
@@ -755,6 +756,7 @@ export class UsersService {
       isActive: row.is_active,
       walletBalance: Number(row.wallet_balance),
       isBanned,
+      isFake: row.is_fake,
       bannedUntil:
         isBanned && row.banned_until != null
           ? row.banned_until.toISOString()
@@ -775,6 +777,7 @@ export class UsersService {
       isActive: row.is_active,
       walletBalance: Number(row.wallet_balance),
       isBanned,
+      isFake: row.is_fake,
       bannedAt:
         isBanned && row.banned_at != null ? row.banned_at.toISOString() : null,
       bannedUntil:

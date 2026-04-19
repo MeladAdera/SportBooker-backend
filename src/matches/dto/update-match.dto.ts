@@ -59,4 +59,15 @@ export class UpdateMatchDto {
   @IsInt()
   @Min(1)
   pricePerPlayer?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Only valid when the match is fake. Reserved real-player seats; ' +
+      'must be 0..maxCapacity. Cannot be set on a real (non-fake) match.',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  minRealSpots?: number;
 }

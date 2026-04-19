@@ -18,6 +18,8 @@ export type MatchRow = {
   price_per_player: string;
   status: string;
   max_players: number | null;
+  is_fake: boolean;
+  min_real_spots: number;
   created_at: Date;
   updated_at: Date;
 };
@@ -36,6 +38,9 @@ export type MatchDetailRow = {
   price_per_player: string;
   status: string;
   max_players: number | null;
+  is_fake: boolean;
+  min_real_spots: number;
+  fake_bookings_count: number;
   created_at: Date;
   updated_at: Date;
   spots_remaining: number;
@@ -56,6 +61,7 @@ export type MatchBrowseRow = {
   status: string;
   venue_name: string;
   venue_picture_url: string | null;
+  is_fake: boolean;
   spots_remaining: number;
   waitlist_count: number;
 };
@@ -97,6 +103,9 @@ export type MatchOperatorRow = {
   confirmed_count: number;
   waitlist_count: number;
   spots_remaining: number;
+  is_fake: boolean;
+  min_real_spots: number;
+  fake_bookings_count: number;
   created_at: Date;
   updated_at: Date;
 };
@@ -139,10 +148,13 @@ export class MatchesRepository extends BaseRepository {
     FROM matches m
     INNER JOIN venues v ON v.id = m.venue_id
     LEFT JOIN (
-      SELECT match_id, COUNT(*)::int AS confirmed_count
-      FROM bookings
-      WHERE status = 'confirmed'
-      GROUP BY match_id
+      SELECT b.match_id,
+        COUNT(*)::int AS confirmed_count,
+        COUNT(*) FILTER (WHERE u.is_fake = true)::int AS fake_confirmed_count
+      FROM bookings b
+      INNER JOIN users u ON u.id = b.user_id
+      WHERE b.status = 'confirmed'
+      GROUP BY b.match_id
     ) bc ON bc.match_id = m.id
     LEFT JOIN (
       SELECT match_id, COUNT(*)::int AS waitlist_count
@@ -162,7 +174,11 @@ export class MatchesRepository extends BaseRepository {
       )
       AND (
         $5::boolean IS DISTINCT FROM true
-        OR (COALESCE(m.max_players, 0) - COALESCE(bc.confirmed_count, 0)) > 0
+        OR (
+          COALESCE(m.max_players, 0)
+          - COALESCE(bc.confirmed_count, 0)
+          + COALESCE(bc.fake_confirmed_count, 0)
+        ) > 0
       )
       ${dowClause}`;
   }
@@ -215,11 +231,16 @@ export class MatchesRepository extends BaseRepository {
         m.price_per_player,
         ${COMPUTED_STATUS_SQL} AS status,
         m.max_players,
+        m.is_fake,
+        m.min_real_spots,
+        COALESCE(bc.fake_confirmed_count, 0) AS fake_bookings_count,
         m.created_at,
         m.updated_at,
         GREATEST(
           0,
-          COALESCE(m.max_players, 0) - COALESCE(bc.confirmed_count, 0)
+          COALESCE(m.max_players, 0)
+          - COALESCE(bc.confirmed_count, 0)
+          + COALESCE(bc.fake_confirmed_count, 0)
         ) AS spots_remaining,
         COALESCE(
           (
@@ -270,10 +291,13 @@ export class MatchesRepository extends BaseRepository {
       FROM matches m
       INNER JOIN venues v ON v.id = m.venue_id
       LEFT JOIN (
-        SELECT match_id, COUNT(*)::int AS confirmed_count
-        FROM bookings
-        WHERE status = 'confirmed'
-        GROUP BY match_id
+        SELECT b.match_id,
+          COUNT(*)::int AS confirmed_count,
+          COUNT(*) FILTER (WHERE u.is_fake = true)::int AS fake_confirmed_count
+        FROM bookings b
+        INNER JOIN users u ON u.id = b.user_id
+        WHERE b.status = 'confirmed'
+        GROUP BY b.match_id
       ) bc ON bc.match_id = m.id
       LEFT JOIN (
         SELECT match_id, COUNT(*)::int AS waitlist_count
@@ -313,9 +337,12 @@ export class MatchesRepository extends BaseRepository {
         ${COMPUTED_STATUS_SQL} AS status,
         v.name AS venue_name,
         v.picture_url AS venue_picture_url,
+        m.is_fake,
         GREATEST(
           0,
-          COALESCE(m.max_players, 0) - COALESCE(bc.confirmed_count, 0)
+          COALESCE(m.max_players, 0)
+          - COALESCE(bc.confirmed_count, 0)
+          + COALESCE(bc.fake_confirmed_count, 0)
         ) AS spots_remaining,
         COALESCE(wc.waitlist_count, 0) AS waitlist_count
       ${MatchesRepository.buildBrowseFrom(params.dayOfWeek)}
@@ -376,6 +403,8 @@ export class MatchesRepository extends BaseRepository {
         m.price_per_player,
         ${COMPUTED_STATUS_SQL} AS status,
         m.max_players,
+        m.is_fake,
+        m.min_real_spots,
         m.created_at,
         m.updated_at
       FROM matches m
@@ -408,6 +437,7 @@ export class MatchesRepository extends BaseRepository {
       durationMins?: number;
       maxPlayers?: number;
       pricePerPlayer?: number;
+      minRealSpots?: number;
     },
   ): Promise<MatchRow | null> {
     const sets: string[] = [];
@@ -442,6 +472,10 @@ export class MatchesRepository extends BaseRepository {
       sets.push(`price_per_player = $${idx++}`);
       values.push(patch.pricePerPlayer);
     }
+    if (patch.minRealSpots !== undefined) {
+      sets.push(`min_real_spots = $${idx++}`);
+      values.push(patch.minRealSpots);
+    }
 
     if (sets.length === 0) {
       return this.findMatchRowForTenant(matchId, tenantId);
@@ -465,6 +499,8 @@ export class MatchesRepository extends BaseRepository {
         m.price_per_player,
         ${COMPUTED_STATUS_SQL} AS status,
         m.max_players,
+        m.is_fake,
+        m.min_real_spots,
         m.created_at,
         m.updated_at`,
       values,
@@ -480,11 +516,15 @@ export class MatchesRepository extends BaseRepository {
     FROM matches m
     INNER JOIN venues v ON v.id = m.venue_id
     LEFT JOIN (
-      SELECT match_id,
-        COUNT(*) FILTER (WHERE status = 'confirmed')::int AS confirmed_count,
-        COUNT(*) FILTER (WHERE status = 'pending')::int   AS waitlist_count
-      FROM bookings
-      GROUP BY match_id
+      SELECT b.match_id,
+        COUNT(*) FILTER (WHERE b.status = 'confirmed')::int AS confirmed_count,
+        COUNT(*) FILTER (WHERE b.status = 'pending')::int   AS waitlist_count,
+        COUNT(*) FILTER (
+          WHERE b.status = 'confirmed' AND u.is_fake = true
+        )::int AS fake_confirmed_count
+      FROM bookings b
+      INNER JOIN users u ON u.id = b.user_id
+      GROUP BY b.match_id
     ) bc ON bc.match_id = m.id
     WHERE v.tenant_id = $1
       AND (
@@ -554,8 +594,13 @@ export class MatchesRepository extends BaseRepository {
         COALESCE(bc.waitlist_count, 0)  AS waitlist_count,
         GREATEST(
           0,
-          COALESCE(m.max_players, 0) - COALESCE(bc.confirmed_count, 0)
+          COALESCE(m.max_players, 0)
+          - COALESCE(bc.confirmed_count, 0)
+          + COALESCE(bc.fake_confirmed_count, 0)
         ) AS spots_remaining,
+        m.is_fake,
+        m.min_real_spots,
+        COALESCE(bc.fake_confirmed_count, 0) AS fake_bookings_count,
         m.created_at,
         m.updated_at
       ${MatchesRepository.operatorMatchesFrom}
@@ -585,6 +630,8 @@ export class MatchesRepository extends BaseRepository {
     durationMins: number;
     maxPlayers: number;
     pricePerPlayer: number;
+    isFake?: boolean;
+    minRealSpots?: number;
   }): Promise<MatchRow> {
     const { rows } = await this.query<MatchRow>(
       this.pool,
@@ -597,9 +644,11 @@ export class MatchesRepository extends BaseRepository {
           duration_mins,
           price_per_player,
           status,
-          max_players
+          max_players,
+          is_fake,
+          min_real_spots
         )
-        VALUES ($1, $2, $3::sport_type, $4, $5, $6, 'scheduled', $7)
+        VALUES ($1, $2, $3::sport_type, $4, $5, $6, 'scheduled', $7, $8, $9)
         RETURNING *
       )
       SELECT
@@ -612,6 +661,8 @@ export class MatchesRepository extends BaseRepository {
         m.price_per_player,
         ${COMPUTED_STATUS_SQL} AS status,
         m.max_players,
+        m.is_fake,
+        m.min_real_spots,
         m.created_at,
         m.updated_at
       FROM m`,
@@ -623,6 +674,8 @@ export class MatchesRepository extends BaseRepository {
         input.durationMins,
         input.pricePerPlayer,
         input.maxPlayers,
+        input.isFake ?? false,
+        input.minRealSpots ?? 0,
       ],
     );
     const row = rows[0];
@@ -708,6 +761,167 @@ export class MatchesRepository extends BaseRepository {
       [matchId],
     );
     return rows.map((r) => r.user_id);
+  }
+
+  /**
+   * Auto-fills a fake match with confirmed bookings for randomly-picked fake users.
+   *
+   * - Ignores `count` when null and fills up to (max_players - min_real_spots).
+   * - Caps the actual insert to whatever real capacity / fake-quota is left.
+   * - Inserts bookings as `confirmed` with `paid_amount = 0` (no wallet, no email).
+   * - Runs in a single transaction with `FOR UPDATE` on the match row to avoid
+   *   races with concurrent real-player bookings.
+   */
+  async autoFillFakeMatch(params: {
+    tenantId: string;
+    matchId: string;
+    count: number | null;
+  }): Promise<
+    | {
+        success: true;
+        filled: number;
+        confirmedCount: number;
+        fakeBookingsCount: number;
+        spotsRemaining: number;
+      }
+    | {
+        success: false;
+        code:
+          | 'MATCH_NOT_FOUND'
+          | 'MATCH_NOT_FAKE'
+          | 'MATCH_NOT_UPCOMING'
+          | 'MATCH_FULL_FOR_FAKES';
+      }
+  > {
+    return this.withTransaction(async (client) => {
+      const { rows: matchRows } = await this.query<{
+        id: string;
+        status: string;
+        scheduled_at: Date;
+        max_players: number | null;
+        is_fake: boolean;
+        min_real_spots: number;
+        is_active: boolean;
+        is_future: boolean;
+      }>(
+        client,
+        `SELECT
+          m.id,
+          m.status,
+          m.scheduled_at,
+          m.max_players,
+          m.is_fake,
+          m.min_real_spots,
+          v.is_active,
+          (m.scheduled_at > now()) AS is_future
+        FROM matches m
+        INNER JOIN venues v ON v.id = m.venue_id
+        WHERE m.id = $1 AND v.tenant_id = $2
+        FOR UPDATE OF m`,
+        [params.matchId, params.tenantId],
+      );
+
+      const match = matchRows[0];
+      if (!match) {
+        return { success: false as const, code: 'MATCH_NOT_FOUND' as const };
+      }
+      if (!match.is_fake) {
+        return { success: false as const, code: 'MATCH_NOT_FAKE' as const };
+      }
+      if (match.status === 'cancelled' || !match.is_future) {
+        return { success: false as const, code: 'MATCH_NOT_UPCOMING' as const };
+      }
+
+      const { rows: countRows } = await this.query<{
+        confirmed_count: string;
+        fake_count: string;
+      }>(
+        client,
+        `SELECT
+          COUNT(*)::text AS confirmed_count,
+          COUNT(*) FILTER (WHERE u.is_fake = true)::text AS fake_count
+        FROM bookings b
+        INNER JOIN users u ON u.id = b.user_id
+        WHERE b.match_id = $1 AND b.status = 'confirmed'`,
+        [params.matchId],
+      );
+      const confirmedCount = parseInt(countRows[0]?.confirmed_count ?? '0', 10);
+      const fakeCount = parseInt(countRows[0]?.fake_count ?? '0', 10);
+      const maxPlayers = match.max_players ?? 0;
+
+      const fakeQuotaRemaining = Math.max(
+        0,
+        maxPlayers - match.min_real_spots - fakeCount,
+      );
+      const capacityRemaining = Math.max(0, maxPlayers - confirmedCount);
+      const cap = Math.min(fakeQuotaRemaining, capacityRemaining);
+
+      if (cap <= 0) {
+        return {
+          success: false as const,
+          code: 'MATCH_FULL_FOR_FAKES' as const,
+        };
+      }
+
+      const requested = params.count ?? cap;
+      const take = Math.min(Math.max(0, requested), cap);
+      if (take <= 0) {
+        return {
+          success: true as const,
+          filled: 0,
+          confirmedCount,
+          fakeBookingsCount: fakeCount,
+          spotsRemaining: capacityRemaining,
+        };
+      }
+
+      const { rows: pickedRows } = await this.query<{ id: string }>(
+        client,
+        `SELECT u.id
+         FROM users u
+         WHERE u.tenant_id = $1
+           AND u.is_fake = true
+           AND u.deleted_at IS NULL
+           AND NOT EXISTS (
+             SELECT 1 FROM bookings b
+             WHERE b.match_id = $2
+               AND b.user_id = u.id
+               AND b.status IN ('pending', 'confirmed')
+           )
+         ORDER BY random()
+         LIMIT $3`,
+        [params.tenantId, params.matchId, take],
+      );
+
+      const userIds = pickedRows.map((r) => r.id);
+      if (userIds.length === 0) {
+        return {
+          success: true as const,
+          filled: 0,
+          confirmedCount,
+          fakeBookingsCount: fakeCount,
+          spotsRemaining: capacityRemaining,
+        };
+      }
+
+      const { rows: inserted } = await this.query<{ id: string }>(
+        client,
+        `INSERT INTO bookings (match_id, user_id, status, paid_amount, position)
+         SELECT $1, uid, 'confirmed'::booking_status, 0, 'field_player'::booking_position
+         FROM UNNEST($2::uuid[]) AS t(uid)
+         RETURNING id`,
+        [params.matchId, userIds],
+      );
+
+      const filled = inserted.length;
+      return {
+        success: true as const,
+        filled,
+        confirmedCount: confirmedCount + filled,
+        fakeBookingsCount: fakeCount + filled,
+        spotsRemaining: capacityRemaining - filled,
+      };
+    });
   }
 
   async findWaitlistForMatch(

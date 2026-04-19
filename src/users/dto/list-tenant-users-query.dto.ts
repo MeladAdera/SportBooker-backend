@@ -63,4 +63,13 @@ export class ListTenantUsersQueryDto extends PaginationDto {
   @Transform(({ value }: { value: unknown }) => parseOptionalBoolean(value))
   @IsBoolean()
   isBanned?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Filter by fake-player flag. true = only fake demo players; false = only real users; omit = all (default).',
+  })
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) => parseOptionalBoolean(value))
+  @IsBoolean()
+  isFake?: boolean;
 }
