@@ -30,6 +30,7 @@ function resolveVenuePictureUrl(
   pictureUrl: string | null,
   sportTypes: string[],
 ): string | null {
+  console.log('pictureUrl', pictureUrl);
   if (pictureUrl !== null) return pictureUrl;
   for (const sport of sportTypes) {
     const defaultUrl =
