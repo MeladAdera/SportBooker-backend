@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { TenantRequiredGuard } from '../auth/guards/tenant-required.guard';
 import { UsersRepository } from '../users/users.repository';
+import { TenantPublicController } from './tenant-public.controller';
 import { TenantSettingsController } from './tenant-settings.controller';
 import { TenantsRepository } from './tenants.repository';
 import { TenantsService } from './tenants.service';
@@ -11,7 +12,7 @@ import { VenuePictureStorage } from '../venues/venue-picture.storage';
 
 @Module({
   imports: [PaymentsModule],
-  controllers: [TenantSettingsController],
+  controllers: [TenantPublicController, TenantSettingsController],
   providers: [
     TenantsRepository,
     TenantsService,

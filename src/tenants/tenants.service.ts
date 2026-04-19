@@ -11,6 +11,7 @@ import type { AdminTenantListItemDto } from './dto/admin-tenant-list-item.dto';
 import type { CreateTenantDto } from './dto/create-tenant.dto';
 import type { ListTenantsQueryDto } from './dto/list-tenants-query.dto';
 import type { PaginatedTenantsListDto } from './dto/paginated-tenants-list.dto';
+import type { TenantPublicInfoDto } from './dto/tenant-public-info.dto';
 import type { TenantResponseDto } from './dto/tenant-response.dto';
 import type { UpdateTenantDto } from './dto/update-tenant.dto';
 import { RESERVED_SLUGS } from '../common/constants/reserved-slugs';
@@ -38,6 +39,18 @@ export class TenantsService {
     private readonly paymentsService: PaymentsService,
     private readonly cryptoService: CryptoService,
   ) {}
+
+  async getPublicTenantInfo(tenantId: string): Promise<TenantPublicInfoDto> {
+    const row = await this.tenantsRepository.findTenantById(tenantId);
+    if (!row) {
+      throw new NotFoundException(`Tenant not found`);
+    }
+    return {
+      name: row.name,
+      slug: row.slug,
+      logoUrl: row.logo_url,
+    };
+  }
 
   async getTenantByIdForAdmin(tenantId: string): Promise<TenantResponseDto> {
     const row = await this.tenantsRepository.findTenantById(tenantId);
