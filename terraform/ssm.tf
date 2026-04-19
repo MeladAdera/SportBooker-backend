@@ -26,16 +26,12 @@ resource "aws_ssm_parameter" "resend_template_password_reset_id" {
   name  = "${local.ssm_prefix}/RESEND_TEMPLATE_PASSWORD_RESET_ID"
   type  = "SecureString"
   value = var.resend_template_password_reset_id != "" ? var.resend_template_password_reset_id : "placeholder"
-
-  lifecycle { ignore_changes = [value] }
 }
 
 resource "aws_ssm_parameter" "resend_template_email_verification_id" {
   name  = "${local.ssm_prefix}/RESEND_TEMPLATE_EMAIL_VERIFICATION_ID"
   type  = "SecureString"
   value = var.resend_template_email_verification_id != "" ? var.resend_template_email_verification_id : "placeholder"
-
-  lifecycle { ignore_changes = [value] }
 }
 
 resource "aws_ssm_parameter" "stripe_secret_key" {

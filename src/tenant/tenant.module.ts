@@ -12,6 +12,8 @@ export class TenantModule implements NestModule {
         { path: 'test-validation', method: RequestMethod.ALL },
         { path: 'auth/refresh', method: RequestMethod.POST },
         { path: 'auth/reset-password', method: RequestMethod.POST },
+        // Payment provider callbacks hit API host (e.g. api.<domain>), not tenant subdomains.
+        { path: 'payments/webhook', method: RequestMethod.POST },
         { path: 'admin/tenants', method: RequestMethod.ALL },
         { path: 'admin/tenants/(.*)', method: RequestMethod.ALL },
         { path: 'uploads/(.*)', method: RequestMethod.GET },
