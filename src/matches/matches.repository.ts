@@ -174,9 +174,12 @@ export class MatchesRepository extends BaseRepository {
       )
       AND (
         $5::boolean IS DISTINCT FROM true
-        OR (
-          COALESCE(m.max_players, 0)
-          - COALESCE(bc.confirmed_count, 0)
+        OR GREATEST(
+          COALESCE(m.max_players, 0) - COALESCE(bc.confirmed_count, 0),
+          LEAST(
+            COALESCE(m.min_real_spots, 0),
+            COALESCE(bc.fake_confirmed_count, 0)
+          )
         ) > 0
       )
       ${dowClause}`;
@@ -236,9 +239,11 @@ export class MatchesRepository extends BaseRepository {
         m.created_at,
         m.updated_at,
         GREATEST(
-          0,
-          COALESCE(m.max_players, 0)
-          - COALESCE(bc.confirmed_count, 0)
+          COALESCE(m.max_players, 0) - COALESCE(bc.confirmed_count, 0),
+          LEAST(
+            COALESCE(m.min_real_spots, 0),
+            COALESCE(bc.fake_confirmed_count, 0)
+          )
         ) AS spots_remaining,
         COALESCE(
           (
@@ -247,9 +252,11 @@ export class MatchesRepository extends BaseRepository {
                 'userId', u.id::text,
                 'name', u.name,
                 'photoUrl', u.photo_url,
-                'position', b.position::text
+                'position', b.position::text,
+                'isFake', u.is_fake,
+                'joinedAt', b.created_at
               )
-              ORDER BY u.name
+              ORDER BY u.is_fake ASC, b.created_at ASC, u.name ASC
             )
             FROM bookings b
             INNER JOIN users u ON u.id = b.user_id
@@ -337,9 +344,11 @@ export class MatchesRepository extends BaseRepository {
         v.picture_url AS venue_picture_url,
         m.is_fake,
         GREATEST(
-          0,
-          COALESCE(m.max_players, 0)
-          - COALESCE(bc.confirmed_count, 0)
+          COALESCE(m.max_players, 0) - COALESCE(bc.confirmed_count, 0),
+          LEAST(
+            COALESCE(m.min_real_spots, 0),
+            COALESCE(bc.fake_confirmed_count, 0)
+          )
         ) AS spots_remaining,
         COALESCE(wc.waitlist_count, 0) AS waitlist_count
       ${MatchesRepository.buildBrowseFrom(params.dayOfWeek)}

@@ -298,6 +298,83 @@ describe('MatchesService', () => {
     expect(staffResult.fakeBookingsCount).toBe(3);
   });
 
+  it('trims extra fakes from the roster for players so roster.length + spotsRemaining = maxCapacity', async () => {
+    const matchId = '770e8400-e29b-41d4-a716-446655440097';
+    const reals = [
+      {
+        userId: 'r1',
+        name: 'Andy Cole',
+        position: BookingPosition.FieldPlayer,
+        photoUrl: null,
+        isFake: false,
+        joinedAt: '2026-06-01T10:00:00.000Z',
+      },
+      {
+        userId: 'r2',
+        name: 'Peter Schmeichel',
+        position: BookingPosition.FieldPlayer,
+        photoUrl: null,
+        isFake: false,
+        joinedAt: '2026-06-01T10:05:00.000Z',
+      },
+    ];
+    const fakes = Array.from({ length: 11 }, (_, i) => ({
+      userId: `f${i + 1}`,
+      name: `Demo Fake ${String(i + 1).padStart(2, '0')}`,
+      position: BookingPosition.FieldPlayer,
+      photoUrl: null,
+      isFake: true,
+      joinedAt: `2026-05-01T10:${String(i).padStart(2, '0')}:00.000Z`,
+    }));
+    const detailRow = {
+      id: matchId,
+      venue_id: venueId,
+      venue_name: 'Main Pitch',
+      venue_address: '1 Example Rd',
+      venue_picture_url: '',
+      title: 'Demo league',
+      sport_type: 'football',
+      scheduled_at: new Date('2026-07-01T12:00:00.000Z'),
+      duration_mins: 60,
+      price_per_player: '10.00',
+      status: 'upcoming',
+      max_players: 14,
+      is_fake: true,
+      min_real_spots: 2,
+      fake_bookings_count: 11,
+      created_at: new Date(),
+      updated_at: new Date(),
+      spots_remaining: 2,
+      roster: [...reals, ...fakes],
+      waitlist: [],
+      waitlist_count: 0,
+    };
+
+    matchesRepo.findMatchDetailForTenant.mockResolvedValue(detailRow);
+    const playerResult = await service.getDetailForTenant(
+      tenantId,
+      matchId,
+      'player',
+    );
+    expect(playerResult.maxCapacity).toBe(14);
+    expect(playerResult.spotsRemaining).toBe(2);
+    expect(playerResult.roster).toHaveLength(12);
+    expect(
+      playerResult.roster.filter((p) => p.name.startsWith('Demo Fake')),
+    ).toHaveLength(10);
+    expect(
+      playerResult.roster.find((p) => p.name === 'Demo Fake 11'),
+    ).toBeUndefined();
+
+    matchesRepo.findMatchDetailForTenant.mockResolvedValue(detailRow);
+    const adminResult = await service.getDetailForTenant(
+      tenantId,
+      matchId,
+      'tenant_admin',
+    );
+    expect(adminResult.roster).toHaveLength(13);
+  });
+
   it('coerces empty dayOfWeek array to null', async () => {
     matchesRepo.countUpcomingMatchesForBrowse.mockResolvedValue(0);
     matchesRepo.findUpcomingMatchesForBrowse.mockResolvedValue([]);

@@ -48,6 +48,16 @@ import { UserRole } from '../users/user-role';
 const PG_UNIQUE_VIOLATION = '23505';
 
 /**
+ * Internal roster shape parsed from the repo JSON. Carries `isFake` and
+ * `joinedAt` for fake-roster trimming; these are stripped before the DTO is
+ * returned to any caller.
+ */
+type MatchRosterPlayerDtoInternal = MatchRosterPlayerDto & {
+  isFake: boolean;
+  joinedAt: string;
+};
+
+/**
  * Roles allowed to see fake-match metadata (`isFake`, `minRealSpots`,
  * `fakeBookingsCount`). Players never see these so demo matches stay
  * indistinguishable from real ones.
@@ -603,6 +613,17 @@ export class MatchesService {
     row: MatchDetailRow,
     actorRole: string,
   ): MatchDetailResponseDto {
+    const maxCapacity = row.max_players ?? 0;
+    const spotsRemaining = Number(row.spots_remaining);
+    const fullRoster = MatchesService.parseRoster(row.roster);
+    const roster = isOperator(actorRole)
+      ? fullRoster.map((r) => MatchesService.stripRosterInternalFields(r))
+      : MatchesService.trimRosterForPlayer(
+          fullRoster,
+          maxCapacity,
+          spotsRemaining,
+        );
+
     const dto: MatchDetailResponseDto = {
       id: row.id,
       title: row.title,
@@ -613,11 +634,11 @@ export class MatchesService {
       venuePictureUrl: row.venue_picture_url,
       scheduledAt: row.scheduled_at.toISOString(),
       durationMins: row.duration_mins,
-      maxCapacity: row.max_players ?? 0,
+      maxCapacity,
       pricePerPlayer: Number(row.price_per_player),
       status: row.status,
-      spotsRemaining: Number(row.spots_remaining),
-      roster: MatchesService.parseRoster(row.roster),
+      spotsRemaining,
+      roster,
       waitlist: MatchesService.parseWaitlist(row.waitlist),
       waitlistCount: Number(row.waitlist_count),
       createdAt: row.created_at.toISOString(),
@@ -631,7 +652,42 @@ export class MatchesService {
     return dto;
   }
 
-  private static parseRoster(raw: unknown): MatchRosterPlayerDto[] {
+  /**
+   * For player-facing roster display on fake matches, trim the fake tail so
+   * that `roster.length + spotsRemaining === maxCapacity`. Real players are
+   * always preserved; fakes are ordered oldest-first by the SQL so newer fakes
+   * get dropped, keeping the match looking "long-established".
+   */
+  private static trimRosterForPlayer(
+    roster: MatchRosterPlayerDtoInternal[],
+    maxCapacity: number,
+    spotsRemaining: number,
+  ): MatchRosterPlayerDto[] {
+    const targetSize = Math.max(0, maxCapacity - spotsRemaining);
+    if (roster.length <= targetSize) {
+      return roster.map((r) => MatchesService.stripRosterInternalFields(r));
+    }
+    const reals = roster.filter((r) => !r.isFake);
+    const fakes = roster.filter((r) => r.isFake);
+    const fakesToKeep = Math.max(0, targetSize - reals.length);
+    return [...reals, ...fakes.slice(0, fakesToKeep)].map((r) =>
+      MatchesService.stripRosterInternalFields(r),
+    );
+  }
+
+  private static stripRosterInternalFields(
+    this: void,
+    r: MatchRosterPlayerDtoInternal,
+  ): MatchRosterPlayerDto {
+    return {
+      userId: r.userId,
+      name: r.name,
+      position: r.position,
+      photoUrl: r.photoUrl,
+    };
+  }
+
+  private static parseRoster(raw: unknown): MatchRosterPlayerDtoInternal[] {
     if (!Array.isArray(raw)) {
       return [];
     }
@@ -641,6 +697,8 @@ export class MatchesService {
         name?: string;
         position?: string;
         photoUrl?: string | null;
+        isFake?: boolean;
+        joinedAt?: string;
       };
       return {
         userId: String(r.userId ?? ''),
@@ -648,6 +706,8 @@ export class MatchesService {
         position: (r.position ??
           BookingPosition.FieldPlayer) as BookingPosition,
         photoUrl: r.photoUrl ?? null,
+        isFake: Boolean(r.isFake ?? false),
+        joinedAt: r.joinedAt ?? '',
       };
     });
   }
