@@ -24,7 +24,8 @@ export class MatchBrowseItemDto {
   maxCapacity!: number;
 
   @ApiProperty({
-    description: 'maxCapacity minus confirmed bookings',
+    description:
+      'Empty seats by headcount: maxCapacity minus all confirmed bookings (real and fake).',
   })
   spotsRemaining!: number;
 

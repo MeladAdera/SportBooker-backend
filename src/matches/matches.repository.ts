@@ -177,7 +177,6 @@ export class MatchesRepository extends BaseRepository {
         OR (
           COALESCE(m.max_players, 0)
           - COALESCE(bc.confirmed_count, 0)
-          + COALESCE(bc.fake_confirmed_count, 0)
         ) > 0
       )
       ${dowClause}`;
@@ -240,7 +239,6 @@ export class MatchesRepository extends BaseRepository {
           0,
           COALESCE(m.max_players, 0)
           - COALESCE(bc.confirmed_count, 0)
-          + COALESCE(bc.fake_confirmed_count, 0)
         ) AS spots_remaining,
         COALESCE(
           (
@@ -342,7 +340,6 @@ export class MatchesRepository extends BaseRepository {
           0,
           COALESCE(m.max_players, 0)
           - COALESCE(bc.confirmed_count, 0)
-          + COALESCE(bc.fake_confirmed_count, 0)
         ) AS spots_remaining,
         COALESCE(wc.waitlist_count, 0) AS waitlist_count
       ${MatchesRepository.buildBrowseFrom(params.dayOfWeek)}
@@ -596,7 +593,6 @@ export class MatchesRepository extends BaseRepository {
           0,
           COALESCE(m.max_players, 0)
           - COALESCE(bc.confirmed_count, 0)
-          + COALESCE(bc.fake_confirmed_count, 0)
         ) AS spots_remaining,
         m.is_fake,
         m.min_real_spots,

@@ -24,8 +24,7 @@ export class AutoFillFakeMatchResponseDto {
   @ApiProperty({
     example: 5,
     description:
-      'Free seats reserved for real players (maxCapacity minus confirmedCount, ' +
-      'so it can drop to 0 once all real seats are taken too)',
+      'Seats still free by headcount after this call: maxCapacity minus total confirmed bookings (real and fake).',
   })
   spotsRemaining!: number;
 }

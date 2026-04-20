@@ -41,7 +41,10 @@ export class OperatorMatchItemDto {
   @ApiProperty({ description: 'Number of waitlisted bookings' })
   waitlistCount!: number;
 
-  @ApiProperty({ description: 'maxCapacity minus confirmedCount' })
+  @ApiProperty({
+    description:
+      'Headcount: maxCapacity minus all confirmed bookings (real and fake).',
+  })
   spotsRemaining!: number;
 
   @ApiProperty({

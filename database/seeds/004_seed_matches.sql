@@ -23,3 +23,37 @@ FROM (VALUES
 JOIN tenants t ON t.slug = m.tenant_slug
 JOIN venues v ON v.tenant_id = t.id AND v.name = m.venue_name
 ON CONFLICT (venue_id, scheduled_at) DO NOTHING;
+
+-- Demo-only match for fake-player auto-fill (`POST .../matches/:id/auto-fill-fake`).
+-- Fixed `scheduled_at` keeps this row idempotent across seed runs.
+INSERT INTO matches (
+  venue_id,
+  title,
+  sport_type,
+  scheduled_at,
+  duration_mins,
+  price_per_player,
+  status,
+  max_players,
+  is_fake,
+  min_real_spots,
+  created_at,
+  updated_at
+)
+SELECT
+  v.id,
+  'Demo — Fake roster (auto-fill)',
+  'football'::sport_type,
+  timestamptz '2030-06-15 18:00:00+00',
+  90,
+  1.00,
+  'scheduled'::match_status,
+  16,
+  true,
+  4,
+  now(),
+  now()
+FROM tenants t
+JOIN venues v ON v.tenant_id = t.id AND v.name = 'ACFC Main Pitch'
+WHERE t.slug = 'acfc'
+ON CONFLICT (venue_id, scheduled_at) DO NOTHING;

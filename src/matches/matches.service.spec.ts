@@ -272,7 +272,7 @@ describe('MatchesService', () => {
       fake_bookings_count: 3,
       created_at: new Date(),
       updated_at: new Date(),
-      spots_remaining: 7,
+      spots_remaining: 4,
       roster: [],
       waitlist: [],
       waitlist_count: 0,

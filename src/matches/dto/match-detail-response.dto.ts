@@ -47,7 +47,8 @@ export class MatchDetailResponseDto {
   status!: string;
 
   @ApiProperty({
-    description: 'maxCapacity minus confirmed bookings',
+    description:
+      'Empty seats by headcount: maxCapacity minus all confirmed bookings (real and fake).',
   })
   spotsRemaining!: number;
 
