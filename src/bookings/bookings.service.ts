@@ -39,7 +39,6 @@ const CANCEL_PLAYER_MESSAGES: Record<CancelPlayerBookingFailureCode, string> = {
   ALREADY_CANCELLED: 'Booking is already cancelled',
   MATCH_CANCELLED: 'This match has been cancelled',
   MATCH_PAST: 'Cannot cancel a match that has already started or finished',
-  TOO_LATE_TO_CANCEL: 'Cancellation must be at least 24 hours before the match',
 };
 
 @Injectable()

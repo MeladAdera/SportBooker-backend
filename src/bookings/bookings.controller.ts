@@ -52,11 +52,11 @@ export class BookingsController {
   @ApiOperation({
     summary: 'Cancel my confirmed booking (player)',
     description:
-      "Confirmed: at least tenant's cancel_cutoff_hours before match start; no refund. Prepaid waitlist: full refund. Waitlist promotion runs only after cancelling a confirmed spot.",
+      'Confirmed: allowed until match start. Wallet refunds paid_amount only if cancel is at least tenant cancel_cutoff_hours before scheduled start; inside that window, cancel succeeds with no refund. Prepaid waitlist: full refund. Cancelling a confirmed spot triggers async waitlist promotion.',
   })
   @ApiBadRequestResponse({
     description:
-      "Not confirmed, already cancelled, match past/cancelled, or inside tenant's cutoff window",
+      'Not confirmed, already cancelled, match past/cancelled, or booking not found for tenant',
   })
   @ApiForbiddenResponse({ description: 'Not the booking owner' })
   @ApiNotFoundResponse({
