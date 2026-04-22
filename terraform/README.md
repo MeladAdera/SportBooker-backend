@@ -154,6 +154,14 @@ aws ssm put-parameter \
   --overwrite \
   --region ap-south-1
 
+# Update waitlist-expired-refund template ID
+aws ssm put-parameter \
+  --name "/sportbooker/production/RESEND_TEMPLATE_WAITLIST_EXPIRED_REFUND_ID" \
+  --value "e464ed47-8960-4722-b2a1-0e2667813de1" \
+  --type SecureString \
+  --overwrite \
+  --region ap-south-1
+
 # Force redeploy to pick up new secrets
 aws ecs update-service --cluster sportbooker-cluster --service sportbooker-service --force-new-deployment --region ap-south-1
 ```

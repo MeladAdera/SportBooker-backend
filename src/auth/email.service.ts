@@ -8,9 +8,12 @@ export class EmailService {
   private readonly from: string;
   private readonly appName: string;
   private readonly supportEmail: string;
+  private readonly browseMatchesLink: string;
+  private readonly waitlistRefundEta: string;
   private readonly resend: Resend | null;
   private readonly passwordResetTemplateId: string;
   private readonly emailVerificationTemplateId: string;
+  private readonly waitlistExpiredRefundTemplateId: string;
 
   constructor(private readonly config: ConfigService) {
     const apiKey = this.config.get<string>('RESEND_API_KEY');
@@ -24,6 +27,16 @@ export class EmailService {
       'EMAIL_SUPPORT_EMAIL',
       this.from,
     );
+    const webAppOrigin = this.config.get<string>(
+      'WEB_APP_PUBLIC_ORIGIN',
+      'http://localhost:5173',
+    );
+    const normalizedWebAppOrigin = webAppOrigin.replace(/\/+$/, '');
+    this.browseMatchesLink = `${normalizedWebAppOrigin}/matches`;
+    this.waitlistRefundEta = this.config.get<string>(
+      'EMAIL_WAITLIST_REFUND_ETA',
+      '3-5 business days',
+    );
     this.passwordResetTemplateId = this.config.get<string>(
       'RESEND_TEMPLATE_PASSWORD_RESET_ID',
       '432bfd62-0d5e-48cf-ad61-fd3d782b6698',
@@ -31,6 +44,10 @@ export class EmailService {
     this.emailVerificationTemplateId = this.config.get<string>(
       'RESEND_TEMPLATE_EMAIL_VERIFICATION_ID',
       '672a13df-d7f1-499e-9449-d55fb02d26a8',
+    );
+    this.waitlistExpiredRefundTemplateId = this.config.get<string>(
+      'RESEND_TEMPLATE_WAITLIST_EXPIRED_REFUND_ID',
+      'e464ed47-8960-4722-b2a1-0e2667813de1',
     );
     this.resend = this.enabled ? new Resend(apiKey) : null;
   }
@@ -166,6 +183,41 @@ export class EmailService {
       },
       'Waitlist skipped (dev), to:',
       to,
+    );
+  }
+
+  async sendWaitlistExpiredRefundEmail(params: {
+    to: string;
+    userName: string;
+    sessionName: string;
+    venueName: string;
+    sessionDate: string;
+    refundAmount: string;
+  }): Promise<void> {
+    await this.sendTemplate(
+      {
+        to: params.to,
+        templateId: this.waitlistExpiredRefundTemplateId,
+        variables: {
+          APP_NAME: this.appName,
+          USER_NAME: params.userName || 'there',
+          SESSION_NAME: params.sessionName,
+          VENUE_NAME: params.venueName,
+          SESSION_DATE: params.sessionDate,
+          REFUND_AMOUNT: params.refundAmount,
+          REFUND_ETA: this.waitlistRefundEta,
+          BROWSE_LINK: this.browseMatchesLink,
+          SUPPORT_EMAIL: this.supportEmail,
+        },
+      },
+      {
+        to: params.to,
+        subject: 'Your waitlist spot has expired - refund issued',
+        text: `Hi ${params.userName || 'there'},\n\nYour waitlist spot for ${params.sessionName} at ${params.venueName} on ${params.sessionDate} expired without a confirmed spot becoming available.\n\nA full refund of ${params.refundAmount} has been issued.\n\nBrowse other sessions: ${this.browseMatchesLink}\n\nNeed help? ${this.supportEmail}`,
+        html: `<p>Hi ${params.userName || 'there'},</p><p>Your waitlist spot for <strong>${params.sessionName}</strong> at <strong>${params.venueName}</strong> on <strong>${params.sessionDate}</strong> expired without a confirmed spot becoming available.</p><p>A full refund of <strong>${params.refundAmount}</strong> has been issued.</p><p><a href="${this.browseMatchesLink}">Browse other sessions</a></p><p>Need help? <a href="mailto:${this.supportEmail}">${this.supportEmail}</a></p>`,
+      },
+      'Waitlist expired refund email (dev), to:',
+      params.to,
     );
   }
 

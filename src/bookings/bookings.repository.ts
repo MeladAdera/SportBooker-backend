@@ -129,6 +129,18 @@ export type PromoteWaitlistResult = {
   skippedEmails: string[];
 };
 
+export type ExpiredWaitlistRefundRow = {
+  bookingId: string;
+  userId: string;
+  userEmail: string;
+  userName: string;
+  matchId: string;
+  matchTitle: string;
+  venueName: string;
+  scheduledAt: Date;
+  refundAmount: string;
+};
+
 export type RemoveFromWaitlistFailureCode = 'BOOKING_NOT_FOUND' | 'NOT_PENDING';
 
 export type RemoveFromWaitlistResult =
@@ -1089,6 +1101,109 @@ export class BookingsRepository extends BaseRepository {
         refundAmount: prepaid ? row.b_paid_amount : '0.00',
         playerEmail: row.user_email,
       };
+    });
+  }
+
+  /**
+   * Expires waitlist entries for matches that have already ended.
+   * Pending bookings are cancelled; prepaid ones are refunded to wallet.
+   * Uses row-level locks with SKIP LOCKED so concurrent runs do not double-process.
+   */
+  async refundExpiredWaitlistBookings(): Promise<ExpiredWaitlistRefundRow[]> {
+    return this.withTransaction(async (client) => {
+      const { rows } = await this.query<{
+        booking_id: string;
+        user_id: string;
+        user_email: string;
+        user_name: string;
+        match_id: string;
+        match_title: string;
+        venue_name: string;
+        scheduled_at: Date;
+        refund_amount: string;
+      }>(
+        client,
+        `WITH expired_pending AS (
+           SELECT
+             b.id AS booking_id,
+             b.user_id,
+             b.paid_amount,
+             b.paid_amount::text AS paid_amount_text,
+             u.email AS user_email,
+             u.name AS user_name,
+             m.id AS match_id,
+             m.title AS match_title,
+             v.name AS venue_name,
+             m.scheduled_at
+           FROM bookings b
+           INNER JOIN matches m ON m.id = b.match_id
+           INNER JOIN venues v ON v.id = m.venue_id
+           INNER JOIN users u ON u.id = b.user_id AND u.tenant_id = v.tenant_id
+           WHERE b.status = 'pending'
+             AND m.status = 'scheduled'::match_status
+             AND now() >= m.scheduled_at + (m.duration_mins * interval '1 minute')
+           FOR UPDATE OF b SKIP LOCKED
+         ),
+         refunded AS (
+           UPDATE users u
+           SET wallet_balance = u.wallet_balance + e.paid_amount,
+               updated_at = now()
+           FROM expired_pending e
+           WHERE u.id = e.user_id
+             AND e.paid_amount > 0
+           RETURNING
+             e.booking_id,
+             e.user_id,
+             e.user_email,
+             e.user_name,
+             e.match_id,
+             e.match_title,
+             e.venue_name,
+             e.scheduled_at,
+             e.paid_amount_text AS refund_amount
+         ),
+         refund_transactions AS (
+           INSERT INTO wallet_transactions (user_id, amount, type, reference_id)
+           SELECT r.user_id, r.refund_amount::numeric, 'refund'::wallet_tx_type, r.booking_id
+           FROM refunded r
+         ),
+         cancelled AS (
+           UPDATE bookings b
+           SET status = 'cancelled'::booking_status,
+               cancelled_at = now(),
+               refunded_at = CASE
+                 WHEN e.paid_amount > 0 THEN now()
+                 ELSE refunded_at
+               END,
+               updated_at = now()
+           FROM expired_pending e
+           WHERE b.id = e.booking_id
+           RETURNING b.id
+         )
+         SELECT
+           r.booking_id,
+           r.user_id,
+           r.user_email,
+           r.user_name,
+           r.match_id,
+           r.match_title,
+           r.venue_name,
+           r.scheduled_at,
+           r.refund_amount
+         FROM refunded r`,
+      );
+
+      return rows.map((row) => ({
+        bookingId: row.booking_id,
+        userId: row.user_id,
+        userEmail: row.user_email,
+        userName: row.user_name,
+        matchId: row.match_id,
+        matchTitle: row.match_title,
+        venueName: row.venue_name,
+        scheduledAt: row.scheduled_at,
+        refundAmount: row.refund_amount,
+      }));
     });
   }
 

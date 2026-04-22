@@ -5,11 +5,17 @@ import { BookingDetailController } from './booking-detail.controller';
 import { BookingsController } from './bookings.controller';
 import { BookingsRepository } from './bookings.repository';
 import { BookingsService } from './bookings.service';
+import { WaitlistExpiryService } from './waitlist-expiry.service';
 
 @Module({
   imports: [forwardRef(() => AuthModule)],
   controllers: [BookingsController, BookingDetailController],
-  providers: [BookingsRepository, BookingsService, RolesGuard],
+  providers: [
+    BookingsRepository,
+    BookingsService,
+    WaitlistExpiryService,
+    RolesGuard,
+  ],
   exports: [BookingsRepository, BookingsService],
 })
 export class BookingsModule {}

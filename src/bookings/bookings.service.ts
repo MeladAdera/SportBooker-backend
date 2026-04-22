@@ -13,12 +13,14 @@ import {
   type BookingDetailRow,
   type CancelPlayerBookingFailureCode,
   type CreateBookingFailureCode,
+  type ExpiredWaitlistRefundRow,
 } from './bookings.repository';
 import type { BookingDetailResponseDto } from './dto/booking-detail-response.dto';
 import type { CancelPlayerBookingResponseDto } from './dto/cancel-player-booking-response.dto';
 import type { CreateBookingResponseDto } from './dto/create-booking-response.dto';
 import { UserRole } from '../users/user-role';
 import { BookingPosition } from './booking-position';
+import { ConfigService } from '@nestjs/config';
 
 const FAILURE_MESSAGES: Record<CreateBookingFailureCode, string> = {
   MATCH_NOT_FOUND: 'Match not found',
@@ -48,6 +50,7 @@ export class BookingsService {
   constructor(
     private readonly bookingsRepository: BookingsRepository,
     private readonly emailService: EmailService,
+    private readonly configService: ConfigService,
   ) {}
 
   async createBookingForPlayer(params: {
@@ -206,6 +209,23 @@ export class BookingsService {
     }
   }
 
+  async processExpiredWaitlistRefunds(): Promise<number> {
+    const expiredRefunds =
+      await this.bookingsRepository.refundExpiredWaitlistBookings();
+
+    if (expiredRefunds.length === 0) {
+      return 0;
+    }
+
+    await Promise.all(
+      expiredRefunds.map((refund) =>
+        this.sendWaitlistExpiryRefundEmail(refund),
+      ),
+    );
+
+    return expiredRefunds.length;
+  }
+
   private mapCancelPlayerFailure(code: CancelPlayerBookingFailureCode): Error {
     const message = CANCEL_PLAYER_MESSAGES[code];
     switch (code) {
@@ -299,5 +319,36 @@ export class BookingsService {
         updatedAt: row.venue_updated_at.toISOString(),
       },
     };
+  }
+
+  private async sendWaitlistExpiryRefundEmail(
+    refund: ExpiredWaitlistRefundRow,
+  ): Promise<void> {
+    const sessionDate = new Intl.DateTimeFormat('en-GB', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'short',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      timeZone: 'UTC',
+    }).format(refund.scheduledAt);
+    const currency = this.configService.get<string>('WALLET_CURRENCY', 'AED');
+
+    try {
+      await this.emailService.sendWaitlistExpiredRefundEmail({
+        to: refund.userEmail,
+        userName: refund.userName,
+        sessionName: refund.matchTitle,
+        venueName: refund.venueName,
+        sessionDate: `${sessionDate} UTC`,
+        refundAmount: `${currency} ${refund.refundAmount}`,
+      });
+    } catch (err: unknown) {
+      this.logger.warn(
+        `sendWaitlistExpiredRefundEmail failed for booking ${refund.bookingId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 }
