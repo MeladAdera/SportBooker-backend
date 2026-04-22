@@ -920,6 +920,103 @@ export class MatchesRepository extends BaseRepository {
     });
   }
 
+  /**
+   * Hard-deletes all confirmed fake bookings on a fake match.
+   *
+   * - Admin-triggered cleanup once a match has organic real demand and the
+   *   fake roster is no longer needed.
+   * - Runs in a single transaction with `FOR UPDATE` on the match row so
+   *   concurrent real bookings / auto-fills serialize behind it.
+   * - Does not touch waitlist (pending) bookings. Waitlist promotion for the
+   *   freed seats is triggered by the service layer after commit.
+   */
+  async clearFakeBookingsForMatch(params: {
+    tenantId: string;
+    matchId: string;
+  }): Promise<
+    | {
+        success: true;
+        removed: number;
+        confirmedCount: number;
+        fakeBookingsCount: number;
+        spotsRemaining: number;
+      }
+    | {
+        success: false;
+        code: 'MATCH_NOT_FOUND' | 'MATCH_NOT_FAKE' | 'MATCH_NOT_UPCOMING';
+      }
+  > {
+    return this.withTransaction(async (client) => {
+      const { rows: matchRows } = await this.query<{
+        id: string;
+        status: string;
+        max_players: number | null;
+        is_fake: boolean;
+        is_future: boolean;
+      }>(
+        client,
+        `SELECT
+          m.id,
+          m.status,
+          m.max_players,
+          m.is_fake,
+          (m.scheduled_at > now()) AS is_future
+        FROM matches m
+        INNER JOIN venues v ON v.id = m.venue_id
+        WHERE m.id = $1 AND v.tenant_id = $2
+        FOR UPDATE OF m`,
+        [params.matchId, params.tenantId],
+      );
+
+      const match = matchRows[0];
+      if (!match) {
+        return { success: false as const, code: 'MATCH_NOT_FOUND' as const };
+      }
+      if (!match.is_fake) {
+        return { success: false as const, code: 'MATCH_NOT_FAKE' as const };
+      }
+      if (match.status === 'cancelled' || !match.is_future) {
+        return { success: false as const, code: 'MATCH_NOT_UPCOMING' as const };
+      }
+
+      const { rows: deleted } = await this.query<{ id: string }>(
+        client,
+        `DELETE FROM bookings
+         WHERE id IN (
+           SELECT b.id
+           FROM bookings b
+           INNER JOIN users u ON u.id = b.user_id
+           WHERE b.match_id = $1
+             AND b.status = 'confirmed'
+             AND u.is_fake = true
+         )
+         RETURNING id`,
+        [params.matchId],
+      );
+
+      const removed = deleted.length;
+
+      const { rows: countRows } = await this.query<{ confirmed_count: string }>(
+        client,
+        `SELECT COUNT(*)::text AS confirmed_count
+         FROM bookings
+         WHERE match_id = $1 AND status = 'confirmed'`,
+        [params.matchId],
+      );
+      const confirmedCount = parseInt(countRows[0]?.confirmed_count ?? '0', 10);
+      const maxPlayers = match.max_players ?? 0;
+      const spotsRemaining = Math.max(0, maxPlayers - confirmedCount);
+
+      return {
+        success: true as const,
+        removed,
+        confirmedCount,
+        fakeBookingsCount: 0,
+        spotsRemaining,
+      };
+    });
+  }
+
   async findWaitlistForMatch(
     matchId: string,
     tenantId: string,

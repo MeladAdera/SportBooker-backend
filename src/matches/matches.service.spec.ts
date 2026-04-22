@@ -7,6 +7,7 @@ import type { PoolClient } from 'pg';
 import { EmailService } from '../auth/email.service';
 import { BookingPosition } from '../bookings/booking-position';
 import { BookingsRepository } from '../bookings/bookings.repository';
+import { BookingsService } from '../bookings/bookings.service';
 import { VenueSportType } from '../venues/venue-sport-type';
 import { MatchesRepository } from './matches.repository';
 import { MatchesService } from './matches.service';
@@ -31,6 +32,7 @@ describe('MatchesService', () => {
       | 'insertMatch'
       | 'insertMatchResults'
       | 'patchMatchForTenant'
+      | 'clearFakeBookingsForMatch'
     >
   > & { withTransaction: jest.Mock };
   let venuesRepo: jest.Mocked<
@@ -41,6 +43,9 @@ describe('MatchesService', () => {
       BookingsRepository,
       'cancelMatchForTenant' | 'removeFromWaitlistForTenant'
     >
+  >;
+  let bookingsServiceMock: jest.Mocked<
+    Pick<BookingsService, 'promoteWaitlistAfterSpotOpened'>
   >;
   let emailService: jest.Mocked<
     Pick<EmailService, 'sendMatchCancelledEmail' | 'sendBookingCancelledEmail'>
@@ -101,6 +106,7 @@ describe('MatchesService', () => {
       insertMatch: jest.fn(),
       insertMatchResults: jest.fn().mockResolvedValue(undefined),
       patchMatchForTenant: jest.fn(),
+      clearFakeBookingsForMatch: jest.fn(),
       withTransaction: jest.fn(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call
         async (fn: any) => fn({} as PoolClient),
@@ -113,6 +119,9 @@ describe('MatchesService', () => {
       cancelMatchForTenant: jest.fn(),
       removeFromWaitlistForTenant: jest.fn(),
     };
+    bookingsServiceMock = {
+      promoteWaitlistAfterSpotOpened: jest.fn().mockResolvedValue(undefined),
+    };
     emailService = {
       sendMatchCancelledEmail: jest.fn().mockResolvedValue(undefined),
       sendBookingCancelledEmail: jest.fn().mockResolvedValue(undefined),
@@ -121,6 +130,7 @@ describe('MatchesService', () => {
       matchesRepo as unknown as MatchesRepository,
       venuesRepo as unknown as VenuesRepository,
       bookingsRepo as unknown as BookingsRepository,
+      bookingsServiceMock as unknown as BookingsService,
       emailService as unknown as EmailService,
     );
   });
@@ -1023,6 +1033,111 @@ describe('MatchesService', () => {
       await expect(
         service.removeFromWaitlist({ tenantId, matchId, bookingId }),
       ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('clearFakesForMatch', () => {
+    const matchId = '770e8400-e29b-41d4-a716-446655440300';
+
+    it('returns summary and fires one waitlist promotion per removed fake', async () => {
+      matchesRepo.clearFakeBookingsForMatch.mockResolvedValue({
+        success: true,
+        removed: 3,
+        confirmedCount: 7,
+        fakeBookingsCount: 0,
+        spotsRemaining: 3,
+      });
+
+      const result = await service.clearFakesForMatch({ tenantId, matchId });
+
+      expect(matchesRepo.clearFakeBookingsForMatch).toHaveBeenCalledWith({
+        tenantId,
+        matchId,
+      });
+      expect(result).toEqual({
+        removed: 3,
+        confirmedCount: 7,
+        fakeBookingsCount: 0,
+        spotsRemaining: 3,
+      });
+      // Allow the fire-and-forget promotion calls to settle.
+      await Promise.resolve();
+      expect(
+        bookingsServiceMock.promoteWaitlistAfterSpotOpened,
+      ).toHaveBeenCalledTimes(3);
+      expect(
+        bookingsServiceMock.promoteWaitlistAfterSpotOpened,
+      ).toHaveBeenCalledWith(tenantId, matchId);
+    });
+
+    it('skips waitlist promotion when nothing was removed', async () => {
+      matchesRepo.clearFakeBookingsForMatch.mockResolvedValue({
+        success: true,
+        removed: 0,
+        confirmedCount: 5,
+        fakeBookingsCount: 0,
+        spotsRemaining: 5,
+      });
+
+      const result = await service.clearFakesForMatch({ tenantId, matchId });
+
+      expect(result.removed).toBe(0);
+      expect(
+        bookingsServiceMock.promoteWaitlistAfterSpotOpened,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException when match not found', async () => {
+      matchesRepo.clearFakeBookingsForMatch.mockResolvedValue({
+        success: false,
+        code: 'MATCH_NOT_FOUND',
+      });
+
+      await expect(
+        service.clearFakesForMatch({ tenantId, matchId }),
+      ).rejects.toThrow(NotFoundException);
+      expect(
+        bookingsServiceMock.promoteWaitlistAfterSpotOpened,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException when match is not fake', async () => {
+      matchesRepo.clearFakeBookingsForMatch.mockResolvedValue({
+        success: false,
+        code: 'MATCH_NOT_FAKE',
+      });
+
+      await expect(
+        service.clearFakesForMatch({ tenantId, matchId }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('throws BadRequestException when match is cancelled or past', async () => {
+      matchesRepo.clearFakeBookingsForMatch.mockResolvedValue({
+        success: false,
+        code: 'MATCH_NOT_UPCOMING',
+      });
+
+      await expect(
+        service.clearFakesForMatch({ tenantId, matchId }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('swallows errors thrown by waitlist promotion (fire-and-forget)', async () => {
+      matchesRepo.clearFakeBookingsForMatch.mockResolvedValue({
+        success: true,
+        removed: 2,
+        confirmedCount: 8,
+        fakeBookingsCount: 0,
+        spotsRemaining: 2,
+      });
+      bookingsServiceMock.promoteWaitlistAfterSpotOpened.mockRejectedValue(
+        new Error('boom'),
+      );
+
+      await expect(
+        service.clearFakesForMatch({ tenantId, matchId }),
+      ).resolves.toMatchObject({ removed: 2 });
     });
   });
 });
