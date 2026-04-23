@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -59,6 +60,7 @@ function getClientIp(req: Record<string, unknown>): string {
           Promise.resolve(getClientIp(req as Record<string, unknown>)),
       },
     ]),
+    ScheduleModule.forRoot(),
     DatabaseModule,
     TenantModule,
     AuthModule,

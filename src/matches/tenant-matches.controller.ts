@@ -34,6 +34,7 @@ import { TenantRequiredGuard } from '../auth/guards/tenant-required.guard';
 import { UserRole } from '../users/user-role';
 import { AutoFillFakeMatchDto } from './dto/auto-fill-fake-match.dto';
 import { AutoFillFakeMatchResponseDto } from './dto/auto-fill-fake-match-response.dto';
+import { ClearFakesResponseDto } from './dto/clear-fakes-response.dto';
 import { ListTenantMatchesQueryDto } from './dto/list-tenant-matches-query.dto';
 import { PaginatedOperatorMatchesDto } from './dto/paginated-operator-matches.dto';
 import { SubmitMatchResultsDto } from './dto/submit-match-results.dto';
@@ -131,6 +132,40 @@ export class TenantMatchesController {
       tenantId: tenant.id,
       matchId: id,
       count: dto.count ?? null,
+    });
+  }
+
+  @Post(':id/clear-fakes')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.SuperAdmin, UserRole.TenantAdmin)
+  @ApiOperation({
+    summary: 'Remove all fake players from a fake match',
+    description:
+      'Tenant admin only. Hard-deletes every confirmed booking held by a fake ' +
+      'user (users.is_fake = true) on this match. Intended for once the match ' +
+      'has organic real demand and the fake roster is no longer needed. ' +
+      'After the delete commits, one FIFO waitlist promotion runs per freed ' +
+      'seat (same logic as a player cancellation) so pending real players ' +
+      'are upgraded to confirmed asynchronously.',
+  })
+  @ApiWrappedOkResponse({
+    description: 'Clear-fakes summary',
+    type: ClearFakesResponseDto,
+  })
+  @ApiNotFoundResponse({ description: 'Match not found for this tenant' })
+  @ApiBadRequestResponse({
+    description:
+      'Match is not fake, has been cancelled, or is not in the future',
+  })
+  @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
+  @ApiForbiddenResponse({ description: 'Insufficient role' })
+  async clearFakes(
+    @TenantDecorator() tenant: Tenant,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<ClearFakesResponseDto> {
+    return this.matchesService.clearFakesForMatch({
+      tenantId: tenant.id,
+      matchId: id,
     });
   }
 

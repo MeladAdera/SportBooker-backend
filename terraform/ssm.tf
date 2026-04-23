@@ -34,6 +34,12 @@ resource "aws_ssm_parameter" "resend_template_email_verification_id" {
   value = var.resend_template_email_verification_id != "" ? var.resend_template_email_verification_id : "placeholder"
 }
 
+resource "aws_ssm_parameter" "resend_template_waitlist_expired_refund_id" {
+  name  = "${local.ssm_prefix}/RESEND_TEMPLATE_WAITLIST_EXPIRED_REFUND_ID"
+  type  = "SecureString"
+  value = var.resend_template_waitlist_expired_refund_id != "" ? var.resend_template_waitlist_expired_refund_id : "placeholder"
+}
+
 resource "aws_ssm_parameter" "stripe_secret_key" {
   name  = "${local.ssm_prefix}/STRIPE_SECRET_KEY"
   type  = "SecureString"

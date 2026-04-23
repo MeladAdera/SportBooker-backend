@@ -182,7 +182,7 @@ Results are ordered by `scheduledAt DESC`.
 
 | Method | Path                                           | Roles      | Notes                                                        |
 | ------ | ---------------------------------------------- | ---------- | ------------------------------------------------------------ |
-| `POST` | `/matches/:matchId/bookings/:bookingId/cancel` | **player** | Self-cancel confirmed booking (≥24h before match, no refund) |
+| `POST` | `/matches/:matchId/bookings/:bookingId/cancel` | **player** | Self-cancel confirmed booking (until start; refund if ≥ tenant `cancel_cutoff_hours` before start) |
 | `POST` | `/matches/:matchId/bookings`                   | **player** | Book or waitlist                                             |
 
 > Register `.../bookings/:bookingId/cancel` before `.../bookings` so routes resolve correctly.

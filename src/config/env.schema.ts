@@ -60,8 +60,10 @@ export const envSchema = Joi.object({
   EMAIL_FROM: Joi.string().optional().allow(''),
   EMAIL_APP_NAME: Joi.string().optional().allow(''),
   EMAIL_SUPPORT_EMAIL: Joi.string().optional().allow(''),
+  EMAIL_WAITLIST_REFUND_ETA: Joi.string().optional().allow(''),
   RESEND_TEMPLATE_PASSWORD_RESET_ID: Joi.string().optional().allow(''),
   RESEND_TEMPLATE_EMAIL_VERIFICATION_ID: Joi.string().optional().allow(''),
+  RESEND_TEMPLATE_WAITLIST_EXPIRED_REFUND_ID: Joi.string().optional().allow(''),
   /**
    * When set (min 32 chars), enables OpenAPI in production and requires
    * `Authorization: Bearer <token>` for `/api/docs` and `/api/docs-json`.

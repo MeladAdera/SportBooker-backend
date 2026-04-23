@@ -109,14 +109,13 @@ export type CancelPlayerBookingFailureCode =
   | 'NOT_CONFIRMED'
   | 'ALREADY_CANCELLED'
   | 'MATCH_CANCELLED'
-  | 'MATCH_PAST'
-  | 'TOO_LATE_TO_CANCEL';
+  | 'MATCH_PAST';
 
 export type CancelPlayerBookingResult =
   | {
       success: true;
       cancelledAt: Date;
-      /** Full refund for prepaid waitlist; "0.00" for confirmed (no refund) or legacy unpaid waitlist */
+      /** Prepaid waitlist: full refund. Confirmed: refund paid_amount only if cancel is ≥ cancel_cutoff_hours before match; else "0.00". */
       refundAmount: string;
       playerEmail: string;
       /** True when a confirmed spot was freed (run waitlist promotion). False for waitlist cancel. */
@@ -128,6 +127,18 @@ export type CancelPlayerBookingResult =
 export type PromoteWaitlistResult = {
   promotedEmail: string | null;
   skippedEmails: string[];
+};
+
+export type ExpiredWaitlistRefundRow = {
+  bookingId: string;
+  userId: string;
+  userEmail: string;
+  userName: string;
+  matchId: string;
+  matchTitle: string;
+  venueName: string;
+  scheduledAt: Date;
+  refundAmount: string;
 };
 
 export type RemoveFromWaitlistFailureCode = 'BOOKING_NOT_FOUND' | 'NOT_PENDING';
@@ -616,8 +627,9 @@ export class BookingsRepository extends BaseRepository {
   }
 
   /**
-   * Player cancels own confirmed booking: no refund. Waitlist promotion runs after commit via
-   * promoteWaitlistForMatch (separate transaction).
+   * Player cancels own confirmed booking: allowed until match start. Full wallet refund of
+   * `paid_amount` only when `scheduled_at >= now() + cancel_cutoff_hours`; inside that window,
+   * cancel still succeeds with no refund. Waitlist promotion runs after commit via promoteWaitlistForMatch.
    */
   async cancelBookingForPlayer(params: {
     tenantId: string;
@@ -653,7 +665,8 @@ export class BookingsRepository extends BaseRepository {
       price_per_player: string;
       user_email: string;
       is_future: boolean;
-      can_cancel: boolean;
+      /** Match start at least `cancel_cutoff_hours` away — confirmed cancel refunds `paid_amount`. */
+      refund_eligible: boolean;
     }>(
       client,
       `SELECT
@@ -666,7 +679,7 @@ export class BookingsRepository extends BaseRepository {
          m.price_per_player::text AS price_per_player,
          u.email AS user_email,
          (m.scheduled_at > now()) AS is_future,
-         (m.scheduled_at >= now() + interval '1 hour' * $4) AS can_cancel
+         (m.scheduled_at >= now() + interval '1 hour' * $4) AS refund_eligible
        FROM bookings b
        INNER JOIN matches m ON m.id = b.match_id
        INNER JOIN venues v ON v.id = m.venue_id
@@ -762,8 +775,45 @@ export class BookingsRepository extends BaseRepository {
     if (!row.is_future) {
       return { success: false, code: 'MATCH_PAST' };
     }
-    if (!row.can_cancel) {
-      return { success: false, code: 'TOO_LATE_TO_CANCEL' };
+
+    const confirmedPrepaid = parseFloat(row.b_paid_amount ?? '0') > 0;
+    if (row.refund_eligible && confirmedPrepaid) {
+      await this.query(
+        client,
+        `UPDATE users
+         SET wallet_balance = wallet_balance + $3::numeric,
+             updated_at = now()
+         WHERE id = $1 AND tenant_id = $2`,
+        [userId, tenantId, row.b_paid_amount],
+      );
+      await this.query(
+        client,
+        `INSERT INTO wallet_transactions (user_id, amount, type, reference_id)
+         VALUES ($1, $2, 'refund', $3)`,
+        [userId, row.b_paid_amount, bookingId],
+      );
+      const { rows: updatedRows } = await this.query<{ cancelled_at: Date }>(
+        client,
+        `UPDATE bookings
+         SET status = 'cancelled'::booking_status,
+             cancelled_at = now(),
+             refunded_at = now(),
+             updated_at = now()
+         WHERE id = $1
+         RETURNING cancelled_at`,
+        [bookingId],
+      );
+      const cancelledAt = updatedRows[0]?.cancelled_at;
+      if (!cancelledAt) {
+        throw new Error('cancelPlayerBooking: expected cancelled_at');
+      }
+      return {
+        success: true,
+        cancelledAt,
+        refundAmount: row.b_paid_amount,
+        playerEmail: row.user_email,
+        shouldPromoteWaitlist: true,
+      };
     }
 
     const { rows: updatedRows } = await this.query<{ cancelled_at: Date }>(
@@ -794,8 +844,8 @@ export class BookingsRepository extends BaseRepository {
    * FIFO promote one waitlisted player after a confirmed slot opens.
    * Run in a new transaction after the cancellation commit. Not used when a match is cancelled.
    * Skips entries with insufficient wallet (deduction = DB type `debit`) and continues.
-   * Match must be future and not cancelled/completed/in_progress — aligned with bookable matches
-   * (same idea as createBookingInTransaction: not cancelled + scheduled_at > now()).
+   * Match must be scheduled (stored status), future kickoff — same gate as booking.
+   * Stored match_status is only `scheduled` | `cancelled`; never compare to computed labels.
    */
   async promoteWaitlistForMatch(params: {
     tenantId: string;
@@ -823,7 +873,7 @@ export class BookingsRepository extends BaseRepository {
        FROM matches m
        INNER JOIN venues v ON v.id = m.venue_id
        WHERE m.id = $1 AND v.tenant_id = $2
-         AND m.status NOT IN ('cancelled', 'completed', 'in_progress')
+         AND m.status = 'scheduled'::match_status
          AND m.scheduled_at > now()
        FOR UPDATE OF m`,
       [matchId, tenantId],
@@ -1051,6 +1101,109 @@ export class BookingsRepository extends BaseRepository {
         refundAmount: prepaid ? row.b_paid_amount : '0.00',
         playerEmail: row.user_email,
       };
+    });
+  }
+
+  /**
+   * Expires waitlist entries for matches that have already ended.
+   * Pending bookings are cancelled; prepaid ones are refunded to wallet.
+   * Uses row-level locks with SKIP LOCKED so concurrent runs do not double-process.
+   */
+  async refundExpiredWaitlistBookings(): Promise<ExpiredWaitlistRefundRow[]> {
+    return this.withTransaction(async (client) => {
+      const { rows } = await this.query<{
+        booking_id: string;
+        user_id: string;
+        user_email: string;
+        user_name: string;
+        match_id: string;
+        match_title: string;
+        venue_name: string;
+        scheduled_at: Date;
+        refund_amount: string;
+      }>(
+        client,
+        `WITH expired_pending AS (
+           SELECT
+             b.id AS booking_id,
+             b.user_id,
+             b.paid_amount,
+             b.paid_amount::text AS paid_amount_text,
+             u.email AS user_email,
+             u.name AS user_name,
+             m.id AS match_id,
+             m.title AS match_title,
+             v.name AS venue_name,
+             m.scheduled_at
+           FROM bookings b
+           INNER JOIN matches m ON m.id = b.match_id
+           INNER JOIN venues v ON v.id = m.venue_id
+           INNER JOIN users u ON u.id = b.user_id AND u.tenant_id = v.tenant_id
+           WHERE b.status = 'pending'
+             AND m.status = 'scheduled'::match_status
+             AND now() >= m.scheduled_at + (m.duration_mins * interval '1 minute')
+           FOR UPDATE OF b SKIP LOCKED
+         ),
+         refunded AS (
+           UPDATE users u
+           SET wallet_balance = u.wallet_balance + e.paid_amount,
+               updated_at = now()
+           FROM expired_pending e
+           WHERE u.id = e.user_id
+             AND e.paid_amount > 0
+           RETURNING
+             e.booking_id,
+             e.user_id,
+             e.user_email,
+             e.user_name,
+             e.match_id,
+             e.match_title,
+             e.venue_name,
+             e.scheduled_at,
+             e.paid_amount_text AS refund_amount
+         ),
+         refund_transactions AS (
+           INSERT INTO wallet_transactions (user_id, amount, type, reference_id)
+           SELECT r.user_id, r.refund_amount::numeric, 'refund'::wallet_tx_type, r.booking_id
+           FROM refunded r
+         ),
+         cancelled AS (
+           UPDATE bookings b
+           SET status = 'cancelled'::booking_status,
+               cancelled_at = now(),
+               refunded_at = CASE
+                 WHEN e.paid_amount > 0 THEN now()
+                 ELSE refunded_at
+               END,
+               updated_at = now()
+           FROM expired_pending e
+           WHERE b.id = e.booking_id
+           RETURNING b.id
+         )
+         SELECT
+           r.booking_id,
+           r.user_id,
+           r.user_email,
+           r.user_name,
+           r.match_id,
+           r.match_title,
+           r.venue_name,
+           r.scheduled_at,
+           r.refund_amount
+         FROM refunded r`,
+      );
+
+      return rows.map((row) => ({
+        bookingId: row.booking_id,
+        userId: row.user_id,
+        userEmail: row.user_email,
+        userName: row.user_name,
+        matchId: row.match_id,
+        matchTitle: row.match_title,
+        venueName: row.venue_name,
+        scheduledAt: row.scheduled_at,
+        refundAmount: row.refund_amount,
+      }));
     });
   }
 

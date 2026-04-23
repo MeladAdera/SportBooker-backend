@@ -279,6 +279,31 @@ describe('BookingsService', () => {
       );
     });
 
+    it('returns paid refund amount when confirmed cancel is outside cutoff (early cancel)', async () => {
+      bookingsRepo.cancelBookingForPlayer.mockResolvedValue({
+        success: true,
+        cancelledAt,
+        refundAmount: '25.00',
+        playerEmail: 'player@example.com',
+        shouldPromoteWaitlist: true,
+      });
+      bookingsRepo.promoteWaitlistForMatch.mockResolvedValue({
+        promotedEmail: null,
+        skippedEmails: [],
+      });
+
+      const dto = await service.cancelBookingForPlayer({
+        tenantId,
+        matchId,
+        bookingId: bookingRow.id,
+        userId,
+        cancelCutoffHours: 24,
+      });
+
+      expect(dto.refundAmount).toBe('25.00');
+      expect(bookingsRepo.promoteWaitlistForMatch).toHaveBeenCalled();
+    });
+
     it('does not run waitlist promotion when cancelling prepaid waitlist', async () => {
       bookingsRepo.cancelBookingForPlayer.mockResolvedValue({
         success: true,

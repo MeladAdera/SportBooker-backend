@@ -10,7 +10,7 @@ export class CancelPlayerBookingResponseDto {
 
   @ApiProperty({
     description:
-      'Full refund for prepaid waitlist; "0.00" for confirmed bookings (no refund) or legacy unpaid waitlist',
+      'Prepaid waitlist cancel: full paid_amount. Confirmed cancel: paid_amount refunded only if outside tenant cancel_cutoff_hours; otherwise "0.00". Unpaid waitlist: "0.00".',
     example: '0.00',
   })
   refundAmount!: string;

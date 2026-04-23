@@ -118,6 +118,12 @@ variable "email_support_email" {
   default     = ""
 }
 
+variable "email_waitlist_refund_eta" {
+  description = "Human-readable ETA text shown in waitlist refund emails"
+  type        = string
+  default     = "3-5 business days"
+}
+
 variable "resend_template_password_reset_id" {
   description = "Resend template ID for password reset emails"
   type        = string
@@ -127,6 +133,13 @@ variable "resend_template_password_reset_id" {
 
 variable "resend_template_email_verification_id" {
   description = "Resend template ID for email verification emails"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "resend_template_waitlist_expired_refund_id" {
+  description = "Resend template ID for waitlist expired refund emails"
   type        = string
   default     = ""
   sensitive   = true

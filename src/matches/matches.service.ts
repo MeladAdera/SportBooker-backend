@@ -8,8 +8,10 @@ import {
 import { EmailService } from '../auth/email.service';
 import { BookingPosition } from '../bookings/booking-position';
 import { BookingsRepository } from '../bookings/bookings.repository';
+import { BookingsService } from '../bookings/bookings.service';
 import type { RemoveFromWaitlistResponseDto } from '../bookings/dto/remove-from-waitlist-response.dto';
 import type { AutoFillFakeMatchResponseDto } from './dto/auto-fill-fake-match-response.dto';
+import type { ClearFakesResponseDto } from './dto/clear-fakes-response.dto';
 import type { CreateMatchDto } from './dto/create-match.dto';
 import type { CancelMatchResponseDto } from './dto/cancel-match-response.dto';
 import type { UpdateMatchDto } from './dto/update-match.dto';
@@ -81,6 +83,7 @@ export class MatchesService {
     private readonly matchesRepository: MatchesRepository,
     private readonly venuesRepository: VenuesRepository,
     private readonly bookingsRepository: BookingsRepository,
+    private readonly bookingsService: BookingsService,
     private readonly emailService: EmailService,
   ) {}
 
@@ -442,6 +445,53 @@ export class MatchesService {
     }
     return {
       filled: result.filled,
+      confirmedCount: result.confirmedCount,
+      fakeBookingsCount: result.fakeBookingsCount,
+      spotsRemaining: result.spotsRemaining,
+    };
+  }
+
+  /**
+   * Hard-deletes every confirmed fake booking on a fake match. After commit,
+   * fires one waitlist-promotion pass per freed seat (fire-and-forget) so
+   * pending real players are upgraded to `confirmed` FIFO. Promotion failures
+   * are logged but never bubble up — the response reflects only the
+   * synchronous delete outcome.
+   */
+  async clearFakesForMatch(params: {
+    tenantId: string;
+    matchId: string;
+  }): Promise<ClearFakesResponseDto> {
+    const result =
+      await this.matchesRepository.clearFakeBookingsForMatch(params);
+    if (!result.success) {
+      switch (result.code) {
+        case 'MATCH_NOT_FOUND':
+          throw new NotFoundException('Match not found');
+        case 'MATCH_NOT_FAKE':
+          throw new BadRequestException(
+            'Clear fakes is only available for fake matches',
+          );
+        case 'MATCH_NOT_UPCOMING':
+          throw new BadRequestException(
+            'Clear fakes is only available for upcoming, non-cancelled matches',
+          );
+      }
+    }
+
+    for (let i = 0; i < result.removed; i++) {
+      void this.bookingsService
+        .promoteWaitlistAfterSpotOpened(params.tenantId, params.matchId)
+        .catch((err: unknown) => {
+          this.logger.error(
+            `promoteWaitlistAfterSpotOpened (clearFakes) rejected: ${err instanceof Error ? err.message : String(err)}`,
+            err instanceof Error ? err.stack : undefined,
+          );
+        });
+    }
+
+    return {
+      removed: result.removed,
       confirmedCount: result.confirmedCount,
       fakeBookingsCount: result.fakeBookingsCount,
       spotsRemaining: result.spotsRemaining,

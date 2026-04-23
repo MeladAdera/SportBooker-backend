@@ -49,7 +49,7 @@ Sportbooker is a **white-label SaaS platform** for sports clubs and organizers (
 | **Waitlist**           | When a match is full, new bookings become `pending` (waitlisted). The player is still charged. They get a refund if they cancel or never get promoted.                                                                         |
 | **Wallet**             | Each user has an internal balance. All payments go through this wallet — no external payment at booking time. Top-up is a separate future concern (likely Stripe).                                                             |
 | **Wallet Transaction** | A record of every balance change: `debit` (booking charge), `refund` (cancel/waitlist), `credit` or `topup` (future).                                                                                                          |
-| **Cancel Cutoff**      | A per-tenant setting (`cancel_cutoff_hours`, default 24h). Players cannot cancel a confirmed booking within this many hours of match start.                                                                                    |
+| **Cancel Cutoff**      | A per-tenant setting (`cancel_cutoff_hours`, default 24h). For **confirmed** bookings, cancellation is allowed until match start; a **wallet refund** of `paid_amount` applies only when cancel happens at least this many hours before match start. Inside that window, cancel still succeeds but there is no refund. |
 | **Position**           | Each booking has a position: `field_player` or `goalkeeper`. Maximum 2 confirmed goalkeepers per match.                                                                                                                        |
 | **Soft Delete**        | Users are not hard-deleted. They get a `deleted_at` timestamp and `is_active = false`. They cannot log in but their data (bookings, transactions) is preserved.                                                                |
 | **FIFO Promotion**     | When a confirmed spot opens up, the oldest (first-created) eligible pending booking is promoted automatically.                                                                                                                 |
@@ -157,7 +157,7 @@ platform_admin (5)   ← platform-level, manages all tenants
 | `is_active`                | boolean   | Inactive = 403 on all tenant routes                                                    |
 | `timezone`                 | text      | Default: `Asia/Dubai`                                                                  |
 | `logo_url`                 | text      | Optional                                                                               |
-| `cancel_cutoff_hours`      | integer   | Default: 24. Minimum hours before match start a player can cancel a confirmed booking. |
+| `cancel_cutoff_hours`      | integer   | Default: 24. Hours before match start required for a **wallet refund** when a player self-cancels a confirmed booking; cancel remains allowed (no refund) inside this window until kickoff. |
 | `created_at`, `updated_at` | timestamp | —                                                                                      |
 
 **Reserved slugs** (cannot be used by real tenants): `api`, `admin`, `www`, `mail`, `static`, `app`, `dashboard`, `health`, `platform`.
@@ -483,8 +483,9 @@ The player is the end customer — the person who books and pays for spots in ma
     ┌────────────────────────────────────────────────┐
     │  Cancel confirmed booking:                     │
     │  - Must be before match start                  │
-    │  - Must be ≥ cancel_cutoff_hours before start  │
-    │  - NO REFUND for confirmed cancellation        │
+    │  - If ≥ cancel_cutoff_hours before start:      │
+    │    full wallet refund of paid_amount           │
+    │  - If inside that window: cancel, no refund    │
     │  - Triggers FIFO waitlist promotion (async)    │
     │                                                │
     │  Cancel pending (waitlist) booking:            │
@@ -784,13 +785,12 @@ POST /matches/:matchId/bookings/:bookingId/cancel
         ▼
   IF booking.status = 'confirmed':
     Check: scheduled_at > now() (match must be in future)
-    Check: now() < scheduled_at - cancel_cutoff_hours
-           (must cancel before cutoff window)
-    If within cutoff window → 422 error (too late to cancel)
-    Otherwise:
-      Set booking: status=cancelled, cancelled_at=now
+    If scheduled_at >= now() + cancel_cutoff_hours AND paid_amount > 0:
+      Refund wallet_balance += paid_amount, wallet_tx refund, refunded_at=now
+    Else:
       NO wallet refund
-      Trigger async FIFO promotion
+    Set booking: status=cancelled, cancelled_at=now
+    Trigger async FIFO promotion
         │
   IF booking.status = 'pending' (waitlist):
     Set booking: status=cancelled, cancelled_at=now

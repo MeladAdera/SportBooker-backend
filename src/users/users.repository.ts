@@ -215,7 +215,7 @@ export class UsersRepository extends BaseRepository {
          skill_level::text AS skill_level,
          preferred_position::text AS preferred_position,
          dominant_foot::text AS dominant_foot,
-         preferred_days
+         preferred_days::text[] AS preferred_days
        FROM users
        WHERE id = $1 AND tenant_id = $2`,
       [userId, tenantId],
@@ -378,7 +378,7 @@ export class UsersRepository extends BaseRepository {
          skill_level::text AS skill_level,
          preferred_position::text AS preferred_position,
          dominant_foot::text AS dominant_foot,
-         preferred_days`,
+         preferred_days::text[] AS preferred_days`,
       values,
     );
     return rows[0] ?? null;
@@ -863,7 +863,7 @@ export class UsersRepository extends BaseRepository {
          skill_level::text AS skill_level,
          preferred_position::text AS preferred_position,
          dominant_foot::text AS dominant_foot,
-         preferred_days,
+         preferred_days::text[] AS preferred_days,
          created_at`,
       [
         params.tenantId,
@@ -935,7 +935,7 @@ export class UsersRepository extends BaseRepository {
          skill_level::text AS skill_level,
          preferred_position::text AS preferred_position,
          dominant_foot::text AS dominant_foot,
-         preferred_days,
+         preferred_days::text[] AS preferred_days,
          created_at`,
       [
         tenantId,
