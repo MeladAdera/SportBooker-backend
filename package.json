@@ -21,6 +21,7 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "migrate": "ts-node database/migrate.ts",
     "seed": "ts-node database/seed.ts",
+    "seed:fake-players": "ts-node database/seed-fake-players-production.ts",
     "db:reset": "ts-node database/reset.ts && ts-node database/migrate.ts",
     "db:up": "docker compose up -d db pgadmin --wait && npm run migrate",
     "docker:up": "docker compose up",
