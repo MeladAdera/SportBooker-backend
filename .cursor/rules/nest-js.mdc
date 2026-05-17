@@ -1,0 +1,420 @@
+---
+description: >
+  Core NestJS development patterns, conventions, database/repository patterns, auth, and RBAC for the SportBooker Backend. Use when implementing features, writing controllers/services/repositories, or working with auth or RBAC.
+alwaysApply: false
+---
+
+# NestJS Development Guidelines
+
+Core patterns, conventions, and best practices for NestJS development in the SportBooker project.
+
+**Related Rules:**
+
+- [testing.mdc](mdc:testing.mdc) - Testing conventions, factories, helpers, CI
+- [technology-stack.mdc](mdc:technology-stack.mdc) - Dependencies, versions, and compatibility
+- [cursor-rules.mdc](mdc:cursor-rules.mdc) - How to maintain these rules
+- [self-improvement.mdc](mdc:self-improvement.mdc) - When to update rules
+
+# ========================================
+
+# Core Architecture Principles
+
+# ========================================
+
+architecture:
+
+# Application Structure
+
+- Single NestJS application (not a monorepo — no `apps/` or `libs/`)
+- All source code lives under `src/`
+- Feature modules as top-level directories: `src/auth/`, `src/users/`, `src/tenant/`
+- Shared utilities in `src/common/` (filters, interceptors, pipes, types)
+
+# Layer Separation
+
+- **Controllers**: Handle HTTP request/response only — no business logic
+- **Services**: Contain business logic and orchestrate data access
+- **Repositories**: Handle database operations using native `pg` driver via `DB_POOL` injection
+- **DTOs**: Validate and transform input/output data
+
+# Configuration
+
+- Use `@nestjs/config` with Joi schema validation (`src/config/env.schema.ts`)
+- All environment variables validated on startup
+- Never hardcode secrets — use `.env` files
+
+# HTTP & API
+
+- Express HTTP adapter (default NestJS, not Fastify)
+- Swagger at `/api/docs` (non-production only) with Bearer auth
+- Global `ValidationPipe` (whitelist + forbidNonWhitelisted + transform)
+- Global `HttpExceptionFilter`, `LoggingInterceptor`, `TransformInterceptor`
+- Global `ThrottlerGuard` (1000 req/min default, per-route overrides via `@Throttle()`)
+
+# Naming Conventions
+
+- Modules: `{feature}.module.ts`
+- Controllers: `{feature}.controller.ts`
+- Services: `{feature}.service.ts`
+- DTOs: `{action}-{feature}.dto.ts` (e.g. `assign-role.dto.ts`)
+- Repositories: `{feature}.repository.ts`
+
+# ========================================
+
+# Database Architecture
+
+# ========================================
+
+database:
+driver: "pg (native PostgreSQL driver)"
+architecture: "Repository pattern with raw pg.Pool via DB_POOL injection"
+multi_tenancy: "Subdomain-based tenant resolution + tenant_id column scoping"
+status: "PRE-PRODUCTION — see pre-production.mdc for migration guidelines"
+
+# Database Module
+
+`DatabaseModule` (`src/database/db.module.ts`) is a `@Global()` module that provides a `pg.Pool` instance via the `DB_POOL` injection token. All modules can inject it without importing `DatabaseModule` explicitly.
+
+```typescript
+@Inject(DB_POOL) private readonly pool: Pool
+```
+
+Configuration is loaded from env vars: `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, plus optional pool tuning (`DB_POOL_MAX`, `DB_POOL_IDLE_TIMEOUT_MILLIS`, etc.).
+
+# Repository Pattern
+
+Repositories inject `DB_POOL` and execute parameterized SQL directly. There is no ORM or base repository class.
+
+```typescript
+@Injectable()
+export class UsersRepository {
+  constructor(@Inject(DB_POOL) private readonly pool: Pool) {}
+
+  async findByIdInTenant(tenantId: string, userId: string): Promise<UserRow | null> {
+    const { rows } = await this.pool.query<UserRow>(
+      `SELECT id, tenant_id, name, email, role, is_active, deleted_at, created_at, updated_at
+       FROM users
+       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
+      [userId, tenantId],
+    );
+    return rows[0] ?? null;
+  }
+}
+```
+
+**Best Practices:**
+
+- Always use parameterized queries (`$1`, `$2`, …) — never string interpolation
+- Use explicit column selection (no `SELECT *`)
+- Use `pool.connect()` + `BEGIN`/`COMMIT`/`ROLLBACK` for multi-step transactions (see `AuthService.refresh()` for example)
+- Repositories handle data access; services handle business logic
+
+# Multi-Tenancy
+
+Tenants are resolved via **subdomain**. `TenantMiddleware` extracts the subdomain from the `Host` header, looks up the tenant row (with in-memory cache, 60s TTL), and attaches it to `req.tenant`.
+
+Data isolation is done via `tenant_id` columns on tables + queries always scoping by `tenant_id`. There is no RLS (Row-Level Security) at the database level currently — scoping is enforced in application code.
+
+# Database Migrations (Pre-Production)
+
+**IMPORTANT:** Project is in pre-production. See [pre-production.mdc](mdc:.cursor/rules/pre-production.mdc) for migration guidelines.
+
+- Migration files live in `database/` (run via `npm run migrate`)
+- Seed data via `npm run seed`
+- ✅ **PREFERRED:** Update existing migration files for most changes
+- ⚠️ **EXCEPTION:** Only create new migrations for large, independent features
+- 🔄 **Re-run:** `docker compose down -v && npm run db:up` after editing migrations
+
+# ========================================
+
+# Authentication & Authorization
+
+# ========================================
+
+authentication:
+strategy: "Single Bearer JWT + opaque DB-backed refresh tokens"
+tokens:
+  access: "JWT in Authorization: Bearer header (default 15m)"
+  refresh: "Opaque token stored in refresh_tokens table (7 days, bcrypt-hashed, single-use rotation)"
+tenant_resolution: "Subdomain → TenantMiddleware → req.tenant (separate from JWT)"
+
+# Authentication Flow
+
+1. User visits `{tenant-slug}.sportbooker.com` → `TenantMiddleware` resolves tenant from subdomain
+2. `POST /auth/login` with `{ email, password }` → verifies credentials scoped to that tenant
+3. Returns `{ accessToken, refreshToken, expiresIn }`
+4. Client sends `Authorization: Bearer <accessToken>` on subsequent requests
+5. When access token expires, `POST /auth/refresh` with `{ refreshToken }` → rotates both tokens
+
+# JWT Payload
+
+```typescript
+interface JwtPayload {
+  sub: string;       // user ID
+  role: string;      // user_role enum value
+  tenantId: string;  // tenant the user logged into
+  iat?: number;
+  exp?: number;
+}
+```
+
+The JWT embeds `tenantId` at login time. A user is scoped to one tenant per session. To use a different tenant, they log in to a different subdomain.
+
+# Refresh Token Design
+
+- **Opaque format:** `{dbRowId}.{randomHex}` — NOT a JWT
+- **Storage:** Only the bcrypt hash of the random part is stored in `refresh_tokens` table
+- **Single-use rotation:** On refresh, the old row is deleted and a new one is inserted (within a transaction with `SELECT ... FOR UPDATE`)
+- **Logout:** Deletes all refresh tokens for the user
+- **Password reset:** Also clears all refresh tokens
+
+# Guards & Decorators
+
+| Decorator / Guard | Location | Purpose |
+| --- | --- | --- |
+| `JwtAuthGuard` | `src/auth/guards/jwt-auth.guard.ts` | **Global** guard (via `APP_GUARD`). Validates Bearer JWT on every request. |
+| `@Public()` | `src/auth/decorators/public.decorator.ts` | Marks a route as public — `JwtAuthGuard` skips auth. |
+| `@CurrentUser()` | `src/auth/decorators/current-user.decorator.ts` | Extracts `req.user` (JWT payload) as `AuthenticatedUser`. |
+| `@Tenant()` | `src/auth/decorators/tenant.decorator.ts` | Extracts `req.tenant` (from `TenantMiddleware`). |
+| `RolesGuard` | `src/auth/guards/roles.guard.ts` | Per-controller/route guard. Checks `req.user.role` against `@Roles()` metadata. |
+| `@Roles(...)` | `src/auth/decorators/roles.decorator.ts` | Sets required roles. Must pair with `@UseGuards(RolesGuard)`. |
+
+# Endpoint Authentication Examples
+
+```typescript
+// Public endpoint — no JWT required
+@Post('login')
+@Public()
+async login(@Body() dto: LoginDto, @Tenant() tenant: Tenant) { }
+
+// Default (protected) — requires valid JWT, any role
+@Get('bookings')
+async listBookings(@CurrentUser() user: AuthenticatedUser) {
+  // user.sub, user.role, user.tenantId available
+}
+
+// Role-restricted — requires JWT + specific roles
+@Controller('users')
+@UseGuards(RolesGuard)
+@Roles('super_admin', 'tenant_admin')
+export class UsersController {
+  @Patch(':userId/role')
+  async assignRole(
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @Body() dto: AssignRoleDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) { }
+}
+```
+
+# Security Measures
+
+- **Anti-enumeration:** Login uses `DUMMY_HASH` when user not found (constant-time). Forgot-password always returns same message.
+- **Rate limiting:** `@Throttle()` on register (10/min), login (5/min), forgot-password (3/min)
+- **Password hashing:** bcrypt with 12 rounds
+- **JWT secret validation:** `JWT_ACCESS_SECRET` must be ≥32 chars (enforced at startup by `JwtStrategy`)
+
+# Key Auth Files
+
+- `src/auth/auth.module.ts` — Module setup (Passport + JWT)
+- `src/auth/auth.service.ts` — Register, login, refresh, logout, forgot-password, reset-password
+- `src/auth/auth.controller.ts` — HTTP endpoints
+- `src/auth/auth.types.ts` — `JwtPayload`, `AuthenticatedUser` types
+- `src/auth/strategies/jwt.strategy.ts` — Passport JWT strategy (Bearer extraction + validation)
+- `src/auth/email.service.ts` — Transactional email via Resend
+
+# ========================================
+
+# RBAC (Role-Based Access Control)
+
+# ========================================
+
+rbac:
+architecture: "Simple role-string RBAC via JWT claim"
+strategy: "Role stored in JWT, checked by RolesGuard against @Roles() metadata"
+
+# User Roles
+
+Defined in `src/users/user-role.ts` as a TypeScript enum matching the DB `user_role` enum:
+
+| Role | Key | Rank | Description |
+| --- | --- | --- | --- |
+| Super Admin | `super_admin` | 4 | Platform-level admin, full access |
+| Tenant Admin | `tenant_admin` | 3 | Full access within their tenant |
+| Tenant Staff | `tenant_staff` | 2 | Staff-level access (e.g. manage bookings) |
+| Player | `player` | 1 | Default role on registration, basic booking access |
+
+# How RBAC Works
+
+1. User logs in → role is embedded in the JWT as a string
+2. `JwtAuthGuard` validates the token and attaches `req.user` (includes `role`)
+3. For role-restricted routes, apply `@UseGuards(RolesGuard)` + `@Roles('super_admin', 'tenant_admin')` on the controller or handler
+4. `RolesGuard` reads `@Roles()` metadata, checks if `req.user.role` is in the list → 403 if not
+
+**Known limitation:** Role is baked into the JWT at login. If a role changes, the old JWT keeps the stale role until it expires (default 15m).
+
+# Role Assignment
+
+Only `super_admin` and `tenant_admin` can assign roles via `PATCH /users/:userId/role`. Business rules:
+- `tenant_admin` cannot modify `super_admin` users
+- Self-demotion is blocked
+- Role rank comparison via `roleRank()` utility
+
+# ========================================
+
+# Best Practices
+
+# ========================================
+
+# HTTP & API
+
+- Use JWT auth strategy with Passport
+- Document all endpoints with Swagger decorators (`@ApiTags`, `@ApiResponse`, `@ApiOperation`, `@ApiBearerAuth`)
+- Use `@Public()` for unauthenticated endpoints
+- Apply `@Throttle()` on sensitive endpoints
+
+# Database
+
+- Inject `DB_POOL` for all database operations
+- Always use parameterized queries to prevent SQL injection
+- Repositories handle data access; services handle business logic
+- Use transactions for multi-step operations (`pool.connect()` + `BEGIN`/`COMMIT`/`ROLLBACK`)
+- Use explicit column selection (no `SELECT *`)
+
+# Architecture
+
+- Export only needed providers from each module
+- Keep business logic in services, not controllers
+- Use repository pattern for all data access
+- Avoid circular dependencies between modules
+
+# Validation & DTOs
+
+- Use class-validator for all input validation
+- Enable `whitelist: true` + `forbidNonWhitelisted: true` to strip/reject unknown properties
+- Use `transform: true` for automatic type conversion
+- Document DTOs with `@ApiProperty` decorators
+
+# Code Quality
+
+- Never use `any` unless absolutely necessary
+- Use explicit types for all function parameters and returns
+- Follow naming conventions consistently
+
+# ========================================
+
+# Development Workflow
+
+# ========================================
+
+# Daily Development
+
+```bash
+npm run start:dev       # Start API with watch mode
+npm run start:debug     # Start API with debugger + watch mode
+```
+
+# Database Operations
+
+```bash
+npm run db:up           # Start Postgres + pgAdmin via Docker, then run migrations
+npm run migrate         # Run database migrations only
+npm run seed            # Seed database with initial data
+```
+
+# Code Quality
+
+```bash
+npm run lint            # ESLint with auto-fix
+npm run format          # Prettier formatting
+npm run type-check      # TypeScript type validation (tsc --noEmit)
+```
+
+# Testing
+
+```bash
+npm run test            # Run all tests (Jest)
+npm run test:watch      # Run tests in watch mode
+npm run test:cov        # Run tests with coverage
+npm run test:e2e        # Run e2e tests
+```
+
+# ========================================
+
+# Common Patterns
+
+# ========================================
+
+# Module Creation
+
+```typescript
+@Module({
+  controllers: [FeatureController],
+  providers: [FeatureService, FeatureRepository],
+  exports: [FeatureService],
+})
+export class FeatureModule {}
+```
+
+Note: `DatabaseModule` is `@Global()` — no need to import it in feature modules.
+
+# Controller Pattern
+
+```typescript
+@Controller('features')
+@ApiTags('Features')
+@ApiBearerAuth()
+export class FeatureController {
+  constructor(private readonly featureService: FeatureService) {}
+
+  @Get()
+  @ApiOperation({ summary: 'List features for current tenant' })
+  @ApiResponse({ status: 200, type: [FeatureResponseDto] })
+  async findAll(@CurrentUser() user: AuthenticatedUser) {
+    return this.featureService.findAll(user.tenantId);
+  }
+}
+```
+
+# Service Pattern
+
+```typescript
+@Injectable()
+export class FeatureService {
+  constructor(private readonly featureRepository: FeatureRepository) {}
+
+  async findAll(tenantId: string): Promise<Feature[]> {
+    return this.featureRepository.findAllByTenant(tenantId);
+  }
+}
+```
+
+# DTO Pattern
+
+```typescript
+export class CreateFeatureDto {
+  @ApiProperty({ description: 'Feature name' })
+  @IsString()
+  @IsNotEmpty()
+  name: string;
+
+  @ApiProperty({ description: 'Feature description', required: false })
+  @IsString()
+  @IsOptional()
+  description?: string;
+}
+```
+
+# ========================================
+
+# Metadata
+
+# ========================================
+
+metadata:
+project: "SportBooker"
+version: "1.0"
+updated: "2026-03-24"
+note: >
+Reflects the actual codebase as of 2026-03-24.
+Single NestJS app with Express, raw pg, Passport JWT Bearer auth, simple role-string RBAC.

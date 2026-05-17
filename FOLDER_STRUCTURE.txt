@@ -1,0 +1,229 @@
+============================================================
+📁 SPORTBOOKER STRUCTURE
+============================================================
+Generated: 3/29/2026, 7:19:31 PM
+Location: /home/lenovo/Desktop/sportbooker
+============================================================
+
+📂 ROOT DIRECTORY:
+.
+├── 📁 .husky/
+├── 📁 _/
+│   ├── 📄 .gitignore (1 B)
+│   ├── 📄 applypatch-msg (39 B)
+│   ├── 📄 commit-msg (39 B)
+│   ├── 📄 h (551 B)
+│   ├── 📄 husky.sh (160 B)
+│   ├── 📄 post-applypatch (39 B)
+│   ├── 📄 post-checkout (39 B)
+│   ├── 📄 post-commit (39 B)
+│   ├── 📄 post-merge (39 B)
+│   ├── 📄 post-rewrite (39 B)
+│   ├── 📄 pre-applypatch (39 B)
+│   ├── 📄 pre-auto-gc (39 B)
+│   ├── 📄 pre-commit (39 B)
+│   ├── 📄 pre-merge-commit (39 B)
+│   ├── 📄 pre-push (39 B)
+│   ├── 📄 pre-rebase (39 B)
+│   └── 📄 prepare-commit-msg (39 B)
+├── 📄 commit-msg (38 B)
+└── 📄 pre-commit (35 B)
+├── 📁 database/
+├── 📁 migrations/
+│   ├── 📄 001_create_enums.sql (1.76 KB)
+│   ├── 📄 002_create_tenants.sql (541 B)
+│   ├── 📄 003_create_users.sql (1004 B)
+│   ├── 📄 004_create_venues.sql (997 B)
+│   ├── 📄 005_create_matches.sql (1.13 KB)
+│   ├── 📄 006_create_bookings.sql (909 B)
+│   ├── 📄 007_create_wallet_transactions.sql (901 B)
+│   ├── 📄 008_create_reviews.sql (924 B)
+│   ├── 📄 009_create_notifications.sql (892 B)
+│   ├── 📄 010_create_refresh_tokens.sql (844 B)
+│   ├── 📄 011_create_password_reset_tokens.sql (896 B)
+│   ├── 📄 012_add_tenant_slug_and_is_active.sql (1.08 KB)
+│   ├── 📄 013_add_tenant_timezone_and_user_roles.sql (592 B)
+│   ├── 📄 014_add_unique_venue_name_per_tenant.sql (280 B)
+│   ├── 📄 015_add_unique_match_venue_scheduled.sql (231 B)
+│   ├── 📄 016_add_user_name_phone.sql (538 B)
+│   ├── 📄 017_add_user_is_active.sql (299 B)
+│   ├── 📄 018_add_password_reset_used_at.sql (309 B)
+│   ├── 📄 019_add_tenant_logo_cancel_cutoff_slug_length.sql (584 B)
+│   ├── 📄 020_add_user_photo_url.sql (259 B)
+│   ├── 📄 021_venues_maps_sport_types_is_active.sql (1.03 KB)
+│   ├── 📄 022_add_venue_picture_url.sql (180 B)
+│   ├── 📄 023_venues_require_address_and_maps_url.sql (378 B)
+│   ├── 📄 024_matches_title_duration_enums.sql (1.25 KB)
+│   └── 📄 025_matches_status_default_upcoming.sql (301 B)
+├── 📁 seeds/
+│   ├── 📄 001_seed_tenants.sql (565 B)
+│   ├── 📄 002_seed_users.sql (1.6 KB)
+│   ├── 📄 003_seed_venues.sql (1.54 KB)
+│   └── 📄 004_seed_matches.sql (1.7 KB)
+├── 📄 migrate.ts (2.17 KB)
+├── 📄 pool-config-env.ts (1.65 KB)
+└── 📄 seed.ts (1.17 KB)
+├── 📁 docs/
+├── 📄 MIGRATIONS.md (18.96 KB)
+├── 📄 PROJECT_GUIDE.md (16.37 KB)
+└── 📄 VALIDATION_AND_RESPONSE_ENVELOPE.md (12.67 KB)
+├── 📁 scripts/
+├── 📁 src/
+├── 📁 admin/
+│   ├── 📄 admin-tenants.controller.ts (3.68 KB)
+│   └── 📄 admin.module.ts (364 B)
+├── 📁 auth/
+│   ├── 📁 decorators/
+│   │   ├── 📄 current-user.decorator.ts (587 B)
+│   │   ├── 📄 public.decorator.ts (332 B)
+│   │   ├── 📄 roles.decorator.ts (394 B)
+│   │   └── 📄 tenant.decorator.ts (562 B)
+│   ├── 📁 dto/
+│   │   ├── 📄 forgot-password.dto.ts (235 B)
+│   │   ├── 📄 login-response.dto.ts (392 B)
+│   │   ├── 📄 login.dto.ts (389 B)
+│   │   ├── 📄 refresh-response.dto.ts (371 B)
+│   │   ├── 📄 refresh.dto.ts (256 B)
+│   │   ├── 📄 register-response.dto.ts (371 B)
+│   │   ├── 📄 register.dto.ts (723 B)
+│   │   └── 📄 reset-password.dto.ts (411 B)
+│   ├── 📁 guards/
+│   │   ├── 📄 jwt-auth.guard.ts (1.09 KB)
+│   │   └── 📄 roles.guard.ts (1.38 KB)
+│   ├── 📁 strategies/
+│   │   └── 📄 jwt.strategy.ts (1.38 KB)
+│   ├── 📄 auth.controller.ts (5.21 KB)
+│   ├── 📄 auth.module.ts (1.11 KB)
+│   ├── 📄 auth.repository.ts (4.2 KB)
+│   ├── 📄 auth.service.ts (7.48 KB)
+│   ├── 📄 auth.types.ts (730 B)
+│   └── 📄 email.service.ts (1.09 KB)
+├── 📁 common/
+│   ├── 📁 constants/
+│   │   └── 📄 reserved-slugs.ts (256 B)
+│   ├── 📁 dto/
+│   │   └── 📄 pagination.dto.ts (556 B)
+│   ├── 📁 filters/
+│   │   └── 📄 http-exception.filter.ts (1.13 KB)
+│   ├── 📁 interceptors/
+│   │   ├── 📄 logging.interceptor.ts (1.01 KB)
+│   │   └── 📄 transform.interceptor.ts (708 B)
+│   ├── 📁 pipes/
+│   │   └── 📄 validation-exception.factory.ts (873 B)
+│   ├── 📄 index.ts (110 B)
+│   └── 📄 tenant.types.ts (441 B)
+├── 📁 config/
+│   └── 📄 env.schema.ts (1.96 KB)
+├── 📁 database/
+│   ├── 📄 base.repository.ts (1.4 KB)
+│   ├── 📄 database.constants.ts (419 B)
+│   ├── 📄 db.module.ts (562 B)
+│   ├── 📄 db.provider.ts (2.47 KB)
+│   ├── 📄 index.ts (94 B)
+│   └── 📄 pool-config.ts (1.13 KB)
+├── 📁 matches/
+│   ├── 📁 dto/
+│   │   ├── 📄 create-match.dto.ts (1.11 KB)
+│   │   ├── 📄 list-matches-query.dto.ts (1.37 KB)
+│   │   ├── 📄 match-browse-item.dto.ts (724 B)
+│   │   ├── 📄 match-detail-response.dto.ts (1.18 KB)
+│   │   ├── 📄 match-response.dto.ts (771 B)
+│   │   ├── 📄 match-roster-player.dto.ts (322 B)
+│   │   ├── 📄 paginated-matches-list.dto.ts (337 B)
+│   │   └── 📄 update-match.dto.ts (1.29 KB)
+│   ├── 📄 is-future-scheduled-at.decorator.ts (828 B)
+│   ├── 📄 matches.controller.ts (5.14 KB)
+│   ├── 📄 matches.module.ts (520 B)
+│   ├── 📄 matches.repository.ts (9.99 KB)
+│   ├── 📄 matches.service.spec.ts (10.38 KB)
+│   └── 📄 matches.service.ts (9.33 KB)
+├── 📁 tenant/
+│   ├── 📄 tenant.integration.spec.ts (4.2 KB)
+│   ├── 📄 tenant.middleware.spec.ts (1.42 KB)
+│   ├── 📄 tenant.middleware.ts (3.22 KB)
+│   └── 📄 tenant.module.ts (859 B)
+├── 📁 tenants/
+│   ├── 📁 decorators/
+│   │   └── 📄 is-iana-timezone.decorator.ts (1014 B)
+│   ├── 📁 dto/
+│   │   ├── 📄 admin-tenant-list-item.dto.ts (437 B)
+│   │   ├── 📄 create-tenant.dto.ts (1.21 KB)
+│   │   ├── 📄 list-tenants-query.dto.ts (773 B)
+│   │   ├── 📄 paginated-tenants-list.dto.ts (354 B)
+│   │   ├── 📄 tenant-deactivated-response.dto.ts (164 B)
+│   │   ├── 📄 tenant-response.dto.ts (480 B)
+│   │   └── 📄 update-tenant.dto.ts (1.25 KB)
+│   ├── 📄 iana-timezones.ts (447 B)
+│   ├── 📄 tenants.constants.ts (100 B)
+│   ├── 📄 tenants.module.ts (274 B)
+│   ├── 📄 tenants.repository.ts (5.17 KB)
+│   ├── 📄 tenants.service.spec.ts (8.84 KB)
+│   └── 📄 tenants.service.ts (5.51 KB)
+├── 📁 users/
+│   ├── 📁 dto/
+│   │   ├── 📄 account-deleted-response.dto.ts (158 B)
+│   │   ├── 📄 assign-role.dto.ts (482 B)
+│   │   ├── 📄 my-profile-response.dto.ts (656 B)
+│   │   ├── 📄 update-my-profile.dto.ts (709 B)
+│   │   └── 📄 user-response.dto.ts (409 B)
+│   ├── 📄 user-role.ts (809 B)
+│   ├── 📄 users.controller.ts (4.54 KB)
+│   ├── 📄 users.module.ts (537 B)
+│   ├── 📄 users.repository.ts (6.8 KB)
+│   ├── 📄 users.service.spec.ts (10.04 KB)
+│   └── 📄 users.service.ts (5.32 KB)
+├── 📁 venues/
+│   ├── 📁 dto/
+│   │   ├── 📄 create-venue-multipart.dto.ts (996 B)
+│   │   ├── 📄 create-venue.dto.ts (1.13 KB)
+│   │   ├── 📄 list-venues-query.dto.ts (435 B)
+│   │   ├── 📄 update-venue.dto.ts (1.19 KB)
+│   │   ├── 📄 venue-browse-item.dto.ts (504 B)
+│   │   ├── 📄 venue-deactivated-response.dto.ts (345 B)
+│   │   ├── 📄 venue-detail.dto.ts (663 B)
+│   │   └── 📄 venue-response.dto.ts (750 B)
+│   ├── 📄 parse-sport-types-json.spec.ts (798 B)
+│   ├── 📄 parse-sport-types-json.ts (889 B)
+│   ├── 📄 venue-picture.storage.ts (1.8 KB)
+│   ├── 📄 venue-sport-type.ts (187 B)
+│   ├── 📄 venues.controller.ts (8.51 KB)
+│   ├── 📄 venues.module.ts (528 B)
+│   ├── 📄 venues.repository.ts (6.7 KB)
+│   ├── 📄 venues.service.spec.ts (11.67 KB)
+│   └── 📄 venues.service.ts (6.76 KB)
+├── 📄 app.controller.spec.ts (617 B)
+├── 📄 app.controller.ts (1.74 KB)
+├── 📄 app.dto.ts (396 B)
+├── 📄 app.module.ts (2.23 KB)
+├── 📄 app.service.ts (142 B)
+└── 📄 main.ts (2.02 KB)
+├── 📁 test/
+├── 📁 helpers/
+│   └── 📄 mock-db-pool.ts (710 B)
+├── 📄 jest-e2e.json (227 B)
+└── 📄 setup-e2e.ts (505 B)
+├── 📄 .dockerignore (62 B)
+├── 📄 .env (540 B)
+├── 📄 .env.docker (207 B)
+├── 📄 .env.example (808 B)
+├── 📄 .gitignore (286 B)
+├── 📄 .npmrc (116 B)
+├── 📄 .prettierrc (51 B)
+├── 📄 commitlint.config.js (471 B)
+├── 📄 docker-compose.yml (1013 B)
+├── 📄 docker-entrypoint.sh (108 B)
+├── 📄 Dockerfile (183 B)
+├── 📄 eslint.config.mjs (985 B)
+├── 📄 FOLDER_STRUCTURE.txt (7.52 KB)
+├── 📄 g.js (4.33 KB)
+├── 📄 nest-cli.json (229 B)
+├── 📄 package-lock.json (407.32 KB)
+├── 📄 package.json (3.08 KB)
+├── 📄 pnpm-lock.yaml (235.39 KB)
+├── 📄 README.md (6.17 KB)
+├── 📄 tsconfig.build.json (97 B)
+└── 📄 tsconfig.json (715 B)
+
+============================================================
+📊 SUMMARY
+============================================================

@@ -1,0 +1,36 @@
+# Copy this to terraform.tfvars and fill in your values
+
+aws_region  = "ap-south-1"
+environment = "production"
+
+# Application (also used for ACM cert + Route 53 records)
+TENANT_HOST_SUFFIX = "sportbooker.net"
+
+# Browser origins allowed by the API (comma-separated). Tenant subdomains (*.sportbooker.net) are allowed dynamically.
+cors_origins = "https://app.sportbooker.net,https://sport-booker-fe.vercel.app,http://localhost:5173"
+
+# Secrets
+jwt_access_secret = "change-me-to-a-random-string-at-least-32-chars"
+jwt_access_expires_in = "15m"
+
+resend_api_key = "re_xxx"
+email_from = "noreply@your-domain.com"
+email_app_name = "SportBooker"
+email_support_email = "support@your-domain.com"
+email_waitlist_refund_eta = "3-5 business days"
+resend_template_password_reset_id = "432bfd62-0d5e-48cf-ad61-fd3d782b6698"
+resend_template_email_verification_id = "672a13df-d7f1-499e-9449-d55fb02d26a8"
+resend_template_waitlist_expired_refund_id = "e464ed47-8960-4722-b2a1-0e2667813de1"
+stripe_secret_key = "sk_live_xxx"
+stripe_webhook_secret = "whsec_xxx"
+
+# Ziina — required to encrypt/decrypt tenant Ziina tokens at rest
+# Generate with: openssl rand -hex 32
+ziina_encryption_key = "your-64-hex-char-key-here"
+
+# GitHub (for CI/CD OIDC)
+github_repo   = "your-username/SportBooker"
+github_branch = "main"
+
+# Bastion — your public IP in CIDR notation
+bastion_allowed_cidr = "1.2.3.4/32"
