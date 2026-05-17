@@ -33,7 +33,7 @@ FROM (VALUES
     '1 Stadium Road, London',
     'https://maps.example.com/acfc-main',
     'https://cdn.example.com/venues/acfc-main.jpg',
-    ARRAY['football', 'cricket']::TEXT[]
+    ARRAY['football', 'tennis']::TEXT[]
   ),
   (
     'acfc',
@@ -41,7 +41,7 @@ FROM (VALUES
     '2 Stadium Road, London',
     'https://maps.example.com/acfc-tennis',
     NULL,
-    ARRAY['padel', 'generic']::TEXT[]
+    ARRAY['basketball', 'volleyball']::TEXT[]
   ),
   (
     'acfc',

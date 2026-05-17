@@ -36,7 +36,7 @@ describe('VenuesService', () => {
     address: '1 Road',
     maps_url: 'https://maps.example.com/x',
     picture_url: 'https://cdn.example.com/v.jpg',
-    sport_types: ['football', 'padel'],
+    sport_types: ['football', 'basketball'],
     is_active: true,
     created_at: new Date('2025-01-01T00:00:00.000Z'),
     updated_at: new Date('2025-01-02T00:00:00.000Z'),
@@ -93,7 +93,7 @@ describe('VenuesService', () => {
         address: '1 Road',
         mapsUrl: 'https://maps.example.com/x',
         pictureUrl: 'https://cdn.example.com/v.jpg',
-        sportTypes: '["football","padel"]',
+        sportTypes: '["football","basketball"]',
       });
 
       expect(repository.insertVenue).toHaveBeenCalledWith(tenantId, {
@@ -101,7 +101,7 @@ describe('VenuesService', () => {
         address: '1 Road',
         mapsUrl: 'https://maps.example.com/x',
         pictureUrl: 'https://cdn.example.com/v.jpg',
-        sportTypes: [VenueSportType.Football, VenueSportType.Padel],
+        sportTypes: [VenueSportType.Football, VenueSportType.Basketball],
       });
       expect(result).toEqual({
         id: row.id,
@@ -110,7 +110,7 @@ describe('VenuesService', () => {
         address: '1 Road',
         mapsUrl: 'https://maps.example.com/x',
         pictureUrl: 'https://cdn.example.com/v.jpg',
-        sportTypes: ['football', 'padel'],
+        sportTypes: ['football', 'basketball'],
         isActive: true,
         createdAt: '2025-01-01T00:00:00.000Z',
         updatedAt: '2025-01-02T00:00:00.000Z',
@@ -242,7 +242,7 @@ describe('VenuesService', () => {
       name: 'Detail Court',
       address: '99 St',
       maps_url: 'https://maps.example.com/detail',
-      sport_types: ['cricket'],
+      sport_types: ['tennis'],
       is_active: true,
       picture_url: 'https://cdn.example.com/p.jpg',
     };
@@ -261,7 +261,7 @@ describe('VenuesService', () => {
         name: detailRow.name,
         address: detailRow.address,
         mapsUrl: detailRow.maps_url,
-        sportTypes: ['cricket'],
+        sportTypes: ['tennis'],
         isActive: true,
         pictureUrl: 'https://cdn.example.com/p.jpg',
       });
@@ -286,7 +286,7 @@ describe('VenuesService', () => {
         address: '99 St',
         maps_url: 'https://maps.example.com/detail',
         picture_url: 'https://cdn.example.com/p.jpg',
-        sport_types: ['cricket'],
+        sport_types: ['tennis'],
       };
       repository.findVenueRowByIdForTenant.mockResolvedValue(inactiveRow);
 
@@ -537,19 +537,19 @@ describe('VenuesService', () => {
       repository.findVenuesForBrowse.mockResolvedValue([]);
 
       await service.listForBrowse(tenantId, {
-        sportType: VenueSportType.Padel,
+        sportType: VenueSportType.Basketball,
         page: 3,
         limit: 20,
       });
 
       expect(repository.countVenuesForBrowse).toHaveBeenCalledWith(
         tenantId,
-        VenueSportType.Padel,
+        VenueSportType.Basketball,
         false,
       );
       expect(repository.findVenuesForBrowse).toHaveBeenCalledWith(
         tenantId,
-        VenueSportType.Padel,
+        VenueSportType.Basketball,
         20,
         40,
         false,

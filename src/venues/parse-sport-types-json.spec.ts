@@ -4,9 +4,9 @@ import { parseSportTypesJson } from './parse-sport-types-json';
 
 describe('parseSportTypesJson', () => {
   it('parses valid JSON array', () => {
-    expect(parseSportTypesJson('["football","padel"]')).toEqual([
+    expect(parseSportTypesJson('["football","basketball"]')).toEqual([
       VenueSportType.Football,
-      VenueSportType.Padel,
+      VenueSportType.Basketball,
     ]);
   });
 
@@ -19,7 +19,7 @@ describe('parseSportTypesJson', () => {
   });
 
   it('throws on invalid enum value', () => {
-    expect(() => parseSportTypesJson('["football","tennis"]')).toThrow(
+    expect(() => parseSportTypesJson('["football","cricket"]')).toThrow(
       BadRequestException,
     );
   });
