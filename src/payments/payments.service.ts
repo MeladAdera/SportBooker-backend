@@ -43,46 +43,30 @@ export class PaymentsService {
   }): Promise<TopupResponseDto> {
     const { tenant, userId, amount } = params;
 
-    const creds = await this.paymentsRepository.findZiinaCredentials(tenant.id);
-    if (!creds?.ziina_access_token) {
-      throw new UnprocessableEntityException(
-        'Online top-up is not configured for this tenant. Please contact the organizer.',
-      );
-    }
-
-    const accessToken = this.cryptoService.decrypt(creds.ziina_access_token);
-
-    const baseUrl = this.getTenantPublicBaseUrl(tenant.slug);
-    const successUrl = `${baseUrl}/payments/topup/success`;
-    const cancelUrl = `${baseUrl}/payments/topup/cancel`;
-    const failureUrl = `${baseUrl}/payments/topup/failure`;
-
-    // Ziina amounts are in base units (fils): 1 AED = 100 fils
-    const amountInFils = Math.round(amount * 100);
-
-    const intent = await this.ziinaClient.createPaymentIntent(accessToken, {
-      amount: amountInFils,
-      currency_code: 'AED',
-      message: `Wallet top-up — ${amount} AED`,
-      success_url: successUrl,
-      cancel_url: cancelUrl,
-      failure_url: failureUrl,
-      test: this.config.get<string>('NODE_ENV') !== 'production',
-    });
-
+    // FREE MODE: Add credits directly without payment
     const record = await this.paymentsRepository.insertPaymentIntent({
-      ziinaPaymentId: intent.id,
+      ziinaPaymentId: `free-topup-${Date.now()}`,
       userId,
       tenantId: tenant.id,
       amount,
     });
 
-    if (!intent.redirect_url) {
-      throw new BadRequestException('Ziina did not return a redirect URL');
-    }
+    // Auto-complete the topup immediately
+    await this.paymentsRepository.withTransaction(async (client) => {
+      await this.paymentsRepository.completeTopup(client, {
+        paymentIntentId: record.id,
+        userId,
+        tenantId: tenant.id,
+        amount,
+      });
+    });
+
+    this.logger.log(
+      `Free wallet top-up: user=${userId} amount=${amount}`,
+    );
 
     return {
-      redirectUrl: intent.redirect_url,
+      redirectUrl: '', // No redirect needed
       paymentIntentId: record.id,
     };
   }
