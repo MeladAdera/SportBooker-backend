@@ -53,11 +53,11 @@ export class UpdateMatchDto {
   @Min(1)
   maxCapacity?: number;
 
-  @ApiPropertyOptional({ description: 'Whole currency units; must be >= 1' })
+  @ApiPropertyOptional({ description: 'Whole currency units; must be >= 0' })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
-  @Min(1)
+  @Min(0)
   pricePerPlayer?: number;
 
   @ApiPropertyOptional({

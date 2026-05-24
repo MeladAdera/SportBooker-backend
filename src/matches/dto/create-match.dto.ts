@@ -49,11 +49,11 @@ export class CreateMatchDto {
 
   @ApiProperty({
     example: 15,
-    description: 'Whole currency units; must be >= 1',
+    description: 'Whole currency units; must be >= 0',
   })
   @Type(() => Number)
   @IsInt()
-  @Min(1)
+  @Min(0)
   pricePerPlayer!: number;
 
   @ApiPropertyOptional({
