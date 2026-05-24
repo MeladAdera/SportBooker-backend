@@ -1,13 +1,18 @@
 FROM node:22-alpine
 
-RUN corepack enable && corepack prepare pnpm@latest --activate
+ENV HUSKY=0
+
+RUN corepack enable && corepack prepare pnpm@10.12.1 --activate
 
 WORKDIR /app
 
 COPY package.json pnpm-lock.yaml ./
+
+RUN pnpm config set ignore-scripts false
 RUN pnpm install --frozen-lockfile
 
 COPY . .
+
 RUN pnpm run build
 
 EXPOSE 3000
