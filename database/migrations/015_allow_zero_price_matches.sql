@@ -5,6 +5,22 @@
 -- Dependencies: 005
 -- =========================
 
-ALTER TABLE matches
-DROP CONSTRAINT matches_price_per_player_postive,
-ADD CONSTRAINT matches_price_per_player_non_negative CHECK (price_per_player >= 0);
+DO $$
+BEGIN
+  BEGIN
+    ALTER TABLE matches DROP CONSTRAINT matches_price_per_player_positive;
+  EXCEPTION WHEN undefined_object THEN
+    NULL;
+  END;
+END $$;
+
+DO $$
+BEGIN
+  BEGIN
+    ALTER TABLE matches DROP CONSTRAINT matches_price_per_player_non_negative;
+  EXCEPTION WHEN undefined_object THEN
+    NULL;
+  END;
+END $$;
+
+ALTER TABLE matches ADD CONSTRAINT matches_price_per_player_non_negative CHECK (price_per_player >= 0);
