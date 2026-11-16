@@ -23,16 +23,15 @@ function parseOptionalInt(
 export function getPoolConfigFromEnv(
   env: Record<string, string | undefined>,
 ): PoolConfig {
+  const connectionString = env.DATABASE_URL?.trim();
   const host = env.DB_HOST;
   const portStr = env.DB_PORT;
   const database = env.DB_NAME;
   const user = env.DB_USER;
   const password = env.DB_PASSWORD;
-  console.log(host, portStr, database, user, password);
-
-  if (!host || !database || !user || !password) {
+  if (!connectionString && (!host || !database || !user || !password)) {
     throw new Error(
-      'Missing required env: DB_HOST, DB_NAME, DB_USER, DB_PASSWORD',
+      'Missing required env: DATABASE_URL, or DB_HOST, DB_NAME, DB_USER, DB_PASSWORD',
     );
   }
 
@@ -42,11 +41,9 @@ export function getPoolConfigFromEnv(
   }
 
   return createPoolConfig({
-    host,
-    port,
-    database,
-    user,
-    password,
+    ...(connectionString
+      ? { connectionString }
+      : { host, port, database, user, password }),
     ssl: env.DB_SSL === 'true' || env.DB_SSL === '1',
     max: parseOptionalInt(env.DB_POOL_MAX, 'DB_POOL_MAX', 1),
     idleTimeoutMillis: parseOptionalInt(

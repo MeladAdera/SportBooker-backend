@@ -19,12 +19,17 @@ export function createDbPoolFactory() {
     provide: DB_POOL,
     inject: [ConfigService],
     useFactory: async (config: ConfigService): Promise<Pool> => {
+      const connectionString = config.get<string>('DATABASE_URL')?.trim();
       const poolConfig = createPoolConfig({
-        host: config.getOrThrow<string>('DB_HOST'),
-        port: config.getOrThrow<number>('DB_PORT'),
-        database: config.getOrThrow<string>('DB_NAME'),
-        user: config.getOrThrow<string>('DB_USER'),
-        password: config.getOrThrow<string>('DB_PASSWORD'),
+        ...(connectionString
+          ? { connectionString }
+          : {
+              host: config.getOrThrow<string>('DB_HOST'),
+              port: config.getOrThrow<number>('DB_PORT'),
+              database: config.getOrThrow<string>('DB_NAME'),
+              user: config.getOrThrow<string>('DB_USER'),
+              password: config.getOrThrow<string>('DB_PASSWORD'),
+            }),
         max: config.getOrThrow<number>('DB_POOL_MAX'),
         idleTimeoutMillis: config.getOrThrow<number>(
           'DB_POOL_IDLE_TIMEOUT_MILLIS',

@@ -1,11 +1,13 @@
 import type { PoolConfig } from 'pg';
 
 export interface PoolConfigInput {
-  host: string;
-  port: number;
-  database: string;
-  user: string;
-  password: string;
+  /** Full connection string (e.g. Neon). Takes precedence over host/port/etc. */
+  connectionString?: string;
+  host?: string;
+  port?: number;
+  database?: string;
+  user?: string;
+  password?: string;
   max?: number;
   idleTimeoutMillis?: number;
   connectionTimeoutMillis?: number;
@@ -26,12 +28,19 @@ export function createPoolConfig(input: PoolConfigInput): PoolConfig {
   const timeout =
     input.statementTimeoutMillis ?? DEFAULT_STATEMENT_TIMEOUT_MILLIS;
 
+  const connectionString = input.connectionString?.trim();
+  const target: PoolConfig = connectionString
+    ? { connectionString }
+    : {
+        host: input.host,
+        port: input.port,
+        database: input.database,
+        user: input.user,
+        password: input.password,
+      };
+
   return {
-    host: input.host,
-    port: input.port,
-    database: input.database,
-    user: input.user,
-    password: input.password,
+    ...target,
     max: input.max ?? DEFAULT_POOL_MAX,
     idleTimeoutMillis: input.idleTimeoutMillis ?? DEFAULT_IDLE_TIMEOUT_MILLIS,
     connectionTimeoutMillis:

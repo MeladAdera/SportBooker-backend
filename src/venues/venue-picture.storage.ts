@@ -21,6 +21,7 @@ const MIME_EXT: Record<string, string> = {
 export class VenuePictureStorage {
   private readonly s3BucketName: string | undefined;
   private readonly s3Region: string | undefined;
+  private readonly blobToken: string | undefined;
   private s3Client: InstanceType<
     typeof import('@aws-sdk/client-s3').S3Client
   > | null = null;
@@ -28,6 +29,8 @@ export class VenuePictureStorage {
   constructor(private readonly config: ConfigService) {
     this.s3BucketName = this.config.get<string>('S3_BUCKET_NAME');
     this.s3Region = this.config.get<string>('S3_REGION');
+    this.blobToken =
+      this.config.get<string>('BLOB_READ_WRITE_TOKEN')?.trim() || undefined;
   }
 
   private async getS3Client() {
@@ -79,6 +82,9 @@ export class VenuePictureStorage {
     if (this.useS3) {
       return this.saveToS3(key, file);
     }
+    if (this.blobToken) {
+      return this.saveToVercelBlob(key, file);
+    }
     return this.saveToDisk(key, file);
   }
 
@@ -98,6 +104,23 @@ export class VenuePictureStorage {
         }),
       );
       return `https://${this.s3BucketName}.s3.${this.s3Region}.amazonaws.com/${key}`;
+    } catch {
+      throw new InternalServerErrorException('Failed to save venue picture');
+    }
+  }
+
+  private async saveToVercelBlob(
+    key: string,
+    file: Express.Multer.File,
+  ): Promise<string> {
+    try {
+      const { put } = await import('@vercel/blob');
+      const blob = await put(key, file.buffer, {
+        access: 'public',
+        contentType: file.mimetype,
+        token: this.blobToken,
+      });
+      return blob.url;
     } catch {
       throw new InternalServerErrorException('Failed to save venue picture');
     }

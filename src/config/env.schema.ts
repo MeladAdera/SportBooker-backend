@@ -9,20 +9,55 @@ export const envSchema = Joi.object({
     'any.required':
       'TENANT_HOST_SUFFIX is required. Tenant resolution uses it to extract subdomain from Host.',
   }),
-  DB_HOST: Joi.string().required().messages({
-    'any.required': 'DB_HOST is required for PostgreSQL connection.',
+  /**
+   * Full PostgreSQL connection string (e.g. Neon). When set, DB_HOST/DB_PORT/
+   * DB_NAME/DB_USER/DB_PASSWORD are not required and are ignored.
+   */
+  DATABASE_URL: Joi.string()
+    .uri({ scheme: ['postgres', 'postgresql'] })
+    .optional()
+    .allow(''),
+  DB_HOST: Joi.string().when('DATABASE_URL', {
+    is: Joi.string().min(1),
+    then: Joi.optional().allow(''),
+    otherwise: Joi.required().messages({
+      'any.required':
+        'DB_HOST (or DATABASE_URL) is required for PostgreSQL connection.',
+    }),
   }),
-  DB_PORT: Joi.number().port().required().messages({
-    'any.required': 'DB_PORT is required for PostgreSQL connection.',
+  DB_PORT: Joi.number()
+    .port()
+    .when('DATABASE_URL', {
+      is: Joi.string().min(1),
+      then: Joi.optional().allow(''),
+      otherwise: Joi.required().messages({
+        'any.required':
+          'DB_PORT (or DATABASE_URL) is required for PostgreSQL connection.',
+      }),
+    }),
+  DB_NAME: Joi.string().when('DATABASE_URL', {
+    is: Joi.string().min(1),
+    then: Joi.optional().allow(''),
+    otherwise: Joi.required().messages({
+      'any.required':
+        'DB_NAME (or DATABASE_URL) is required for PostgreSQL connection.',
+    }),
   }),
-  DB_NAME: Joi.string().required().messages({
-    'any.required': 'DB_NAME is required for PostgreSQL connection.',
+  DB_USER: Joi.string().when('DATABASE_URL', {
+    is: Joi.string().min(1),
+    then: Joi.optional().allow(''),
+    otherwise: Joi.required().messages({
+      'any.required':
+        'DB_USER (or DATABASE_URL) is required for PostgreSQL connection.',
+    }),
   }),
-  DB_USER: Joi.string().required().messages({
-    'any.required': 'DB_USER is required for PostgreSQL connection.',
-  }),
-  DB_PASSWORD: Joi.string().required().messages({
-    'any.required': 'DB_PASSWORD is required for PostgreSQL connection.',
+  DB_PASSWORD: Joi.string().when('DATABASE_URL', {
+    is: Joi.string().min(1),
+    then: Joi.optional().allow(''),
+    otherwise: Joi.required().messages({
+      'any.required':
+        'DB_PASSWORD (or DATABASE_URL) is required for PostgreSQL connection.',
+    }),
   }),
   DB_SSL: Joi.boolean().default(false),
   DB_POOL_MAX: Joi.number().integer().min(1).default(20),
@@ -47,9 +82,17 @@ export const envSchema = Joi.object({
    * When unset, defaults to the resolved API public origin.
    */
   WEB_APP_PUBLIC_ORIGIN: Joi.string().optional().allow(''),
+  /**
+   * When false, tenant-scoped browser links (verify email, reset password,
+   * payment redirects) use WEB_APP_PUBLIC_ORIGIN directly instead of
+   * `{slug}.{TENANT_HOST_SUFFIX}`. Use for single-host deployments.
+   */
+  TENANT_SUBDOMAIN_URLS: Joi.boolean().default(true),
   /** S3 bucket name for venue uploads. When set, uploads go to S3 instead of local disk. */
   S3_BUCKET_NAME: Joi.string().optional().allow(''),
   S3_REGION: Joi.string().optional().allow(''),
+  /** Vercel Blob token. When set (and S3 is not), uploads go to Vercel Blob. */
+  BLOB_READ_WRITE_TOKEN: Joi.string().optional().allow(''),
   /**
    * AES-256-GCM key for encrypting Ziina access tokens at rest.
    * Must be exactly 64 hex characters (32 bytes).
