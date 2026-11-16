@@ -1,4 +1,5 @@
 import { ConfigService } from '@nestjs/config';
+import { buildTenantPublicOrigin } from '../payments/tenant-public-url';
 
 function stripOrigin(value: string): string {
   return value.trim().replace(/\/$/, '');
@@ -25,4 +26,29 @@ export function resolveWebAppPublicOrigin(config: ConfigService): string {
   const direct = config.get<string>('WEB_APP_PUBLIC_ORIGIN');
   if (direct?.trim()) return stripOrigin(direct);
   return resolveApiPublicOrigin(config);
+}
+
+/**
+ * Browser origin for tenant-scoped links (email verification, password reset,
+ * payment redirects).
+ *
+ * - Default: `{protocol}//{slug}.{TENANT_HOST_SUFFIX}` (one subdomain per tenant).
+ * - `TENANT_SUBDOMAIN_URLS=false`: the web app has no tenant subdomains (e.g. a
+ *   single-host demo on *.vercel.app, or plain localhost dev), so links use
+ *   `WEB_APP_PUBLIC_ORIGIN` as-is.
+ */
+export function resolveTenantWebOrigin(
+  config: ConfigService,
+  tenantSlug: string,
+): string {
+  const webOrigin = resolveWebAppPublicOrigin(config);
+  const useSubdomains = config.get<boolean>('TENANT_SUBDOMAIN_URLS', true);
+  if (useSubdomains === false || String(useSubdomains) === 'false') {
+    return webOrigin;
+  }
+  return buildTenantPublicOrigin(
+    webOrigin,
+    config.getOrThrow<string>('TENANT_HOST_SUFFIX'),
+    tenantSlug,
+  );
 }

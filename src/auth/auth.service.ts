@@ -11,6 +11,7 @@ import { randomBytes } from 'crypto';
 import { UsersRepository } from '../users/users.repository';
 import { AuthRepository } from './auth.repository';
 import { EmailService } from './email.service';
+import { resolveTenantWebOrigin } from '../config/public-origins';
 import type { LoginDto } from './dto/login.dto';
 import type { LoginResponseDto } from './dto/login-response.dto';
 import type { ForgotPasswordDto } from './dto/forgot-password.dto';
@@ -266,9 +267,8 @@ export class AuthService {
 
     const fullToken = `${resetId}.${plainToken}`;
 
-    const appDomain = this.config.getOrThrow<string>('TENANT_HOST_SUFFIX');
-    const protocol = appDomain.includes('localhost') ? 'http' : 'https';
-    const resetLink = `${protocol}://${tenantSlug}.${appDomain}/reset-password?token=${encodeURIComponent(fullToken)}`;
+    const webOrigin = resolveTenantWebOrigin(this.config, tenantSlug);
+    const resetLink = `${webOrigin}/reset-password?token=${encodeURIComponent(fullToken)}`;
 
     await this.emailService.sendPasswordResetEmail(
       user.email,
@@ -417,9 +417,8 @@ export class AuthService {
     );
     const fullToken = `${verifyId}.${plainToken}`;
 
-    const appDomain = this.config.getOrThrow<string>('TENANT_HOST_SUFFIX');
-    const protocol = appDomain.includes('localhost') ? 'http' : 'https';
-    const verificationLink = `${protocol}://${tenantSlug}.${appDomain}/verify-email?token=${encodeURIComponent(fullToken)}`;
+    const webOrigin = resolveTenantWebOrigin(this.config, tenantSlug);
+    const verificationLink = `${webOrigin}/verify-email?token=${encodeURIComponent(fullToken)}`;
 
     await this.emailService.sendEmailVerificationEmail(
       email,

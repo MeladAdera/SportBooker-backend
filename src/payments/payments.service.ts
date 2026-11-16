@@ -11,10 +11,9 @@ import { ZiinaClient } from './ziina.client';
 import { CryptoService } from '../common/crypto/crypto.service';
 import type { TopupResponseDto } from './dto/topup-response.dto';
 import type { Tenant } from '../common/tenant.types';
-import { buildTenantPublicOrigin } from './tenant-public-url';
 import {
   resolveApiPublicOrigin,
-  resolveWebAppPublicOrigin,
+  resolveTenantWebOrigin,
 } from '../config/public-origins';
 
 /** Ziina IPs that are allowed to deliver webhooks. */
@@ -200,11 +199,7 @@ export class PaymentsService {
 
   /** Base URL including tenant subdomain for Ziina browser redirects (frontend origin + protocol). */
   private getTenantPublicBaseUrl(tenantSlug: string): string {
-    return buildTenantPublicOrigin(
-      resolveWebAppPublicOrigin(this.config),
-      this.config.getOrThrow<string>('TENANT_HOST_SUFFIX'),
-      tenantSlug,
-    );
+    return resolveTenantWebOrigin(this.config, tenantSlug);
   }
 
   /** Called by TenantsService after saving a new Ziina token. Registers webhook with Ziina. */
