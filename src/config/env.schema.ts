@@ -88,6 +88,11 @@ export const envSchema = Joi.object({
    * `{slug}.{TENANT_HOST_SUFFIX}`. Use for single-host deployments.
    */
   TENANT_SUBDOMAIN_URLS: Joi.boolean().default(true),
+  /**
+   * Demo only: wallet top-ups are credited immediately without Ziina.
+   * Never enable for real money.
+   */
+  PAYMENTS_FREE_MODE: Joi.boolean().default(false),
   /** S3 bucket name for venue uploads. When set, uploads go to S3 instead of local disk. */
   S3_BUCKET_NAME: Joi.string().optional().allow(''),
   S3_REGION: Joi.string().optional().allow(''),

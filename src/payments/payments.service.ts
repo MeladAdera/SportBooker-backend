@@ -42,6 +42,10 @@ export class PaymentsService {
   }): Promise<TopupResponseDto> {
     const { tenant, userId, amount } = params;
 
+    if (this.config.get<boolean>('PAYMENTS_FREE_MODE', false)) {
+      return this.createFreeTopup(tenant, userId, amount);
+    }
+
     const creds = await this.paymentsRepository.findZiinaCredentials(tenant.id);
     if (!creds?.ziina_access_token) {
       throw new UnprocessableEntityException(
@@ -82,6 +86,40 @@ export class PaymentsService {
 
     return {
       redirectUrl: intent.redirect_url,
+      paymentIntentId: record.id,
+    };
+  }
+
+  /**
+   * Demo mode (PAYMENTS_FREE_MODE=true): credit the wallet immediately without
+   * Ziina, then send the browser to the same success page Ziina would.
+   */
+  private async createFreeTopup(
+    tenant: Tenant,
+    userId: string,
+    amount: number,
+  ): Promise<TopupResponseDto> {
+    const record = await this.paymentsRepository.insertPaymentIntent({
+      ziinaPaymentId: `free-topup-${crypto.randomUUID()}`,
+      userId,
+      tenantId: tenant.id,
+      amount,
+    });
+
+    await this.paymentsRepository.withTransaction(async (client) => {
+      await this.paymentsRepository.completeTopup(client, {
+        paymentIntentId: record.id,
+        userId,
+        tenantId: tenant.id,
+        amount,
+      });
+    });
+
+    this.logger.log(`Free wallet top-up: user=${userId} amount=${amount}`);
+
+    const baseUrl = this.getTenantPublicBaseUrl(tenant.slug);
+    return {
+      redirectUrl: `${baseUrl}/payments/topup/success`,
       paymentIntentId: record.id,
     };
   }
