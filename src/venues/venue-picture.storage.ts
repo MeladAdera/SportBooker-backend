@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   InternalServerErrorException,
+  Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
@@ -19,6 +20,7 @@ const MIME_EXT: Record<string, string> = {
 
 @Injectable()
 export class VenuePictureStorage {
+  private readonly logger = new Logger(VenuePictureStorage.name);
   private readonly s3BucketName: string | undefined;
   private readonly s3Region: string | undefined;
   private readonly blobToken: string | undefined;
@@ -31,6 +33,15 @@ export class VenuePictureStorage {
     this.s3Region = this.config.get<string>('S3_REGION');
     this.blobToken =
       this.config.get<string>('BLOB_READ_WRITE_TOKEN')?.trim() || undefined;
+  }
+
+  /** Logs the real cause (kept out of the HTTP response) and throws a safe 500. */
+  private fail(target: string, key: string, err: unknown): never {
+    this.logger.error(
+      `${target} upload failed for "${key}": ${err instanceof Error ? err.message : String(err)}`,
+      err instanceof Error ? err.stack : undefined,
+    );
+    throw new InternalServerErrorException('Failed to save venue picture');
   }
 
   private async getS3Client() {
@@ -104,8 +115,8 @@ export class VenuePictureStorage {
         }),
       );
       return `https://${this.s3BucketName}.s3.${this.s3Region}.amazonaws.com/${key}`;
-    } catch {
-      throw new InternalServerErrorException('Failed to save venue picture');
+    } catch (err) {
+      this.fail('S3', key, err);
     }
   }
 
@@ -121,8 +132,8 @@ export class VenuePictureStorage {
         token: this.blobToken,
       });
       return blob.url;
-    } catch {
-      throw new InternalServerErrorException('Failed to save venue picture');
+    } catch (err) {
+      this.fail('Vercel Blob', key, err);
     }
   }
 
@@ -135,8 +146,8 @@ export class VenuePictureStorage {
     try {
       await mkdir(dir, { recursive: true });
       await writeFile(absolutePath, file.buffer);
-    } catch {
-      throw new InternalServerErrorException('Failed to save venue picture');
+    } catch (err) {
+      this.fail('Local disk', key, err);
     }
     const base = this.getPublicBaseUrl();
     return `${base}/uploads/${key}`;
