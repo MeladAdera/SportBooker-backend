@@ -23,7 +23,7 @@
 -- Absolute URLs are required: venue forms validate pictureUrl as a URL.
 CREATE TEMP TABLE IF NOT EXISTS _demo_cfg (web_origin TEXT NOT NULL);
 TRUNCATE _demo_cfg;
-INSERT INTO _demo_cfg VALUES ('https://sport-booker-frontend-x1no-orpin.vercel.app');
+INSERT INTO _demo_cfg VALUES ('https://sport-booker-frontend.vercel.app');
 
 -- -------------------------------------------------------
 -- 1 + 2. Venues: extra football venues, then pictures
